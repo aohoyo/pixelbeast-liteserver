@@ -1,0 +1,341 @@
+/* ==================== 日志管理 ==================== */
+
+/* 主 Tab 切换 */
+.logs-tabs {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    border-bottom: 2px solid var(--border);
+}
+
+.logs-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: var(--space-sm) var(--space-lg);
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    margin-bottom: -2px;
+}
+
+.logs-tab:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.logs-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.logs-tab-icon {
+    font-size: 1.1rem;
+}
+
+/* 子 Tab 切换 */
+.logs-subtabs {
+    display: flex;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-md);
+}
+
+.logs-subtab {
+    padding: 6px 16px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.logs-subtab:hover {
+    background: var(--bg-elevated);
+    color: var(--text);
+}
+
+.logs-subtab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+/* 工具栏 */
+.logs-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+
+.logs-toolbar-left,
+.logs-toolbar-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+/* 小型表单控件 */
+.form-select-sm,
+.form-input-sm {
+    padding: 6px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.form-select-sm:focus,
+.form-input-sm:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* 统计卡片 */
+.logs-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.stat-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: var(--space-xs);
+}
+
+.stat-value.stat-error {
+    color: var(--danger);
+}
+
+.stat-value.stat-warning {
+    color: var(--warning);
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+/* 日志查看器容器 */
+.logs-viewer-container {
+    position: relative;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+/* 日志查看器 */
+.logs-viewer {
+    height: 450px;
+    overflow-y: auto;
+    padding: var(--space-md);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.7;
+    background: var(--bg);
+}
+
+/* 日志条目 */
+.log-entry {
+    display: flex;
+    gap: var(--space-sm);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(68, 64, 60, 0.3);
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 160px;
+}
+
+.log-level {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    min-width: 70px;
+    font-weight: 500;
+}
+
+.log-message {
+    color: var(--text);
+    word-break: break-all;
+    flex: 1;
+}
+
+/* 日志级别颜色 */
+.log-entry.log-debug .log-level {
+    color: var(--text-muted);
+}
+
+.log-entry.log-info .log-level {
+    color: var(--info);
+}
+
+.log-entry.log-warn {
+    background: var(--warning-alpha);
+    margin: 0 calc(-1 * var(--space-md));
+    padding: 3px var(--space-md);
+}
+
+.log-entry.log-warn .log-level {
+    color: var(--warning);
+}
+
+.log-entry.log-error {
+    background: var(--danger-alpha);
+    margin: 0 calc(-1 * var(--space-md));
+    padding: 3px var(--space-md);
+}
+
+.log-entry.log-error .log-level {
+    color: var(--danger);
+}
+
+/* 加载/空状态 */
+.logs-loading,
+.logs-empty,
+.logs-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-light);
+}
+
+.logs-error {
+    color: var(--danger);
+}
+
+/* 自动滚动标签 */
+.auto-scroll-label {
+    position: absolute;
+    bottom: var(--space-md);
+    right: var(--space-md);
+    background: var(--bg-elevated);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    border: 1px solid var(--border);
+}
+
+/* 分页 */
+.logs-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: var(--space-md);
+    padding: var(--space-sm) 0;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+/* 复选框标签 */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+}
+
+/* 按钮内图标 */
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 文件图标 */
+.file-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin-right: 6px;
+    color: var(--text-light);
+}
+
+/* 日志 Tab 图标 */
+.logs-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logs-tab-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .logs-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .logs-toolbar-left,
+    .logs-toolbar-right {
+        justify-content: center;
+    }
+
+    .logs-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .logs-viewer {
+        height: 350px;
+    }
+
+    .log-time {
+        min-width: 0;
+        font-size: 0.75rem;
+    }
+}

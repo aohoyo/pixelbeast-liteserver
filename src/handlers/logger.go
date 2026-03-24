@@ -1,20 +1,25 @@
 package handlers
 
 import (
+	"compress/gzip"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"pixelbeast/src/config"
 )
 
 // LogLevel 日志级别
 type LogLevel int
 
 const (
-	LogLevelInfo LogLevel = iota
+	LogLevelDebug LogLevel = iota
+	LogLevelInfo
 	LogLevelWarn
 	LogLevelError
 	LogLevelAuth
@@ -29,17 +34,48 @@ const (
 	LogCategoryPanel LogCategory = "panel"
 )
 
+// 日志级别映射
+var levelNames = map[LogLevel]string{
+	LogLevelDebug: "debug",
+	LogLevelInfo:  "info",
+	LogLevelWarn:  "warn",
+	LogLevelError: "error",
+	LogLevelAuth:  "auth",
+}
+
+var nameToLevel = map[string]LogLevel{
+	"debug": LogLevelDebug,
+	"info":  LogLevelInfo,
+	"warn":  LogLevelWarn,
+	"error": LogLevelError,
+	"auth":  LogLevelAuth,
+}
+
+// LogType 日志类型
+type LogType struct {
+	Category LogCategory
+	Name     string
+}
+
 // Logger 日志记录器
 type Logger struct {
-	baseDir string
-	files   map[string]*os.File // 文件句柄缓存
-	mu      sync.RWMutex
+	baseDir     string
+	files       map[string]*os.File
+	mu          sync.RWMutex
+	config      *config.LogConfig
+	currentDate string
+	stopCleanup chan struct{}
 }
 
 var globalLogger *Logger
 
-// InitLogger 初始化日志记录器，创建分类目录结构
+// InitLogger 初始化日志记录器
 func InitLogger(logDir string) error {
+	return InitLoggerWithConfig(logDir, nil)
+}
+
+// InitLoggerWithConfig 带配置初始化日志记录器
+func InitLoggerWithConfig(logDir string, cfg *config.LogConfig) error {
 	// 创建各分类目录
 	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel)}
 	for _, cat := range categories {
@@ -49,17 +85,40 @@ func InitLogger(logDir string) error {
 		}
 	}
 
-	// 创建旧的 access.log 和 error.log 作为兼容
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return err
+	if cfg == nil {
+		cfg = &config.LogConfig{
+			RetentionDays: 30,
+			MaxSizeMB:     100,
+			CompressDays:  7,
+			CleanupHour:   3,
+			Level:         "info",
+		}
 	}
 
 	globalLogger = &Logger{
-		baseDir: logDir,
-		files:   make(map[string]*os.File),
+		baseDir:     logDir,
+		files:       make(map[string]*os.File),
+		config:      cfg,
+		currentDate: time.Now().Format("2006-01-02"),
+		stopCleanup: make(chan struct{}),
 	}
 
+	// 启动定时清理
+	go globalLogger.cleanupScheduler()
+
+	// 启动日期检查（用于日志轮转）
+	go globalLogger.dateChecker()
+
 	return nil
+}
+
+// SetConfig 更新日志配置
+func SetLogConfig(cfg *config.LogConfig) {
+	if globalLogger != nil && cfg != nil {
+		globalLogger.mu.Lock()
+		globalLogger.config = cfg
+		globalLogger.mu.Unlock()
+	}
 }
 
 // Close 关闭所有日志文件
@@ -67,6 +126,8 @@ func Close() error {
 	if globalLogger == nil {
 		return nil
 	}
+
+	close(globalLogger.stopCleanup)
 
 	globalLogger.mu.Lock()
 	defer globalLogger.mu.Unlock()
@@ -79,19 +140,50 @@ func Close() error {
 	return nil
 }
 
-// 获取或创建日志文件
-func (l *Logger) getFile(category LogCategory, logType string) (*os.File, error) {
-	// 特殊处理旧的 access.log 和 error.log（兼容性）
-	if category == "" {
-		if logType == "access" {
-			return l.getFile(LogCategoryHTTP, "access")
-		}
-		if logType == "error" {
-			return l.getFile(LogCategoryHTTP, "error")
+// getLevel 获取分类的日志级别
+func (l *Logger) getLevel(category LogCategory) LogLevel {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	// 先检查分类级别
+	if l.config != nil && l.config.Levels != nil {
+		if levelStr, ok := l.config.Levels[string(category)]; ok {
+			if level, ok := nameToLevel[levelStr]; ok {
+				return level
+			}
 		}
 	}
 
-	key := string(category) + "/" + logType
+	// 使用全局级别
+	if l.config != nil {
+		if level, ok := nameToLevel[l.config.Level]; ok {
+			return level
+		}
+	}
+
+	return LogLevelInfo
+}
+
+// shouldLog 检查是否应该记录该级别日志
+func (l *Logger) shouldLog(category LogCategory, level LogLevel) bool {
+	configLevel := l.getLevel(category)
+
+	// Auth 级别特殊处理，与 Info 同级
+	checkLevel := level
+	if level == LogLevelAuth {
+		checkLevel = LogLevelInfo
+	}
+
+	return checkLevel >= configLevel
+}
+
+// getFile 获取或创建日志文件（带日期轮转）
+func (l *Logger) getFile(category LogCategory, logType string) (*os.File, error) {
+	now := time.Now()
+	currentDate := now.Format("2006-01-02")
+
+	// 带日期的 key
+	key := fmt.Sprintf("%s/%s/%s", category, logType, currentDate)
 
 	l.mu.RLock()
 	if file, exists := l.files[key]; exists {
@@ -104,19 +196,20 @@ func (l *Logger) getFile(category LogCategory, logType string) (*os.File, error)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// 再次检查，可能其他 goroutine 已经创建
+	// 再次检查
 	if file, exists := l.files[key]; exists {
 		return file, nil
 	}
 
-	// 创建目录和文件
+	// 创建目录
 	dir := filepath.Join(l.baseDir, string(category))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 
-	path := filepath.Join(dir, logType+".log")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// 创建当前日志文件（不带日期后缀，方便查看）
+	currentPath := filepath.Join(dir, logType+".log")
+	file, err := os.OpenFile(currentPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -125,9 +218,55 @@ func (l *Logger) getFile(category LogCategory, logType string) (*os.File, error)
 	return file, nil
 }
 
-// 基础日志写入
+// rotate 日志轮转
+func (l *Logger) rotate(category LogCategory, logType string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	dir := filepath.Join(l.baseDir, string(category))
+	currentPath := filepath.Join(dir, logType+".log")
+
+	// 检查当前文件是否存在
+	info, err := os.Stat(currentPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	// 检查文件大小
+	maxSize := int64(100 * 1024 * 1024) // 默认 100MB
+	if l.config != nil && l.config.MaxSizeMB > 0 {
+		maxSize = int64(l.config.MaxSizeMB) * 1024 * 1024
+	}
+
+	if info.Size() < maxSize {
+		return nil
+	}
+
+	// 关闭旧文件句柄
+	key := fmt.Sprintf("%s/%s/%s", category, logType, l.currentDate)
+	if file, exists := l.files[key]; exists {
+		file.Close()
+		delete(l.files, key)
+	}
+
+	// 重命名文件
+	backupPath := filepath.Join(dir, fmt.Sprintf("%s.%s.log", logType, time.Now().Format("2006-01-02_150405")))
+	if err := os.Rename(currentPath, backupPath); err != nil {
+		return err
+	}
+
+	log.Printf("[Logger] 日志轮转: %s -> %s", currentPath, backupPath)
+	return nil
+}
+
+// write 基础日志写入
 func (l *Logger) write(category LogCategory, logType string, level LogLevel, format string, args ...interface{}) {
 	if l == nil {
+		return
+	}
+
+	// 检查日志级别
+	if !l.shouldLog(category, level) {
 		return
 	}
 
@@ -141,6 +280,8 @@ func (l *Logger) write(category LogCategory, logType string, level LogLevel, for
 	// 控制台输出
 	levelStr := ""
 	switch level {
+	case LogLevelDebug:
+		levelStr = "[DEBUG] "
 	case LogLevelWarn:
 		levelStr = "[WARN] "
 	case LogLevelError:
@@ -160,6 +301,144 @@ func (l *Logger) write(category LogCategory, logType string, level LogLevel, for
 	defer l.mu.Unlock()
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	file.WriteString(timestamp + " " + msg + "\n")
+}
+
+// cleanupScheduler 定时清理调度器
+func (l *Logger) cleanupScheduler() {
+	// 计算下次清理时间
+	nextCleanup := func() time.Duration {
+		now := time.Now()
+		cleanupHour := 3
+		if l.config != nil && l.config.CleanupHour >= 0 && l.config.CleanupHour <= 23 {
+			cleanupHour = l.config.CleanupHour
+		}
+
+		next := time.Date(now.Year(), now.Month(), now.Day(), cleanupHour, 0, 0, 0, now.Location())
+		if now.After(next) {
+			next = next.Add(24 * time.Hour)
+		}
+		return time.Until(next)
+	}
+
+	for {
+		select {
+		case <-l.stopCleanup:
+			return
+		case <-time.After(nextCleanup()):
+			l.doCleanup()
+		}
+	}
+}
+
+// dateChecker 日期检查器（用于日志轮转）
+func (l *Logger) dateChecker() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-l.stopCleanup:
+			return
+		case <-ticker.C:
+			now := time.Now().Format("2006-01-02")
+			if now != l.currentDate {
+				l.mu.Lock()
+				l.currentDate = now
+				// 关闭所有旧的文件句柄
+				for key, file := range l.files {
+					file.Close()
+					delete(l.files, key)
+				}
+				l.mu.Unlock()
+			}
+		}
+	}
+}
+
+// doCleanup 执行日志清理
+func (l *Logger) doCleanup() {
+	l.mu.RLock()
+	retentionDays := l.config.RetentionDays
+	compressDays := l.config.CompressDays
+	l.mu.RUnlock()
+
+	if retentionDays <= 0 {
+		retentionDays = 30
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	compressCutoff := time.Now().AddDate(0, 0, -compressDays)
+
+	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel)}
+
+	for _, cat := range categories {
+		dir := filepath.Join(l.baseDir, cat)
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+
+			name := f.Name()
+			// 跳过当前日志文件
+			if name == "access.log" || name == "error.log" || name == "api.log" || name == "auth.log" {
+				continue
+			}
+
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+
+			filePath := filepath.Join(dir, name)
+
+			// 删除过期日志
+			if info.ModTime().Before(cutoff) {
+				os.Remove(filePath)
+				log.Printf("[Logger] 清理过期日志: %s", filePath)
+				continue
+			}
+
+			// 压缩旧日志
+			if info.ModTime().Before(compressCutoff) && !strings.HasSuffix(name, ".gz") {
+				if err := l.compressFile(filePath); err == nil {
+					log.Printf("[Logger] 压缩日志: %s", filePath)
+				}
+			}
+		}
+	}
+}
+
+// compressFile 压缩文件
+func (l *Logger) compressFile(path string) error {
+	// 读取原文件
+	in, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	// 创建压缩文件
+	out, err := os.Create(path + ".gz")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// 写入压缩数据
+	gz := gzip.NewWriter(out)
+	if _, err := io.Copy(gz, in); err != nil {
+		gz.Close()
+		return err
+	}
+	gz.Close()
+
+	// 删除原文件
+	return os.Remove(path)
 }
 
 // ============ 通用日志方法 ============
@@ -245,9 +524,9 @@ func LogPanelAccess(username, path, remoteAddr string) {
 }
 
 // LogPanelAPI 记录 API 调用
-func LogPanelAPI(username, method, path string, statusCode int, duration time.Duration) {
+func LogPanelAPI(username, method, path, remoteAddr string, statusCode int, duration time.Duration) {
 	Log(LogCategoryPanel, "api", LogLevelInfo,
-		"[Panel API] %s %s (用户=%s) -> %d (%v)", method, path, username, statusCode, duration)
+		"[Panel API] %s %s (用户=%s from %s) -> %d (%v)", method, path, username, remoteAddr, statusCode, duration)
 }
 
 // LogPanelAuth 记录认证事件
@@ -278,7 +557,7 @@ func LogPanelFileOp(username, operation, targetPath string, success bool) {
 		"[Panel] 文件操作: %s %s (用户=%s, %s)", operation, targetPath, username, status)
 }
 
-// LogPanelConfig 记录配置变更
+// LogPanelConfigChange 记录配置变更
 func LogPanelConfigChange(username, configPath string, success bool) {
 	status := "成功"
 	if !success {
@@ -300,7 +579,7 @@ func LogPanelService(username, service, action string, success bool) {
 
 // ============ 向后兼容 ============
 
-// LogAccess 记录访问日志（兼容旧代码，写入 http/access.log）
+// LogAccess 记录访问日志（兼容旧代码）
 func LogAccess(format string, args ...interface{}) {
 	var msg string
 	if len(args) > 0 {
@@ -316,7 +595,7 @@ func LogAccess(format string, args ...interface{}) {
 	}
 }
 
-// LogError 记录错误日志（兼容旧代码，写入 http/error.log）
+// LogError 记录错误日志（兼容旧代码）
 func LogError(format string, args ...interface{}) {
 	var msg string
 	if len(args) > 0 {
@@ -332,32 +611,30 @@ func LogError(format string, args ...interface{}) {
 	}
 }
 
-// GetLogFilePath 获取日志文件路径（用于 API 读取）
+// GetLogFilePath 获取日志文件路径
 func GetLogFilePath(category, logType string) string {
 	if globalLogger == nil {
 		return ""
 	}
 
-	// 安全检查：防止路径遍历
 	if strings.Contains(category, "..") || strings.Contains(logType, "..") {
 		return ""
 	}
 
-	// 兼容旧的单层日志
-	if category == "" {
-		if logType == "access" {
-			logType = "http/access"
-		} else if logType == "error" {
-			logType = "http/error"
-		} else {
-			return ""
-		}
-		parts := strings.Split(logType, "/")
-		if len(parts) == 2 {
-			category = parts[0]
-			logType = parts[1]
-		}
-	}
-
 	return filepath.Join(globalLogger.baseDir, category, logType+".log")
+}
+
+// GetLogBaseDir 获取日志目录
+func GetLogBaseDir() string {
+	if globalLogger == nil {
+		return ""
+	}
+	return globalLogger.baseDir
+}
+
+// CleanupNow 立即执行清理
+func CleanupNow() {
+	if globalLogger != nil {
+		globalLogger.doCleanup()
+	}
 }

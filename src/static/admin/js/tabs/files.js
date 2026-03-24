@@ -21,33 +21,42 @@ function formatSize(bytes) {
 
 /**
  * 初始化文件面板
- * @param {Object} dependencies - 依赖注入 { state, api, toast }
+ * @param {Object} dependencies - 依赖注入 { state, api, toast, message }
  */
-export function initFilesTab({ state, api, toast }) {
-    console.log('📁 初始化文件面板...');
+export function initFilesTab({ state, api, toast, message }) {
+    console.log('初始化文件面板...');
 
     // 状态
     let currentPath = '/';
     let currentFtpPath = '/';
     let currentType = 'http'; // 'http' or 'ftp'
 
-    // 初始化两个文件管理器
-    initHttpFileManager();
-    initFtpFileManager();
+    // 加载状态标记
+    let httpLoaded = false;
+    let ftpLoaded = false;
+
+    // 保存管理器引用
+    let httpManager = null;
+    let ftpManager = null;
+
+    // 保存依赖引用供闭包使用
+    const depsRef = { toast, message };
 
     /**
      * 初始化 HTTP 文件管理器
      */
     function initHttpFileManager() {
         const manager = createFileManager('http');
-        manager.init();
-
+        manager.init(); // 初始化事件绑定
+        
         // 监听加载事件
         globalEvents.on('files:load', (data) => {
             if (data.type === 'http') {
                 manager.loadFiles();
             }
         });
+
+        return manager;
     }
 
     /**
@@ -55,14 +64,52 @@ export function initFilesTab({ state, api, toast }) {
      */
     function initFtpFileManager() {
         const manager = createFileManager('ftp');
-        manager.init();
-
+        manager.init(); // 初始化事件绑定
+        
         // 监听加载事件
         globalEvents.on('files:load', (data) => {
             if (data.type === 'ftp') {
                 manager.loadFiles();
             }
         });
+
+        return manager;
+    }
+
+    // 创建管理器实例
+    httpManager = initHttpFileManager();
+    ftpManager = initFtpFileManager();
+
+    // 监听标签页切换事件
+    globalEvents.on('tab:switch:files', loadFilesIfNotLoaded);
+
+    // 也监听通用的标签页切换事件
+    globalEvents.on('tab:switch:*', (data) => {
+        if (data.tabName === 'files') {
+            loadFilesIfNotLoaded();
+        }
+    });
+
+    // 初始加载检查（处理刷新后直接在文件页的情况）
+    setTimeout(() => {
+        const filesTab = document.getElementById('files');
+        if (filesTab && filesTab.classList.contains('active')) {
+            console.log('文件标签页已激活，加载文件...');
+            loadFilesIfNotLoaded();
+        }
+    }, 500);
+
+    function loadFilesIfNotLoaded() {
+        if (!httpLoaded && httpManager) {
+            console.log('加载 HTTP 文件列表...');
+            httpManager.loadFiles();
+            httpLoaded = true;
+        }
+        if (!ftpLoaded && ftpManager) {
+            console.log('加载 FTP 文件列表...');
+            ftpManager.loadFiles();
+            ftpLoaded = true;
+        }
     }
 
     /**
@@ -75,7 +122,7 @@ export function initFilesTab({ state, api, toast }) {
         const apiPath = type === 'ftp' ? '/api/ftp/files' : '/api/files';
 
         return {
-            init() {
+            init(autoLoad = true) {
                 // 刷新按钮
                 const refreshBtn = document.getElementById(`${prefix}refresh-files`);
                 refreshBtn?.addEventListener('click', () => this.loadFiles());
@@ -134,9 +181,6 @@ export function initFilesTab({ state, api, toast }) {
                         mkdirConfirm?.click();
                     }
                 });
-
-                // 初始加载
-                this.loadFiles();
             },
 
             async loadFiles(path = null) {
@@ -187,21 +231,17 @@ export function initFilesTab({ state, api, toast }) {
                     const item = document.createElement('div');
                     item.className = 'file-item';
 
-                    const icon = file.is_dir ? '📁' : '📄';
+                    const icon = file.is_dir ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>` : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
                     const size = file.is_dir ? '' : formatSize(file.size);
 
-                    // 根据类型确定复制按钮的图标和标题
-                    const copyIcon = type === 'http' ? '🔗' : '📋';
-                    const copyTitle = type === 'http' ? '复制链接' : '复制文件';
-
                     item.innerHTML = `
-                        <div class="file-name">${icon} ${this.escapeHtml(file.name)}</div>
+                        <div class="file-name"><span class="file-icon">${icon}</span> ${this.escapeHtml(file.name)}</div>
                         <div class="file-size">${size}</div>
                         <div class="file-actions">
-                            ${!file.is_dir ? `<button class="download-btn" data-name="${this.escapeHtml(file.name)}" title="下载文件">⬇️</button>` : ''}
-                            <button class="rename-btn" data-name="${this.escapeHtml(file.name)}" title="重命名">✏️</button>
-                            <button class="copy-btn" data-name="${this.escapeHtml(file.name)}" title="${copyTitle}">${copyIcon}</button>
-                            <button class="delete-btn" data-name="${this.escapeHtml(file.name)}" title="删除">🗑️</button>
+                            ${!file.is_dir ? `<button class="download-btn" data-name="${this.escapeHtml(file.name)}" title="下载文件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}
+                            <button class="rename-btn" data-name="${this.escapeHtml(file.name)}" title="重命名"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button class="copy-btn" data-name="${this.escapeHtml(file.name)}" title="复制"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                            <button class="delete-btn" data-name="${this.escapeHtml(file.name)}" title="删除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                         </div>
                     `;
 
@@ -313,14 +353,14 @@ export function initFilesTab({ state, api, toast }) {
 
                     const data = response ? await api.parseJSON(response) : null;
                     if (data) {
-                        toast.success('目录创建成功', 2000);
+                        depsRef.message.success('目录创建成功');
                         this.loadFiles();
                     } else {
-                        toast.error('目录创建失败', 3000);
+                        depsRef.message.error('目录创建失败');
                     }
                 } catch (error) {
                     console.error('创建目录失败:', error);
-                    toast.error(error.message || '目录创建失败', 3000);
+                    depsRef.message.error(error.message || '目录创建失败');
                 }
             },
 
@@ -416,7 +456,7 @@ export function initFilesTab({ state, api, toast }) {
                     // 复制链接到剪贴板
                     try {
                         await navigator.clipboard.writeText(fileUrl);
-                        toast.success('链接已复制到剪贴板', 2000);
+                        depsRef.message.success('链接已复制');
                     } catch (err) {
                         // 降级方案：使用传统方法
                         const textArea = document.createElement('textarea');
@@ -427,9 +467,9 @@ export function initFilesTab({ state, api, toast }) {
                         textArea.select();
                         try {
                             document.execCommand('copy');
-                            toast.success('链接已复制到剪贴板', 2000);
+                            depsRef.message.success('链接已复制');
                         } catch (e) {
-                            toast.error('复制失败，请手动复制链接', 3000);
+                            depsRef.message.error('复制失败，请手动复制链接');
                             console.log('文件链接:', fileUrl);
                         }
                         document.body.removeChild(textArea);
@@ -513,9 +553,9 @@ export function initFilesTab({ state, api, toast }) {
 
                 // 显示结果
                 if (failedFiles.length === 0) {
-                    toast.success(`成功上传 ${uploadedCount} 个文件`, 3000);
+                    depsRef.message.success(`成功上传 ${uploadedCount} 个文件`);
                 } else {
-                    toast.error(`上传完成：成功 ${uploadedCount} 个，失败 ${failedFiles.length} 个`, 5000);
+                    depsRef.message.error(`上传完成：成功 ${uploadedCount} 个，失败 ${failedFiles.length} 个`);
                 }
 
                 // 刷新文件列表

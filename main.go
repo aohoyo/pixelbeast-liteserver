@@ -21,7 +21,7 @@ var (
 var serverManager *handlers.ServerManager
 
 func main() {
-	configPath := flag.String("config", "pixelbeast.json", "配置文件路径")
+	configDir := flag.String("config", "config", "配置目录路径")
 	showVersion := flag.Bool("version", false, "显示版本信息")
 	flag.Parse()
 
@@ -34,33 +34,43 @@ func main() {
 	printBanner()
 
 	// 加载配置
-	cfg, err := config.Load(*configPath)
+	cm, err := config.NewConfigManager(*configDir)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 创建默认目录
-	if err := cfg.CreateDefaultDirectories(); err != nil {
-		log.Fatalf("创建目录失败: %v", err)
-	}
+	adapter := config.NewAdapter(cm)
 
 	// 初始化日志
-	if err := handlers.InitLogger("./logs"); err != nil {
+	logCfg := cm.Server.Log
+	if err := handlers.InitLoggerWithConfig("./log", &config.LogConfig{
+		RetentionDays: logCfg.RetentionDays,
+		MaxSizeMB:     logCfg.MaxSizeMB,
+		CompressDays:  logCfg.CompressDays,
+		CleanupHour:   logCfg.CleanupHour,
+		Level:         logCfg.Level,
+	}); err != nil {
 		log.Printf("警告: 初始化日志失败: %v", err)
 	}
 
-	log.Printf("配置文件: %s", *configPath)
+	log.Printf("配置目录: %s", *configDir)
 
-	// 创建服务管理器
-	serverManager = handlers.NewServerManager(cfg, *configPath)
+	// 创建服务管理器（临时用旧配置结构，后续重构）
+	tmpCfg := &config.Config{
+		Global: config.GlobalConfig{
+			AdminPort: adapter.GetAdminPort(),
+		},
+	}
+	serverManager = handlers.NewServerManager(tmpCfg, *configDir)
 
 	// 创建 FTP 服务器
-	if cfg.FTP.Port > 0 {
-		ftpServer, err := handlers.NewFTPServer(&cfg.FTP)
+	ftpCfg := adapter.GetFTP()
+	if ftpCfg.Port > 0 {
+		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm)
 		if err != nil {
 			log.Printf("警告: 创建FTP服务器失败: %v", err)
 		} else {
-			serverManager.SetFTPServer(ftpServer, &cfg.FTP)
+			serverManager.SetFTPServer(ftpServer, ftpCfg)
 		}
 	}
 
@@ -68,8 +78,15 @@ func main() {
 	admin.SetStaticFS(getStaticFS())
 
 	// 创建管理面板处理器
-	adminHandler := admin.New(cfg, *configPath)
+	tmpAdminCfg := &config.Config{
+		Admin: config.AdminConfig{
+			Username: cm.Server.AdminUsername,
+			Path:     cm.Server.AdminPath,
+		},
+	}
+	adminHandler := admin.New(tmpAdminCfg, *configDir)
 	adminHandler.SetServerManager(serverManager)
+	adminHandler.SetPasswordValidator(cm)
 	serverManager.SetAdminHandler(adminHandler)
 
 	// 启动管理面板服务器
@@ -82,16 +99,14 @@ func main() {
 		log.Printf("警告: 启动网站服务器失败: %v", err)
 	}
 
-	// 启动 FTP 服务（根据配置）
-	if cfg.FTP.Enabled {
+	// 启动 FTP 服务
+	if ftpCfg.Enabled {
 		if err := serverManager.StartFTP(); err != nil {
 			log.Printf("FTP服务器启动失败: %v", err)
 		} else {
-			log.Printf("FTP服务器启动在端口 %d", cfg.FTP.Port)
+			log.Printf("FTP服务器启动在端口 %d", ftpCfg.Port)
 		}
 	}
-
-
 
 	// 优雅关闭
 	setupGracefulShutdown()

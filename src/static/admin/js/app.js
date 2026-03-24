@@ -9,6 +9,7 @@ import StateManager from './core/state.js';
 import { createAPI } from './core/api.js';
 import { globalEvents } from './core/events.js';
 import toast from './components/toast.js';
+import message from './components/message.js';
 import dialog from './components/dialog.js';
 import tooltip from './components/tooltip.js';
 import { loadContentSections, loadModal } from './core/loader.js';
@@ -70,7 +71,7 @@ async function init() {
         console.log('✅ 像素兽 1.0 初始化完成');
     } catch (error) {
         console.error('❌ 初始化失败:', error);
-        toast.error('初始化失败: ' + error.message);
+        message.error('初始化失败: ' + error.message);
     }
 }
 
@@ -190,7 +191,7 @@ function initTabs() {
  * 初始化标签页模块
  */
 function initTabModules() {
-    const dependencies = { state, api, toast, dialog, events: globalEvents };
+    const dependencies = { state, api, toast, message, dialog, events: globalEvents };
 
     // 初始化各标签页
     initHomeTab(dependencies);
@@ -335,6 +336,7 @@ window.app = {
     api,
     events: globalEvents,
     toast,
+    message,
     dialog,
     switchTab,
     logout

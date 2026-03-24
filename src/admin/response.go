@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -102,4 +103,25 @@ func TooManyRequests(w http.ResponseWriter, message string) {
 // InternalServerError 500 内部错误
 func InternalServerError(w http.ResponseWriter, message string) {
 	Error(w, http.StatusInternalServerError, message)
+}
+
+// ==================== 辅助函数 ====================
+
+// parseJSONBody 解析 JSON 请求体
+func parseJSONBody(r *http.Request, v interface{}) error {
+	defer r.Body.Close()
+	return json.NewDecoder(r.Body).Decode(v)
+}
+
+// parseIntParam 解析整数参数
+func parseIntParam(s string, defaultVal int) int {
+	if s == "" {
+		return defaultVal
+	}
+	var val int
+	if _, err := json.Number(s).Int64(); err == nil {
+		fmt.Sscanf(s, "%d", &val)
+		return val
+	}
+	return defaultVal
 }

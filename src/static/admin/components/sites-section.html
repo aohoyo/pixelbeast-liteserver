@@ -2,9 +2,121 @@
     <div class="card-header">
         <i class="icon icon-globe"></i>
         <h3>网站管理</h3>
-        <button class="btn btn-primary" id="add-site-btn" style="margin-left: auto;">+ 添加网站</button>
+        <div class="card-header-actions">
+            <button class="btn btn-primary" id="add-site-btn">
+                <i class="icon icon-plus"></i> 添加网站
+            </button>
+        </div>
     </div>
-    <div class="sites-list" id="sites-list">
-        <!-- 站点列表将通过 JS 动态生成 -->
+
+    <div class="site-container">
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <div class="toolbar-batch" id="sites-batch-actions" style="display: none">
+                    <span class="toolbar-batch-label">已选择 <strong id="sites-selected-count">0</strong> 项</span>
+                    <button class="btn btn-sm" id="sites-batch-enable">
+                        <i class="icon icon-check"></i> 启用
+                    </button>
+                    <button class="btn btn-sm" id="sites-batch-disable">
+                        <i class="icon icon-x"></i> 禁用
+                    </button>
+                    <button class="btn btn-sm btn-danger" id="sites-batch-delete">
+                        <i class="icon icon-trash"></i> 删除
+                    </button>
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <div class="toolbar-search">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <input type="text" id="sites-search" placeholder="搜索站点名称、域名..." />
+                </div>
+                <div class="toolbar-filter">
+                    <select id="sites-type-filter">
+                        <option value="">全部类型</option>
+                        <option value="static">静态站点</option>
+                        <option value="proxy">反向代理</option>
+                    </select>
+                </div>
+                <div class="toolbar-filter">
+                    <select id="sites-status-filter">
+                        <option value="">全部状态</option>
+                        <option value="enabled">运行中</option>
+                        <option value="disabled">已停止</option>
+                    </select>
+                </div>
+                <button class="btn btn-sm" id="sites-refresh-btn">
+                    <i class="icon icon-refresh"></i> 刷新
+                </button>
+            </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="table-wrapper" id="sites-table-container"></div>
+    </div>
+</div>
+
+<!-- 添加/编辑站点弹窗 -->
+<div class="modal" id="site-modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-container" style="width: 560px; max-width: 90vw;">
+        <div class="modal-header">
+            <h3 id="site-modal-title">添加网站</h3>
+            <button class="modal-close" id="site-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form class="site-form" id="site-form">
+                <div class="form-group">
+                    <label class="form-label">站点名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="site-form-name" placeholder="我的网站" required />
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">站点类型</label>
+                        <select class="form-select" id="site-form-type">
+                            <option value="static">静态站点</option>
+                            <option value="proxy">反向代理</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">端口</label>
+                        <input type="number" class="form-input" id="site-form-port" placeholder="留空使用共享端口" min="1" max="65535" />
+                        <span class="form-hint">0 = 共享端口，由域名区分</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">域名</label>
+                    <input type="text" class="form-input" id="site-form-domain" placeholder="example.com, www.example.com" />
+                    <span class="form-hint">多个域名用逗号分隔</span>
+                </div>
+
+                <!-- 静态站点配置 -->
+                <div id="site-static-fields">
+                    <div class="form-group">
+                        <label class="form-label">根目录</label>
+                        <input type="text" class="form-input" id="site-form-root" placeholder="./data/sites/mysite" />
+                        <span class="form-hint">相对于程序运行目录</span>
+                    </div>
+                </div>
+
+                <!-- 反向代理配置 -->
+                <div id="site-proxy-fields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">代理目标 <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="site-form-proxy" placeholder="http://localhost:3000" />
+                        <span class="form-hint">目标服务器地址</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="site-modal-cancel">取消</button>
+            <button class="btn btn-primary" id="site-modal-confirm">确定</button>
+        </div>
     </div>
 </div>

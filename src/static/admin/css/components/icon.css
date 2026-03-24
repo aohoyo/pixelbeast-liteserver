@@ -172,3 +172,23 @@
 .icon-eye-off {
     background-image: url("../../icons/eye-off.svg");
 }
+
+/* 加号图标 */
+.icon-plus {
+    background-image: url("../../icons/add.svg");
+}
+
+/* X 关闭图标 */
+.icon-x {
+    background-image: url("../../icons/close.svg");
+}
+
+/* 用户图标 */
+.icon-users {
+    background-image: url("../../icons/users.svg");
+}
+
+/* 勾选图标 - 使用 add.svg 作为基础 */
+.icon-check {
+    background-image: url("../../icons/check.svg");
+}

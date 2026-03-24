@@ -108,6 +108,33 @@ body::before {
     padding: 20px;
 }
 
+/* ==================== 全局滚动条样式 ==================== */
+/* 适用于所有需要滚动的元素 */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Firefox 滚动条 */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
 /* 通用工具类 */
 .loading {
     text-align: center;

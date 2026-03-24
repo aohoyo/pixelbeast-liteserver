@@ -29,7 +29,7 @@ type ServerManager struct {
 	sitesRunning bool
 	sitesTLSCfg  *tls.Config
 
-	// FTP 服务（保持不变）
+	// FTP 服务
 	FTPServer  *FTPServer
 	FTPConfig  *config.FTPConfig
 	FTPRunning bool
@@ -64,7 +64,7 @@ func NewServerManager(cfg *config.Config, configPath string) *ServerManager {
 
 // getSSLDir 获取 SSL 证书目录
 func getSSLDir(cfg *config.Config) string {
-	return cfg.Global.DataDir + "/ssl"
+	return "./ssl" // SSL 证书固定存储在程序运行目录下的 ssl 目录
 }
 
 // ==================== 管理面板服务器 ====================
@@ -94,16 +94,11 @@ func (m *ServerManager) StartAdminPanel() error {
 		port = 9527
 	}
 
-	// 获取管理面板路径前缀
-	adminPath := "/admin"
-	if m.Config != nil && m.Config.Admin.Path != "" {
-		adminPath = m.Config.Admin.Path
-	}
-
-	// 使用 StripPrefix 去掉路径前缀
+	// 管理面板直接使用 admin handler（不使用路径前缀）
+	// 这样可以直接访问 http://host:port/ 而不需要 /admin 前缀
 	m.AdminServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      http.StripPrefix(adminPath, m.AdminHandler),
+		Handler:      m.AdminHandler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}

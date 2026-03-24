@@ -35,8 +35,11 @@ src/static/admin/
     │   ├── api.js     # API 封装
     │   ├── events.js  # 事件系统
     │   └── loader.js  # 组件加载器
-    ├── ui/            # UI 组件
-    │   └── toast.js   # Toast 提示
+    ├── components/    # JS 组件
+    │   ├── toast.js   # Toast 提示（右下角）
+    │   ├── message.js # Message 消息（顶部居中）
+    │   ├── dialog.js  # 对话框
+    │   └── tooltip.js # 工具提示
     └── tabs/          # 标签页逻辑
         ├── home.js    # 首页（系统概览）
         ├── sites.js   # 网站管理
@@ -126,13 +129,13 @@ import { globalEvents } from '../core/events.js';
 
 /**
  * 初始化标签页
- * @param {Object} dependencies - 依赖注入 { state, api, toast }
+ * @param {Object} dependencies - 依赖注入 { state, api, toast, message, dialog, events }
  */
-export function initMyTab({ state, api, toast }) {
+export function initMyTab({ state, api, toast, message, dialog, events }) {
     console.log('🔧 初始化我的标签页...');
 
     // 监听标签页切换
-    globalEvents.match('tab:switch:mytab', () => {
+    events.match('tab:switch:mytab', () => {
         loadData();
     });
 
@@ -148,6 +151,18 @@ export function initMyTab({ state, api, toast }) {
             updateUI(data);
         } catch (error) {
             toast.error('加载失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 保存数据
+     */
+    async function saveData() {
+        try {
+            await api.post('/api/mydata', data);
+            message.success('保存成功');
+        } catch (error) {
+            message.error('保存失败: ' + error.message);
         }
     }
 
@@ -201,7 +216,7 @@ export function initMyTab({ state, api, toast }) {
 import { initMyTab } from './tabs/mytab.js';
 
 // 在 initTabModules() 中调用
-initMyTab({ state, api, toast, events: globalEvents });
+initMyTab({ state, api, toast, message, dialog, events: globalEvents });
 ```
 
 ## UI 组件
@@ -223,6 +238,55 @@ toast.info('提示信息');
 // 警告提示
 toast.warning('警告信息');
 ```
+
+### Message 消息提示
+
+参考 Element UI Message 组件设计，顶部居中显示的消息提示。
+
+```javascript
+import message from './components/message.js';
+
+// 基础用法
+message.success('操作成功');
+message.error('操作失败');
+message.warning('警告信息');
+message.info('提示信息');
+
+// 配置对象
+message({
+    message: '这是一条消息',
+    type: 'success',        // success | warning | info | error
+    duration: 3000,         // 持续时间，0 表示不自动关闭
+    showClose: true,        // 显示关闭按钮
+    onClose: () => {}       // 关闭回调
+});
+
+// 关闭所有消息
+message.closeAll();
+```
+
+### Message vs Toast 使用规范
+
+根据场景选择合适的组件：
+
+| 场景 | 组件 | 原因 |
+|------|------|------|
+| **创建/编辑/删除** | Message | 重要操作，需要用户确认结果 |
+| **保存设置成功/失败** | Message | 重要操作反馈，醒目 |
+| **文件上传完成** | Message | 用户等待的操作结果 |
+| **表单验证失败** | Message | 错误提示需要醒目 |
+| **批量操作结果** | Message | 重要操作，需要明确反馈 |
+| **复制成功** | Message | 用户需要确认操作成功 |
+| **状态开关切换** | Toast | 快速反馈，用户已预期结果 |
+| **开始下载** | Toast | 后台操作提示 |
+| **加载失败** | Toast | 网络错误，不需要太醒目 |
+| **功能开发中** | Toast | 临时提示 |
+
+**注意**：随机密码生成不需要通知，用户可以从输入框直接看到结果。
+
+**位置差异**：
+- **Message**: 顶部居中，从上往下淡入，更醒目
+- **Toast**: 右下角显示，不打断用户操作
 
 ## CSS 变量
 
@@ -273,7 +337,7 @@ toast.warning('警告信息');
 所有标签页初始化函数接收统一的依赖对象：
 
 ```javascript
-export function initXxxTab({ state, api, toast, events }) {
+export function initXxxTab({ state, api, toast, message, dialog, events }) {
     // 使用注入的依赖，不要全局导入
 }
 ```
@@ -294,17 +358,30 @@ globalEvents.on('data:updated', (data) => {
 
 ### 错误处理
 
-统一使用 try-catch 和 toast 提示：
+统一使用 try-catch，根据场景选择 toast 或 message：
 
 ```javascript
-async function doSomething() {
+// 加载数据（使用 toast，不阻断用户）
+async function loadData() {
     try {
         const data = await api.getJSON('/api/data');
         // 处理数据
     } catch (error) {
-        console.error('操作失败:', error);
-        toast.error('操作失败: ' + error.message);
+        console.error('加载失败:', error);
+        toast.error('加载失败: ' + error.message);
     }
+}
+
+// 保存数据（使用 message，重要操作）
+async function saveData() {
+    try {
+        await api.post('/api/data', data);
+        message.success('保存成功');
+    } catch (error) {
+        console.error('保存失败:', error);
+        message.error('保存失败: ' + error.message);
+    }
+}
 }
 ```
 

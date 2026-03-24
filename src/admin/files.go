@@ -7,29 +7,52 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
 // ==================== HTTP 文件管理 ====================
 
+// resolvePath 统一路径解析
+// 支持绝对路径、相对路径和 ".." 导航
+func resolvePath(subPath string) string {
+	rootDir, _ := os.Getwd()
+	
+	if subPath == "" || subPath == "/" {
+		return rootDir
+	}
+	
+	// 处理正斜杠格式的 Windows 绝对路径 (如 C:/Users/...)
+	// filepath.IsAbs 期望反斜杠，所以需要先转换
+	normalizedPath := filepath.FromSlash(subPath)
+	
+	// 检查是否是绝对路径
+	if filepath.IsAbs(normalizedPath) {
+		// 绝对路径：直接使用，并清理 ".."
+		return filepath.Clean(normalizedPath)
+	}
+	
+	// 检查是否是原始的正斜杠格式绝对路径
+	if len(subPath) >= 2 && subPath[1] == ':' {
+		// Windows 驱动器格式 (C:/...)
+		return filepath.Clean(normalizedPath)
+	}
+	
+	// 相对路径：相对于程序目录
+	return filepath.Join(rootDir, normalizedPath)
+}
+
 func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	subPath := r.URL.Query().Get("path")
 
-	if strings.Contains(subPath, "..") {
-		BadRequest(w, "Invalid path")
+	// Windows 特殊处理：虚拟"此电脑"路径
+	if subPath == "此电脑" {
+		h.listDrives(w, r)
 		return
 	}
 
-	absRoot, _ := filepath.Abs(h.Config.HTTP.Root)
-	absPath := absRoot
-	if subPath != "" && subPath != "/" {
-		absPath = filepath.Join(absRoot, subPath)
-	}
-	if !strings.HasPrefix(absPath, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	absPath := resolvePath(subPath)
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
@@ -39,13 +62,65 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 
 	files := make([]map[string]interface{}, 0)
 	for _, entry := range entries {
-		info, _ := entry.Info()
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
 		files = append(files, map[string]interface{}{
-			"name": entry.Name(), "is_dir": entry.IsDir(),
-			"size": info.Size(), "modified": info.ModTime().Format(time.RFC3339),
+			"name":     entry.Name(),
+			"is_dir":   entry.IsDir(),
+			"size":     info.Size(),
+			"modified": info.ModTime().Format(time.RFC3339),
 		})
 	}
-	Success(w, map[string]interface{}{"path": subPath, "files": files})
+
+	// 返回当前路径（转为正斜杠格式，便于前端显示）
+	displayPath := filepath.ToSlash(absPath)
+	
+	// 获取程序目录
+	programDir, _ := os.Getwd()
+	programDirDisplay := filepath.ToSlash(programDir)
+	
+	Success(w, map[string]interface{}{
+		"path":        displayPath,
+		"program_dir": programDirDisplay,
+		"files":       files,
+	})
+}
+
+// listDrives 列出 Windows 驱动器
+func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
+	files := make([]map[string]interface{}, 0)
+	
+	// 检测操作系统
+	if runtime.GOOS == "windows" {
+		// Windows：检测所有可用驱动器
+		for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+			drivePath := string(drive) + ":/"
+			if _, err := os.Stat(drivePath); err == nil {
+				files = append(files, map[string]interface{}{
+					"name":     string(drive) + ":",
+					"is_dir":   true,
+					"size":     int64(0),
+					"modified": "",
+				})
+			}
+		}
+	} else {
+		// 非 Windows：返回根目录
+		files = append(files, map[string]interface{}{
+			"name":     "/",
+			"is_dir":   true,
+			"size":     int64(0),
+			"modified": "",
+		})
+	}
+	
+	Success(w, map[string]interface{}{
+		"path":        "此电脑",
+		"program_dir": "",
+		"files":       files,
+	})
 }
 
 func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +149,7 @@ func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir := filepath.Join(h.Config.HTTP.Root, destPath)
+	targetDir := resolvePath(destPath)
 	os.MkdirAll(targetDir, 0755)
 
 	dst := filepath.Join(targetDir, handler.Filename)
@@ -140,7 +215,7 @@ func (h *Handler) mergeChunks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir := filepath.Join(h.Config.HTTP.Root, req.DestPath)
+	targetDir := resolvePath(req.DestPath)
 	os.MkdirAll(targetDir, 0755)
 
 	destFile := filepath.Join(targetDir, req.Filename)
@@ -183,13 +258,8 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建完整路径
-	fullPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.Path, "/"), req.Name)
-	absPath, _ := filepath.Abs(fullPath)
-	absRoot, _ := filepath.Abs(h.Config.HTTP.Root)
-	if !strings.HasPrefix(absPath, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	targetDir := resolvePath(req.Path)
+	absPath := filepath.Join(targetDir, req.Name)
 
 	if err := os.RemoveAll(absPath); err != nil {
 		InternalServerError(w, err.Error())
@@ -205,18 +275,20 @@ func (h *Handler) mkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Path string `json:"path"`
-		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+
+	// 安全检查
+	if strings.Contains(req.Path, "..") {
 		BadRequest(w, "Invalid path")
 		return
 	}
 
-	newDir := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.Path, "/"), req.Name)
+	newDir := resolvePath(req.Path)
+
 	if err := os.MkdirAll(newDir, 0755); err != nil {
 		InternalServerError(w, err.Error())
 		return
@@ -244,25 +316,17 @@ func (h *Handler) renameFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 获取目标目录
+	targetDir := resolvePath(req.Path)
+
 	// 源文件路径
-	oldPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.Path, "/"), req.OldName)
-	absOld, _ := filepath.Abs(oldPath)
-	absRoot, _ := filepath.Abs(h.Config.HTTP.Root)
-	if !strings.HasPrefix(absOld, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	oldPath := filepath.Join(targetDir, req.OldName)
 
 	// 目标文件路径
-	newPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.Path, "/"), req.NewName)
-	absNew, _ := filepath.Abs(newPath)
-	if !strings.HasPrefix(absNew, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	newPath := filepath.Join(targetDir, req.NewName)
 
 	// 重命名
-	if err := os.Rename(absOld, absNew); err != nil {
+	if err := os.Rename(oldPath, newPath); err != nil {
 		InternalServerError(w, err.Error())
 		return
 	}
@@ -280,13 +344,8 @@ func (h *Handler) downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建完整路径
-	fullPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(path, "/"), name)
-	absPath, _ := filepath.Abs(fullPath)
-	absRoot, _ := filepath.Abs(h.Config.HTTP.Root)
-	if !strings.HasPrefix(absPath, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	targetDir := resolvePath(path)
+	absPath := filepath.Join(targetDir, name)
 
 	// 检查是否为目录
 	info, err := os.Stat(absPath)
@@ -335,25 +394,17 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 获取目标目录
+	targetDir := resolvePath(req.SrcPath)
+
 	// 源文件路径
-	srcPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.SrcPath, "/"), req.SrcName)
-	srcAbs, _ := filepath.Abs(srcPath)
-	absRoot, _ := filepath.Abs(h.Config.HTTP.Root)
-	if !strings.HasPrefix(srcAbs, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	srcPath := filepath.Join(targetDir, req.SrcName)
 
 	// 目标文件路径
-	dstPath := filepath.Join(h.Config.HTTP.Root, strings.TrimPrefix(req.SrcPath, "/"), req.DstName)
-	dstAbs, _ := filepath.Abs(dstPath)
-	if !strings.HasPrefix(dstAbs, absRoot) {
-		Forbidden(w, "Access denied")
-		return
-	}
+	dstPath := filepath.Join(targetDir, req.DstName)
 
 	// 打开源文件
-	srcFile, err := os.Open(srcAbs)
+	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		InternalServerError(w, err.Error())
 		return
@@ -361,7 +412,7 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 	defer srcFile.Close()
 
 	// 创建目标文件
-	dstFile, err := os.Create(dstAbs)
+	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		InternalServerError(w, err.Error())
 		return
@@ -376,4 +427,3 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 
 	SuccessMessage(w, "复制成功")
 }
-

@@ -147,7 +147,7 @@
 
 .settings-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: var(--space-md);
     margin-top: var(--space-lg);
     padding-top: var(--space-lg);
@@ -203,4 +203,34 @@
     display: flex;
     gap: var(--space-sm);
     align-items: center;
+}
+
+/* ==================== 安全建议 ==================== */
+.security-tips {
+    margin-top: var(--space-xl);
+    padding: var(--space-lg);
+    background: var(--bg-hover);
+    border-radius: var(--radius-lg);
+}
+
+.tip-item {
+    display: flex;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+}
+
+.tip-icon {
+    color: var(--primary);
+    flex-shrink: 0;
+}
+
+.tip-content strong {
+    color: var(--text);
+    font-size: 0.875rem;
+}
+
+.tip-content p {
+    color: var(--text-light);
+    font-size: 0.8rem;
+    margin: var(--space-xs) 0 0;
 }

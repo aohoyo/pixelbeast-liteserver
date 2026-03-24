@@ -1,135 +1,292 @@
-<!-- 核心指标区 -->
+<!-- 页面标题 -->
 <div class="dashboard-header">
     <div class="dashboard-title">
         <h2>系统概览</h2>
         <p class="dashboard-subtitle">实时监控服务器运行状态</p>
     </div>
     <div class="dashboard-right">
-        <!-- 系统信息 -->
-        <div class="system-badge">
-            <i class="icon icon-computer"></i>
-            <span class="system-badge-text" id="sysinfo-value">--</span>
-        </div>
         <button class="refresh-btn" id="refresh-status" title="刷新状态">
             <i class="icon icon-refresh"></i>
         </button>
     </div>
 </div>
 
-<!-- 主状态卡片 -->
-<div class="metrics-container">
-    <!-- 进程内存 -->
-    <div class="metric-card memory-metric">
-        <div class="metric-header">
-            <div class="metric-icon-wrapper">
-                <i class="icon icon-server"></i>
+<!-- 四大核心指标卡片 -->
+<div class="metrics-grid">
+    <!-- 负载 -->
+    <div class="metric-card" id="load-card" data-metric="load">
+        <div class="metric-card-content">
+            <div class="metric-left">
+                <span class="metric-title">负载</span>
+                <span class="metric-status" id="load-status-text">运行流畅</span>
             </div>
-            <span class="metric-label">进程内存</span>
+            <div class="metric-right">
+                <div class="ring-chart" id="load-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="42"/>
+                        <circle class="ring-fill" cx="50" cy="50" r="42" id="load-ring-fill"/>
+                    </svg>
+                    <div class="ring-value">
+                        <span class="ring-percent" id="load-percent">--</span>
+                        <span class="ring-unit">%</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="metric-value-group">
-            <span class="metric-value" id="memory-value">--</span>
-            <span class="metric-unit">MB</span>
-        </div>
-        <div class="metric-bar">
-            <div class="metric-fill memory-fill" id="memory-fill"></div>
-        </div>
-        <div class="metric-footer">
-            <span class="metric-percent" id="memory-percent">0%</span>
-            <span class="metric-max">最大 1GB</span>
+        <!-- 负载详情弹窗 -->
+        <div class="metric-tooltip" id="load-tooltip">
+            <div class="tooltip-header">
+                <span>检测到当前负载</span>
+                <span class="tooltip-status" id="tooltip-load-status">运行达到22%</span>
+            </div>
+            <div class="tooltip-section">
+                <div class="tooltip-section-title" data-collapsible>
+                    <span>基础信息</span>
+                    <i class="icon icon-chevron-down"></i>
+                </div>
+                <div class="tooltip-section-content">
+                    <div class="tooltip-row">
+                        <span>1/5/15分钟平均负载:</span>
+                        <span class="tooltip-value" id="tooltip-load-avg">-- / -- / --</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>活动进程数 / 总进程数:</span>
+                        <span class="tooltip-value" id="tooltip-process-count">-- / --</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 协程数量 -->
-    <div class="metric-card goroutine-metric">
-        <div class="metric-header">
-            <div class="metric-icon-wrapper">
-                <i class="icon icon-cpu"></i>
+    <!-- CPU -->
+    <div class="metric-card" id="cpu-card" data-metric="cpu">
+        <div class="metric-card-content">
+            <div class="metric-left">
+                <span class="metric-title">CPU</span>
+                <span class="metric-info-text" id="cpu-cores-text">--核心</span>
             </div>
-            <span class="metric-label">协程数量</span>
+            <div class="metric-right">
+                <div class="ring-chart" id="cpu-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="42"/>
+                        <circle class="ring-fill" cx="50" cy="50" r="42" id="cpu-ring-fill"/>
+                    </svg>
+                    <div class="ring-value">
+                        <span class="ring-percent" id="cpu-percent">--</span>
+                        <span class="ring-unit">%</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="metric-value-group">
-            <span class="metric-value" id="goroutine-value">--</span>
-            <span class="metric-unit">个</span>
-        </div>
-        <div class="metric-bar">
-            <div class="metric-fill goroutine-fill" id="goroutine-fill"></div>
-        </div>
-        <div class="metric-footer">
-            <span class="metric-status" id="goroutine-status">正常</span>
-            <span class="metric-max">参考值 &lt;500</span>
+        <!-- CPU详情弹窗 -->
+        <div class="metric-tooltip" id="cpu-tooltip">
+            <div class="tooltip-header">
+                <span>检测到当前CPU使用率</span>
+                <span class="tooltip-status" id="tooltip-cpu-status">占用31%</span>
+            </div>
+            <div class="tooltip-section">
+                <div class="tooltip-section-title" data-collapsible>
+                    <span>基础信息</span>
+                    <i class="icon icon-chevron-down"></i>
+                </div>
+                <div class="tooltip-section-content">
+                    <div class="tooltip-row" id="tooltip-cpu-model">
+                        <span>--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>物理CPU / 物理核心 / 逻辑核心:</span>
+                        <span class="tooltip-value" id="tooltip-cpu-info">-- / -- / --</span>
+                    </div>
+                </div>
+            </div>
+            <div class="tooltip-section collapsed">
+                <div class="tooltip-section-title" data-collapsible>
+                    <span>核心使用率</span>
+                    <i class="icon icon-chevron-down"></i>
+                </div>
+                <div class="tooltip-section-content">
+                    <div class="core-usage-list" id="core-usage-list"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 运行时间 -->
-    <div class="metric-card uptime-metric">
-        <div class="metric-header">
-            <div class="metric-icon-wrapper">
-                <i class="icon icon-clock"></i>
+    <!-- 内存 -->
+    <div class="metric-card" id="memory-card" data-metric="memory">
+        <div class="metric-card-content">
+            <div class="metric-left">
+                <span class="metric-title">内存</span>
+                <span class="metric-usage">
+                    <span class="usage-used" id="memory-used">--</span>
+                    <span class="usage-divider">/</span>
+                    <span class="usage-total" id="memory-total">--</span>
+                </span>
             </div>
-            <span class="metric-label">运行时间</span>
-        </div>
-        <div class="uptime-display">
-            <div class="uptime-segment" id="uptime-days">
-                <span class="segment-value">0</span>
-                <span class="segment-label">天</span>
-            </div>
-            <div class="uptime-segment" id="uptime-hours">
-                <span class="segment-value">0</span>
-                <span class="segment-label">时</span>
-            </div>
-            <div class="uptime-segment" id="uptime-minutes">
-                <span class="segment-value">0</span>
-                <span class="segment-label">分</span>
-            </div>
-            <div class="uptime-segment" id="uptime-seconds">
-                <span class="segment-value">0</span>
-                <span class="segment-label">秒</span>
+            <div class="metric-right">
+                <div class="ring-chart" id="memory-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="42"/>
+                        <circle class="ring-fill" cx="50" cy="50" r="42" id="memory-ring-fill"/>
+                    </svg>
+                    <div class="ring-value">
+                        <span class="ring-percent" id="memory-percent">--</span>
+                        <span class="ring-unit">%</span>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="metric-footer">
-            <span class="uptime-start">启动于 <span id="uptime-start-time">--</span></span>
+        <!-- 内存详情弹窗 -->
+        <div class="metric-tooltip" id="memory-tooltip">
+            <div class="tooltip-header">
+                <span>检测到当前内存</span>
+                <span class="tooltip-status" id="tooltip-memory-status">占用72%</span>
+                <button class="tooltip-action-btn" id="tooltip-free-memory-btn">立即释放</button>
+            </div>
+            <div class="tooltip-section">
+                <div class="tooltip-section-title" data-collapsible>
+                    <span>内存信息</span>
+                    <i class="icon icon-chevron-down"></i>
+                </div>
+                <div class="tooltip-section-content">
+                    <div class="tooltip-row">
+                        <span>空闲内存:</span>
+                        <span class="tooltip-value" id="tooltip-mem-free">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>已用:</span>
+                        <span class="tooltip-value" id="tooltip-mem-used">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>总内存:</span>
+                        <span class="tooltip-value" id="tooltip-mem-total">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>共享:</span>
+                        <span class="tooltip-value" id="tooltip-mem-shared">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>可分配内存:</span>
+                        <span class="tooltip-value" id="tooltip-mem-available">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>buff/cache:</span>
+                        <span class="tooltip-value" id="tooltip-mem-buff-cache">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 硬盘 -->
+    <div class="metric-card" id="disk-card" data-metric="disk">
+        <div class="metric-card-content">
+            <div class="metric-left">
+                <span class="metric-title">硬盘</span>
+                <span class="metric-usage">
+                    <span class="usage-used" id="disk-used">--</span>
+                    <span class="usage-divider">/</span>
+                    <span class="usage-total" id="disk-total">--</span>
+                </span>
+            </div>
+            <div class="metric-right">
+                <div class="ring-chart" id="disk-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="42"/>
+                        <circle class="ring-fill" cx="50" cy="50" r="42" id="disk-ring-fill"/>
+                    </svg>
+                    <div class="ring-value">
+                        <span class="ring-percent" id="disk-percent">--</span>
+                        <span class="ring-unit">%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 硬盘详情弹窗 -->
+        <div class="metric-tooltip" id="disk-tooltip">
+            <div class="tooltip-header">
+                <span>检测到当前磁盘</span>
+                <span class="tooltip-status" id="tooltip-disk-status">容量占用51%</span>
+                <button class="tooltip-action-btn" id="tooltip-cleanup-btn">立即清理</button>
+            </div>
+            <div class="tooltip-section">
+                <div class="tooltip-section-title" data-collapsible>
+                    <span>基础信息</span>
+                    <i class="icon icon-chevron-down"></i>
+                </div>
+                <div class="tooltip-section-content">
+                    <div class="tooltip-row">
+                        <span>挂载点:</span>
+                        <span class="tooltip-value" id="tooltip-disk-mount">/</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>共:</span>
+                        <span class="tooltip-value" id="tooltip-disk-total">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>可用:</span>
+                        <span class="tooltip-value" id="tooltip-disk-free">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>已用:</span>
+                        <span class="tooltip-value" id="tooltip-disk-used">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>文件系统:</span>
+                        <span class="tooltip-value" id="tooltip-disk-fs">--</span>
+                    </div>
+                    <div class="tooltip-row">
+                        <span>类型:</span>
+                        <span class="tooltip-value" id="tooltip-disk-type">--</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- 服务状态网格 -->
-<div class="services-status-section">
-    <h3 class="section-title">服务状态</h3>
-    <div class="services-status-grid">
-        <!-- HTTP 服务 -->
-        <div class="service-status-card" id="http-service-card">
-            <div class="service-status-header">
-                <i class="icon icon-globe service-status-icon http-icon"></i>
-                <div class="service-status-info">
-                    <span class="service-status-name">HTTP 服务</span>
-                    <span class="service-status-port">端口 <strong id="http-port-display">8080</strong></span>
+<!-- 内存释放结果弹窗 -->
+<div class="dialog" id="free-memory-dialog">
+    <div class="dialog-content">
+        <div class="dialog-header">
+            <i class="icon icon-check-circle"></i>
+            <h3>内存释放完成</h3>
+        </div>
+        <div class="dialog-body">
+            <p>成功释放内存 <strong id="freed-memory-size">0 MB</strong></p>
+        </div>
+        <div class="dialog-footer">
+            <button class="btn btn-primary" data-close-dialog>确定</button>
+        </div>
+    </div>
+</div>
+
+<!-- 清理垃圾确认弹窗 -->
+<div class="dialog" id="cleanup-dialog">
+    <div class="dialog-content">
+        <div class="dialog-header">
+            <i class="icon icon-trash"></i>
+            <h3>清理系统垃圾</h3>
+        </div>
+        <div class="dialog-body">
+            <p>扫描发现可清理文件：</p>
+            <div class="cleanup-stats" id="cleanup-stats">
+                <div class="cleanup-item">
+                    <span>日志文件</span>
+                    <span id="cleanup-logs">0 MB</span>
                 </div>
-            </div>
-            <div class="service-status-footer">
-                <div class="status-indicator-wrapper">
-                    <span class="status-dot" id="http-status-dot"></span>
-                    <span class="status-text" id="http-status-text">运行中</span>
+                <div class="cleanup-item">
+                    <span>临时文件</span>
+                    <span id="cleanup-temp">0 MB</span>
                 </div>
-                <div class="service-status-arrow">→</div>
+                <div class="cleanup-item cleanup-total">
+                    <span>总计</span>
+                    <span id="cleanup-total">0 MB</span>
+                </div>
             </div>
         </div>
-
-        <!-- FTP 服务 -->
-        <div class="service-status-card" id="ftp-service-card">
-            <div class="service-status-header">
-                <i class="icon icon-folder service-status-icon ftp-icon"></i>
-                <div class="service-status-info">
-                    <span class="service-status-name">FTP 服务</span>
-                    <span class="service-status-port">端口 <strong id="ftp-port-display">2121</strong></span>
-                </div>
-            </div>
-            <div class="service-status-footer">
-                <div class="status-indicator-wrapper">
-                    <span class="status-dot" id="ftp-status-dot"></span>
-                    <span class="status-text" id="ftp-status-text">运行中</span>
-                </div>
-                <div class="service-status-arrow">→</div>
-            </div>
+        <div class="dialog-footer">
+            <button class="btn" data-close-dialog>取消</button>
+            <button class="btn btn-primary" id="confirm-cleanup-btn">立即清理</button>
         </div>
     </div>
 </div>

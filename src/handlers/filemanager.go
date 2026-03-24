@@ -40,9 +40,9 @@ func NewFileManager() *FileManager {
 			Icon:     "folder",
 		},
 		{
-			ID:       "logs",
+			ID:       "log",
 			Name:     "日志目录",
-			Path:     "./logs",
+			Path:     "./log",
 			Readonly: true,
 			Icon:     "file-alt",
 		},

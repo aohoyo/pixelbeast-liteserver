@@ -2,80 +2,105 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
+
+	"pixelbeast/src/crypto"
 )
 
-// Config 主配置结构
-type Config struct {
-	// Legacy - 向后兼容，迁移后使用 Sites
-	HTTP  HTTPConfig  `json:"http,omitempty"`
-	FTP   FTPConfig   `json:"ftp"`
-	Admin AdminConfig `json:"admin"`
+// ConfigManager 配置管理器
+type ConfigManager struct {
+	mu sync.RWMutex
 
-	// New - 多站点配置
-	Global GlobalConfig `json:"global,omitempty"`
-	Sites  []SiteConfig `json:"sites,omitempty"`
+	configDir string
+	key       []byte
+
+	Server *ServerConfig
+	Sites  *SitesConfig
+	FTP    *FTPConfig
 }
 
-// GlobalConfig 全局配置
-type GlobalConfig struct {
-	AdminPort int    `json:"admin_port"` // 管理面板独立端口
-	DataDir   string `json:"data_dir"`   // 数据目录
+// ServerConfig 服务配置
+type ServerConfig struct {
+	// HTTP
+	HTTPPort  int `json:"http_port"`
+	AdminPort int `json:"admin_port"`
+
+	// Admin（密码加密存储）
+	AdminUsername string `json:"admin_username"`
+	AdminPassword string `json:"admin_password"` // 加密后的密码
+	AdminPath     string `json:"admin_path"`     // 安全入口路径
+
+	// 日志
+	Log LogConfig `json:"log"`
+
+	// 全局
+	FTPDir    string `json:"ftp_dir"`
+	BackupDir string `json:"backup_dir"`
+}
+
+// LogConfig 日志配置
+type LogConfig struct {
+	RetentionDays int    `json:"retention_days"`
+	MaxSizeMB     int    `json:"max_size_mb"`
+	CompressDays  int    `json:"compress_days"`
+	CleanupHour   int    `json:"cleanup_hour"`
+	Level         string `json:"level"`
+	Levels        map[string]string `json:"levels,omitempty"` // 各分类级别
+}
+
+// SitesConfig 站点配置
+type SitesConfig struct {
+	Sites []SiteConfig `json:"sites"`
 }
 
 // SiteConfig 站点配置
 type SiteConfig struct {
-	ID        string      `json:"id"`        // 唯一标识
-	Name      string      `json:"name"`      // 站点名称
-	Enabled   bool        `json:"enabled"`   // 是否启用
-	Type      string      `json:"type"`      // 站点类型: static, proxy
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Enabled   bool     `json:"enabled"`
+	Type      string   `json:"type"` // static, proxy
 
-	// 静态站点配置
-	Port       int      `json:"port"`       // 端口 (0 = 共享端口)
-	Domain     []string `json:"domain"`     // 域名列表
-	Root       string   `json:"root"`       // 根目录 (static 类型)
-	IndexFiles []string `json:"index_files"` // 默认索引文件
-	AutoIndex  bool     `json:"auto_index"` // 是否显示目录列表
+	// 静态站点
+	Port       int      `json:"port"`
+	Domain     []string `json:"domain"`
+	Root       string   `json:"root"`
+	IndexFiles []string `json:"index_files"`
+	AutoIndex  bool     `json:"auto_index"`
 
-	// 反向代理配置
-	Proxy *ProxyConfig `json:"proxy,omitempty"` // 反向代理配置 (proxy 类型)
+	// 反向代理
+	Proxy *ProxyConfig `json:"proxy,omitempty"`
 
-	// SSL 配置
-	SSL *SSLConfig `json:"ssl,omitempty"` // SSL 配置
+	// SSL
+	SSL *SSLConfig `json:"ssl,omitempty"`
 
 	// 元数据
-	CreatedAt string `json:"created_at"` // 创建时间
-	UpdatedAt string `json:"updated_at"` // 更新时间
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ProxyConfig 反向代理配置
 type ProxyConfig struct {
-	Target      string `json:"target"`       // 目标 URL
-	StripPrefix string `json:"strip_prefix"` // 要移除的前缀
-	Websocket   bool   `json:"websocket"`    // 是否支持 WebSocket
-	Timeout     int    `json:"timeout"`      // 超时时间（秒）
+	Target      string `json:"target"`
+	StripPrefix string `json:"strip_prefix"`
+	Websocket   bool   `json:"websocket"`
+	Timeout     int    `json:"timeout"`
 }
 
 // SSLConfig SSL 配置
 type SSLConfig struct {
-	Enabled    bool   `json:"enabled"`     // 是否启用 SSL
-	AutoHTTPS  bool   `json:"auto_https"`  // 是否自动申请证书
-	Email      string `json:"email"`       // 证书联系邮箱
-	CertFile   string `json:"cert_file"`   // 自定义证书路径
-	KeyFile    string `json:"key_file"`    // 自定义私钥路径
-	ForceHTTPS bool   `json:"force_https"` // 是否强制 HTTPS
+	Enabled    bool   `json:"enabled"`
+	AutoHTTPS  bool   `json:"auto_https"`
+	Email      string `json:"email"`
+	CertFile   string `json:"cert_file"`
+	KeyFile    string `json:"key_file"`
+	ForceHTTPS bool   `json:"force_https"`
 }
 
-// HTTPConfig HTTP服务器配置 (Legacy)
-type HTTPConfig struct {
-	Port   int    `json:"port"`
-	Root   string `json:"root"`
-	Domain string `json:"domain"`
-}
-
-// FTPConfig FTP服务器配置
+// FTPConfig FTP 配置
 type FTPConfig struct {
 	Enabled bool      `json:"enabled"`
 	Port    int       `json:"port"`
@@ -83,287 +108,446 @@ type FTPConfig struct {
 	Users   []FTPUser `json:"users"`
 }
 
-// FTPUser FTP用户
+// FTPUser FTP 用户
 type FTPUser struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username  string `json:"username"`
+	Password  string `json:"password"` // 加密后的密码
+	RootPath  string `json:"root_path"`
+	Status    string `json:"status"` // enabled, disabled
+	Quota     int64  `json:"quota"`  // 容量限制（MB）
+	UsedSpace int64  `json:"used_space"`
+	ExpiryDays int   `json:"expiry_days"`
+	ExpiryDate string `json:"expiry_date"`
+	Remark    string `json:"remark"`
 }
 
-// AdminConfig 安全入口配置
-type AdminConfig struct {
-	Enabled  bool       `json:"enabled"`
-	Path     string     `json:"path"`
-	Username string     `json:"username"`
-	Password string     `json:"password"`
-	SSL      *SSLConfig `json:"ssl,omitempty"` // 管理面板 SSL 配置
-}
-
-// DefaultConfig 返回默认配置
-func DefaultConfig() *Config {
-	return &Config{
-		HTTP: HTTPConfig{
-			Port:   8080,
-			Root:   "./web",
-			Domain: "",
-		},
-		FTP: FTPConfig{
-			Enabled: false,
-			Port:    2121,
-			Root:    "./ftp",
-			Users: []FTPUser{
-				{Username: "flash", Password: "flash"},
-			},
-		},
-		Admin: AdminConfig{
-			Enabled:  true,
-			Path:     "/admin",
-			Username: "admin",
-			Password: "admin123",
-		},
-		Global: GlobalConfig{
-			AdminPort: 9527,
-			DataDir:   "./data",
-		},
-		Sites: []SiteConfig{
-			{
-				ID:        "default",
-				Name:      "默认网站",
-				Enabled:   true,
-				Type:      "static",
-				Port:      8080,
-				Domain:    []string{"localhost"},
-				Root:      "./data/sites/default",
-				IndexFiles: []string{"index.html", "index.htm"},
-				AutoIndex:  true,
-				CreatedAt:  time.Now().Format(time.RFC3339),
-				UpdatedAt:  time.Now().Format(time.RFC3339),
-			},
-		},
+// NewConfigManager 创建配置管理器
+func NewConfigManager(configDir string) (*ConfigManager, error) {
+	cm := &ConfigManager{
+		configDir: configDir,
 	}
-}
 
-// Load 加载配置文件
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	// 确保目录存在
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建配置目录失败: %w", err)
+	}
+
+	// 加载或创建密钥
+	keyPath := filepath.Join(configDir, "secrets.key")
+	key, err := crypto.EnsureKey(keyPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			cfg := DefaultConfig()
-			if err := cfg.Save(path); err != nil {
-				return nil, err
-			}
-			return cfg, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("初始化密钥失败: %w", err)
+	}
+	cm.key = key
+
+	// 加载配置
+	if err := cm.load(); err != nil {
+		return nil, fmt.Errorf("加载配置失败: %w", err)
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-
-	// 验证并修复配置
-	cfg.validateAndFix()
-
-	// 检查是否需要迁移
-	if cfg.needsMigration() {
-		cfg = *migrateConfig(&cfg)
-		// 保存迁移后的配置
-		_ = cfg.Save(path)
-	}
-
-	return &cfg, nil
+	return cm, nil
 }
 
-// validateAndFix 验证并修复配置
-func (c *Config) validateAndFix() {
-	// Legacy HTTP 端口验证
-	if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
-		c.HTTP.Port = 8080
-	}
-
-	// FTP 端口验证
-	if c.FTP.Port <= 0 || c.FTP.Port > 65535 {
-		c.FTP.Port = 2121
-	}
-
-	// Admin 端口验证
-	if c.Global.AdminPort <= 0 || c.Global.AdminPort > 65535 {
-		c.Global.AdminPort = 9527
-	}
-
-	// 验证站点配置
-	for i := range c.Sites {
-		if c.Sites[i].Port < 0 || c.Sites[i].Port > 65535 {
-			c.Sites[i].Port = 0
-		}
-		if c.Sites[i].Type == "" {
-			c.Sites[i].Type = "static"
-		}
-		if len(c.Sites[i].IndexFiles) == 0 {
-			c.Sites[i].IndexFiles = []string{"index.html", "index.htm"}
-		}
-	}
-}
-
-// needsMigration 检查是否需要迁移
-func (c *Config) needsMigration() bool {
-	// 如果没有 Sites 但有 HTTP，需要迁移
-	return len(c.Sites) == 0 && c.HTTP.Port > 0
-}
-
-// migrateConfig 迁移旧配置到新格式
-func migrateConfig(old *Config) *Config {
-	newConfig := &Config{
-		FTP:   old.FTP,
-		Admin: old.Admin,
-		Global: GlobalConfig{
-			AdminPort: 9527,
-			DataDir:   "./data",
-		},
-		Sites: []SiteConfig{
-			{
-				ID:        "default",
-				Name:      "默认网站",
-				Enabled:   true,
-				Type:      "static",
-				Port:      old.HTTP.Port,
-				Root:      old.HTTP.Root,
-				IndexFiles: []string{"index.html", "index.htm"},
-				AutoIndex:  true,
-				CreatedAt:  time.Now().Format(time.RFC3339),
-				UpdatedAt:  time.Now().Format(time.RFC3339),
-			},
-		},
-	}
-
-	// 迁移域名
-	if old.HTTP.Domain != "" {
-		newConfig.Sites[0].Domain = []string{old.HTTP.Domain}
-	} else {
-		newConfig.Sites[0].Domain = []string{"localhost"}
-	}
-
-	return newConfig
-}
-
-// Save 保存配置文件
-func (c *Config) Save(path string) error {
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
+// load 加载所有配置
+func (cm *ConfigManager) load() error {
+	// 加载 server.json
+	if err := cm.loadServer(); err != nil {
 		return err
 	}
 
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// 加载 sites.json
+	if err := cm.loadSites(); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
-}
-
-// CreateDefaultDirectories 创建默认目录
-func (c *Config) CreateDefaultDirectories() error {
-	dirs := []string{
-		c.FTP.Root,
-		"./logs",
-		c.Global.DataDir,
-		filepath.Join(c.Global.DataDir, "ssl"),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
-
-	// 为每个静态站点创建根目录
-	for _, site := range c.Sites {
-		if site.Type == "static" && site.Root != "" {
-			if err := os.MkdirAll(site.Root, 0755); err != nil {
-				return err
-			}
-
-			// 创建默认 index.html
-			indexPath := filepath.Join(site.Root, "index.html")
-			if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-				defaultIndex := `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>` + site.Name + `</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .container { text-align: center; background: white; padding: 60px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        h1 { color: #333; margin-bottom: 10px; }
-        p { color: #666; margin-bottom: 30px; }
-        .feather { font-size: 80px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="feather">🪶</div>
-        <h1>` + site.Name + `</h1>
-        <p>小而强悍，无所不能</p>
-    </div>
-</body>
-</html>`
-				if err := os.WriteFile(indexPath, []byte(defaultIndex), 0644); err != nil {
-					return err
-				}
-			}
-		}
+	// 加载 ftp.json
+	if err := cm.loadFTP(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
+// loadServer 加载服务配置
+func (cm *ConfigManager) loadServer() error {
+	path := filepath.Join(cm.configDir, "server.json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// 创建默认配置
+			cm.Server = cm.defaultServerConfig()
+			return cm.saveServer()
+		}
+		return err
+	}
+
+	var cfg ServerConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+
+	cm.Server = &cfg
+	return nil
+}
+
+// loadSites 加载站点配置
+func (cm *ConfigManager) loadSites() error {
+	path := filepath.Join(cm.configDir, "sites.json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			cm.Sites = &SitesConfig{Sites: []SiteConfig{}}
+			return cm.saveSites()
+		}
+		return err
+	}
+
+	var cfg SitesConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+
+	cm.Sites = &cfg
+	return nil
+}
+
+// loadFTP 加载 FTP 配置
+func (cm *ConfigManager) loadFTP() error {
+	path := filepath.Join(cm.configDir, "ftp.json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			cm.FTP = cm.defaultFTPConfig()
+			return cm.saveFTP()
+		}
+		return err
+	}
+
+	var cfg FTPConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+
+	cm.FTP = &cfg
+	return nil
+}
+
+// Save 保存所有配置
+func (cm *ConfigManager) Save() error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if err := cm.saveServer(); err != nil {
+		return err
+	}
+	if err := cm.saveSites(); err != nil {
+		return err
+	}
+	if err := cm.saveFTP(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// saveServer 保存服务配置
+func (cm *ConfigManager) saveServer() error {
+	path := filepath.Join(cm.configDir, "server.json")
+	data, err := json.MarshalIndent(cm.Server, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// saveSites 保存站点配置
+func (cm *ConfigManager) saveSites() error {
+	path := filepath.Join(cm.configDir, "sites.json")
+	data, err := json.MarshalIndent(cm.Sites, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// saveFTP 保存 FTP 配置
+func (cm *ConfigManager) saveFTP() error {
+	path := filepath.Join(cm.configDir, "ftp.json")
+	data, err := json.MarshalIndent(cm.FTP, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// defaultServerConfig 默认服务配置
+func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
+	// 生成加密的默认密码
+	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
+
+	return &ServerConfig{
+		HTTPPort:      8080,
+		AdminPort:     9527,
+		AdminUsername: "admin",
+		AdminPassword: encryptedPassword,
+		AdminPath:     "/admin", // 默认安全入口
+		Log: LogConfig{
+			RetentionDays: 30,
+			MaxSizeMB:     100,
+			CompressDays:  7,
+			CleanupHour:   3,
+			Level:         "info",
+		},
+		FTPDir:    "./ftp",
+		BackupDir: "./backups",
+	}
+}
+
+// defaultFTPConfig 默认 FTP 配置
+func (cm *ConfigManager) defaultFTPConfig() *FTPConfig {
+	return &FTPConfig{
+		Enabled: false,
+		Port:    2121,
+		Root:    "./ftp",
+		Users:   []FTPUser{},
+	}
+}
+
+// ========== Admin 密码管理 ==========
+
+// SetAdminPassword 设置管理员密码（加密存储）
+func (cm *ConfigManager) SetAdminPassword(password string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	encrypted, err := crypto.EncryptString(password, cm.key)
+	if err != nil {
+		return err
+	}
+
+	cm.Server.AdminPassword = encrypted
+	return cm.saveServer()
+}
+
+// GetAdminPassword 获取管理员密码（解密）
+func (cm *ConfigManager) GetAdminPassword() (string, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return crypto.DecryptString(cm.Server.AdminPassword, cm.key)
+}
+
+// ValidateAdmin 验证管理员账号密码
+func (cm *ConfigManager) ValidateAdmin(username, password string) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	if cm.Server.AdminUsername != username {
+		return false
+	}
+
+	decrypted, err := crypto.DecryptString(cm.Server.AdminPassword, cm.key)
+	if err != nil {
+		return false
+	}
+
+	return decrypted == password
+}
+
+// ========== FTP 用户密码管理 ==========
+
+// SetFTPUserPassword 设置 FTP 用户密码（加密存储）
+func (cm *ConfigManager) SetFTPUserPassword(username, password string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	encrypted, err := crypto.EncryptString(password, cm.key)
+	if err != nil {
+		return err
+	}
+
+	for i, user := range cm.FTP.Users {
+		if user.Username == username {
+			cm.FTP.Users[i].Password = encrypted
+			return cm.saveFTP()
+		}
+	}
+
+	return fmt.Errorf("用户不存在: %s", username)
+}
+
+// GetFTPUserPassword 获取 FTP 用户密码（解密）
+func (cm *ConfigManager) GetFTPUserPassword(username string) (string, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for _, user := range cm.FTP.Users {
+		if user.Username == username {
+			return crypto.DecryptString(user.Password, cm.key)
+		}
+	}
+
+	return "", fmt.Errorf("用户不存在: %s", username)
+}
+
+// ValidateFTPUser 验证 FTP 用户密码
+func (cm *ConfigManager) ValidateFTPUser(username, password string) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for _, user := range cm.FTP.Users {
+		if user.Username == username && user.Status == "enabled" {
+			decrypted, err := crypto.DecryptString(user.Password, cm.key)
+			if err != nil {
+				return false
+			}
+			return decrypted == password
+		}
+	}
+
+	return false
+}
+
+// ========== 站点管理 ==========
+
 // GetSiteByID 根据 ID 获取站点
-func (c *Config) GetSiteByID(id string) *SiteConfig {
-	for i := range c.Sites {
-		if c.Sites[i].ID == id {
-			return &c.Sites[i]
+func (cm *ConfigManager) GetSiteByID(id string) *SiteConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for i := range cm.Sites.Sites {
+		if cm.Sites.Sites[i].ID == id {
+			return &cm.Sites.Sites[i]
 		}
 	}
 	return nil
 }
 
 // AddSite 添加站点
-func (c *Config) AddSite(site SiteConfig) error {
+func (cm *ConfigManager) AddSite(site SiteConfig) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
 	// 检查 ID 是否已存在
-	for _, s := range c.Sites {
+	for _, s := range cm.Sites.Sites {
 		if s.ID == site.ID {
-			return os.ErrExist
+			return fmt.Errorf("站点 ID 已存在: %s", site.ID)
 		}
 	}
 
 	site.CreatedAt = time.Now().Format(time.RFC3339)
 	site.UpdatedAt = time.Now().Format(time.RFC3339)
-	c.Sites = append(c.Sites, site)
-	return nil
+	cm.Sites.Sites = append(cm.Sites.Sites, site)
+
+	return cm.saveSites()
 }
 
 // UpdateSite 更新站点
-func (c *Config) UpdateSite(id string, updated SiteConfig) bool {
-	for i := range c.Sites {
-		if c.Sites[i].ID == id {
+func (cm *ConfigManager) UpdateSite(id string, updated SiteConfig) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	for i := range cm.Sites.Sites {
+		if cm.Sites.Sites[i].ID == id {
 			updated.ID = id
-			updated.CreatedAt = c.Sites[i].CreatedAt
+			updated.CreatedAt = cm.Sites.Sites[i].CreatedAt
 			updated.UpdatedAt = time.Now().Format(time.RFC3339)
-			c.Sites[i] = updated
-			return true
+			cm.Sites.Sites[i] = updated
+			return cm.saveSites()
 		}
 	}
-	return false
+
+	return fmt.Errorf("站点不存在: %s", id)
 }
 
 // DeleteSite 删除站点
-func (c *Config) DeleteSite(id string) bool {
-	for i, site := range c.Sites {
+func (cm *ConfigManager) DeleteSite(id string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	for i, site := range cm.Sites.Sites {
 		if site.ID == id {
-			c.Sites = append(c.Sites[:i], c.Sites[i+1:]...)
-			return true
+			cm.Sites.Sites = append(cm.Sites.Sites[:i], cm.Sites.Sites[i+1:]...)
+			return cm.saveSites()
 		}
 	}
-	return false
+
+	return fmt.Errorf("站点不存在: %s", id)
+}
+
+// ========== FTP 用户管理 ==========
+
+// GetFTPUser 获取 FTP 用户
+func (cm *ConfigManager) GetFTPUser(username string) *FTPUser {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for i := range cm.FTP.Users {
+		if cm.FTP.Users[i].Username == username {
+			return &cm.FTP.Users[i]
+		}
+	}
+	return nil
+}
+
+// AddFTPUser 添加 FTP 用户
+func (cm *ConfigManager) AddFTPUser(user FTPUser, plainPassword string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// 检查用户名是否已存在
+	for _, u := range cm.FTP.Users {
+		if u.Username == user.Username {
+			return fmt.Errorf("用户名已存在: %s", user.Username)
+		}
+	}
+
+	// 加密密码
+	encrypted, err := crypto.EncryptString(plainPassword, cm.key)
+	if err != nil {
+		return err
+	}
+	user.Password = encrypted
+
+	if user.Status == "" {
+		user.Status = "enabled"
+	}
+
+	cm.FTP.Users = append(cm.FTP.Users, user)
+	return cm.saveFTP()
+}
+
+// UpdateFTPUser 更新 FTP 用户
+func (cm *ConfigManager) UpdateFTPUser(username string, updated FTPUser) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	for i := range cm.FTP.Users {
+		if cm.FTP.Users[i].Username == username {
+			// 保留原密码，除非明确要更新
+			updated.Password = cm.FTP.Users[i].Password
+			updated.Username = username
+			cm.FTP.Users[i] = updated
+			return cm.saveFTP()
+		}
+	}
+
+	return fmt.Errorf("用户不存在: %s", username)
+}
+
+// DeleteFTPUser 删除 FTP 用户
+func (cm *ConfigManager) DeleteFTPUser(username string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	for i, user := range cm.FTP.Users {
+		if user.Username == username {
+			cm.FTP.Users = append(cm.FTP.Users[:i], cm.FTP.Users[i+1:]...)
+			return cm.saveFTP()
+		}
+	}
+
+	return fmt.Errorf("用户不存在: %s", username)
 }

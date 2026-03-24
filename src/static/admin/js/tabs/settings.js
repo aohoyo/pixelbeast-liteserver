@@ -89,11 +89,11 @@ function generateRandomPassword(length = 16) {
  * 初始化配置面板
  * @param {Object} dependencies - 依赖注入 { state, api, toast, dialog }
  */
-export function initSettingsTab({ state, api, toast, dialog }) {
-    console.log('⚙️ 初始化设置面板...');
+export function initSettingsTab({ state, api, toast, message, dialog }) {
+    console.log('初始化设置面板...');
 
     // 保存依赖
-    deps = { state, api, toast, dialog };
+    deps = { state, api, toast, message, dialog };
 
     // 绑定事件
     bindEvents();
@@ -164,7 +164,6 @@ export function initSettingsTab({ state, api, toast, dialog }) {
             passwordInput.type = 'text'; // 显示生成的密码
             updatePasswordVisibility(true);
             hasUnsavedChanges = true;
-            deps.toast.success('已生成随机密码');
         });
 
         // 监听表单变化
@@ -186,6 +185,9 @@ export function initSettingsTab({ state, api, toast, dialog }) {
         updateServerTimeDisplay();
         // 每秒更新时间显示
         setInterval(updateServerTimeDisplay, 1000);
+
+        // 初始化数字输入控件
+        initNumberInputs();
     }
 
     /**
@@ -319,16 +321,15 @@ export function initSettingsTab({ state, api, toast, dialog }) {
         setFieldValue('admin-path', config.admin?.path || '/admin');
         setFieldValue('admin-domain', config.admin?.domain || '');
         setCheckboxValue('admin-ssl', config.admin?.ssl || false);
-        setFieldValue('server-timezone', config.server?.timezone || 'Asia/Shanghai');
 
         // 目录设置
-        setFieldValue('ftp-root-dir', config.ftp?.root || './ftp');
+        setFieldValue('ftp-root-dir', config.global?.ftp_dir || config.ftp?.root || './ftp');
+        setFieldValue('backup-dir', config.global?.backup_dir || './backups');
 
         // 从 localStorage 读取前端设置
         try {
             const frontendSettings = JSON.parse(localStorage.getItem('pixelbeast_frontend_settings') || '{}');
-            setFieldValue('web-root-dir', frontendSettings.webRootDir || config.http?.root || './web');
-            setFieldValue('backup-dir', frontendSettings.backupDir || './backups');
+            setFieldValue('server-timezone', frontendSettings.serverTimezone || config.server?.timezone || 'Asia/Shanghai');
 
             // 安全设置
             const securitySettings = JSON.parse(localStorage.getItem('pixelbeast_security_settings') || '{}');
@@ -349,11 +350,35 @@ export function initSettingsTab({ state, api, toast, dialog }) {
             console.log('无法读取前端设置:', e);
         }
 
+        // 日志设置
+        loadLogConfig(config);
+
         // 重置未保存标记
         hasUnsavedChanges = false;
 
         // 保存表单值快照（用于取消时恢复）
         saveFormSnapshot();
+    }
+
+    /**
+     * 加载日志配置到表单
+     */
+    function loadLogConfig(config) {
+        if (!config || !config.log) return;
+
+        const log = config.log;
+        setFieldValue('log-retention-days', log.retention_days || 30);
+        setFieldValue('log-max-size-mb', log.max_size_mb || 100);
+        setFieldValue('log-compress-days', log.compress_days || 7);
+        setFieldValue('log-cleanup-hour', log.cleanup_hour || 3);
+        setFieldValue('log-level', log.level || 'info');
+
+        // 分类级别
+        if (log.levels) {
+            setFieldValue('log-level-http', log.levels.http || '');
+            setFieldValue('log-level-ftp', log.levels.ftp || '');
+            setFieldValue('log-level-panel', log.levels.panel || '');
+        }
     }
 
     /**
@@ -401,12 +426,12 @@ export function initSettingsTab({ state, api, toast, dialog }) {
      */
     async function saveSettings() {
         if (!deps) return;
-        const { api, toast } = deps;
+        const { api, toast, message } = deps;
 
         // 验证表单
         const validation = settingsValidator.validateAll();
         if (!validation.valid) {
-            toast.error(validation.message);
+            message.error(validation.message);
             return;
         }
 
@@ -416,15 +441,15 @@ export function initSettingsTab({ state, api, toast, dialog }) {
             const response = await api.post('/api/config/save', config);
             if (response && response.ok) {
                 const data = await api.parseJSON(response);
-                toast.success(data.message || '设置保存成功，请重启程序生效');
+                message.success(data.message || '设置保存成功，请重启程序生效');
                 // 保存成功后重置未保存标记
                 hasUnsavedChanges = false;
             } else {
-                toast.error('设置保存失败');
+                message.error('设置保存失败');
             }
         } catch (error) {
             console.error('保存设置失败:', error);
-            toast.error('保存设置失败: ' + error.message);
+            message.error('保存设置失败: ' + error.message);
         }
     }
 
@@ -445,7 +470,6 @@ export function initSettingsTab({ state, api, toast, dialog }) {
         const serverTimezone = getFieldValue('server-timezone') || 'Asia/Shanghai';
 
         // 目录设置
-        const webRootDir = getFieldValue('web-root-dir') || './web';
         const ftpRootDir = getFieldValue('ftp-root-dir') || './ftp';
         const backupDir = getFieldValue('backup-dir') || './backups';
 
@@ -462,8 +486,6 @@ export function initSettingsTab({ state, api, toast, dialog }) {
 
         // 保存前端设置到 localStorage
         localStorage.setItem('pixelbeast_frontend_settings', JSON.stringify({
-            webRootDir,
-            backupDir,
             serverTimezone
         }));
         localStorage.setItem('pixelbeast_security_settings', JSON.stringify({
@@ -473,6 +495,22 @@ export function initSettingsTab({ state, api, toast, dialog }) {
             logOperations,
             confirmDangerous
         }));
+
+        // 日志设置
+        const logRetentionDays = parseInt(getFieldValue('log-retention-days')) || 30;
+        const logMaxSizeMb = parseInt(getFieldValue('log-max-size-mb')) || 100;
+        const logCompressDays = parseInt(getFieldValue('log-compress-days')) || 7;
+        const logCleanupHour = parseInt(getFieldValue('log-cleanup-hour')) || 3;
+        const logLevel = getFieldValue('log-level') || 'info';
+        const logLevelHttp = getFieldValue('log-level-http') || '';
+        const logLevelFtp = getFieldValue('log-level-ftp') || '';
+        const logLevelPanel = getFieldValue('log-level-panel') || '';
+
+        // 构建日志级别映射
+        const logLevels = {};
+        if (logLevelHttp) logLevels.http = logLevelHttp;
+        if (logLevelFtp) logLevels.ftp = logLevelFtp;
+        if (logLevelPanel) logLevels.panel = logLevelPanel;
 
         // 构建配置对象，只包含后端支持的字段
         const newConfig = {
@@ -496,10 +534,19 @@ export function initSettingsTab({ state, api, toast, dialog }) {
                 domain: adminDomain,
                 ssl: adminSsl
             },
-            // Global 配置
+            // 日志配置
+            log: {
+                retention_days: logRetentionDays,
+                max_size_mb: logMaxSizeMb,
+                compress_days: logCompressDays,
+                cleanup_hour: logCleanupHour,
+                level: logLevel,
+                levels: logLevels
+            },
             global: {
                 admin_port: adminPort,
-                data_dir: storedConfig.global?.data_dir || './data'
+                ftp_dir: ftpRootDir,
+                backup_dir: backupDir
             },
             // Server 配置
             server: {
@@ -551,6 +598,48 @@ export function initSettingsTab({ state, api, toast, dialog }) {
     function getCheckboxValue(id) {
         const el = document.getElementById(id);
         return el ? el.checked : false;
+    }
+
+    /**
+     * 初始化数字输入控件
+     */
+    function initNumberInputs() {
+        document.querySelectorAll('.number-input-wrapper').forEach(wrapper => {
+            const input = wrapper.querySelector('input[type="number"]');
+            const upBtn = wrapper.querySelector('[data-action="up"]');
+            const downBtn = wrapper.querySelector('[data-action="down"]');
+
+            if (!input) return;
+
+            const step = parseInt(input.dataset.step) || 1;
+            const min = input.min !== '' ? parseInt(input.min) : null;
+            const max = input.max !== '' ? parseInt(input.max) : null;
+
+            const updateValue = (delta) => {
+                let value = parseInt(input.value) || 0;
+                value += delta;
+
+                if (min !== null && value < min) value = min;
+                if (max !== null && value > max) value = max;
+
+                input.value = value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+
+            upBtn?.addEventListener('click', () => updateValue(step));
+            downBtn?.addEventListener('click', () => updateValue(-step));
+
+            // 键盘支持
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    updateValue(step);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    updateValue(-step);
+                }
+            });
+        });
     }
 
     // 初始加载

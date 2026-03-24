@@ -1,222 +1,482 @@
 <div class="settings-container">
-    <!-- Tab 切换 -->
-    <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="panel"><i class="icon icon-settings"></i> 面板设置</button>
-        <button class="settings-tab" data-tab="directory"><i class="icon icon-folder"></i> 目录设置</button>
-        <button class="settings-tab" data-tab="security"><i class="icon icon-lock"></i> 安全设置</button>
-        <button class="settings-tab" data-tab="interface" disabled><i class="icon icon-palette"></i> 界面设置</button>
+  <!-- Tab 切换 -->
+  <div class="settings-tabs">
+    <button class="settings-tab active" data-tab="panel">
+      <i class="icon icon-settings"></i> 面板设置
+    </button>
+    <button class="settings-tab" data-tab="directory">
+      <i class="icon icon-folder"></i> 目录设置
+    </button>
+    <button class="settings-tab" data-tab="log">
+      <i class="icon icon-file-text"></i> 日志设置
+    </button>
+    <button class="settings-tab" data-tab="security">
+      <i class="icon icon-lock"></i> 安全设置
+    </button>
+    <button class="settings-tab" data-tab="interface" disabled>
+      <i class="icon icon-palette"></i> 界面设置
+    </button>
+  </div>
+
+  <!-- 面板设置 -->
+  <div class="settings-content active" id="settings-panel">
+    <!-- 面板账号 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">面板账号</label>
+      <input
+        type="text"
+        id="admin-username"
+        class="form-input-inline"
+        placeholder="admin"
+      />
+      <span class="form-hint-text">用于登录管理面板的用户名</span>
     </div>
 
-    <!-- 面板设置 -->
-    <div class="settings-content active" id="settings-panel">
-        <!-- 面板账号 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">面板账号</label>
-            <input type="text" id="admin-username" class="form-input-inline" placeholder="admin">
-            <span class="form-hint-text">用于登录管理面板的用户名</span>
+    <!-- 面板密码 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">面板密码</label>
+      <div class="input-with-actions-inline">
+        <div class="input-with-eye">
+          <input
+            type="password"
+            id="admin-password"
+            class="form-input-inline"
+            placeholder="••••••••"
+          />
+          <button
+            type="button"
+            class="input-action-btn inside-input"
+            id="toggle-password"
+            title="显示密码"
+          >
+            <i class="icon icon-eye-off"></i>
+          </button>
         </div>
-
-        <!-- 面板密码 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">面板密码</label>
-            <div class="input-with-eye">
-                <input type="password" id="admin-password" class="form-input-inline" placeholder="••••••••">
-                <button type="button" class="input-action-btn inside-input" id="toggle-password" title="显示密码">
-                    <i class="icon icon-eye-off"></i>
-                </button>
-            </div>
-            <button type="button" class="btn btn-sm btn-secondary" id="generate-password" title="随机生成密码">
-                <i class="icon icon-refresh"></i>
-            </button>
-            <span class="form-hint-text">留空则不修改当前密码</span>
+        <div class="input-actions">
+          <button
+            type="button"
+            class="input-action-btn"
+            id="generate-password"
+            title="随机生成密码"
+          >
+            <i class="icon icon-refresh"></i>
+          </button>
         </div>
-
-        <!-- 面板端口 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">面板端口</label>
-            <input type="text" id="admin-port" class="form-input-inline" placeholder="9527" pattern="[0-9]+">
-            <span class="form-hint-text">访问管理面板的端口，修改后需重启</span>
-        </div>
-
-        <!-- 安全入口 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">安全入口</label>
-            <input type="text" id="admin-path" class="form-input-inline" placeholder="/admin">
-            <span class="form-hint-text">自定义访问路径，隐藏面板入口</span>
-        </div>
-
-        <!-- 绑定域名 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">绑定域名</label>
-            <input type="text" id="admin-domain" class="form-input-inline" placeholder="panel.example.com">
-            <span class="form-hint-text">为面板绑定访问域名</span>
-        </div>
-
-        <!-- 面板 SSL -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">面板 SSL</label>
-            <label class="toggle">
-                <input type="checkbox" id="admin-ssl">
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="form-hint-text">为面板设置 HTTPS 协议访问</span>
-        </div>
-
-        <!-- 服务器时区 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">服务器时区</label>
-            <select id="server-timezone" class="form-select-inline">
-                <option value="Asia/Shanghai" selected>上海 (GMT+8)</option>
-                <option value="Asia/Hong_Kong">香港 (GMT+8)</option>
-                <option value="Asia/Taipei">台北 (GMT+8)</option>
-                <option value="Asia/Tokyo">东京 (GMT+9)</option>
-                <option value="Asia/Seoul">首尔 (GMT+9)</option>
-                <option value="Asia/Singapore">新加坡 (GMT+8)</option>
-                <option value="Asia/Dubai">迪拜 (GMT+4)</option>
-                <option value="Europe/London">伦敦 (GMT+0/BST+1)</option>
-                <option value="Europe/Paris">巴黎 (GMT+1/CEST+2)</option>
-                <option value="Europe/Berlin">柏林 (GMT+1/CEST+2)</option>
-                <option value="America/New_York">纽约 (GMT-5/EDT-4)</option>
-                <option value="America/Los_Angeles">洛杉矶 (GMT-8/PDT-7)</option>
-                <option value="America/Chicago">芝加哥 (GMT-6/CDT-5)</option>
-                <option value="Australia/Sydney">悉尼 (GMT+10/AEDT+11)</option>
-                <option value="UTC">UTC (GMT+0)</option>
-            </select>
-            <span class="form-hint-text">设置服务器时区</span>
-        </div>
-
-        <!-- 服务器时间 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">服务器时间</label>
-            <div class="server-time-display-inline">
-                <span id="server-time">--</span>
-                <button type="button" class="btn btn-sm btn-secondary" id="sync-time-btn" disabled title="需要后端支持 NTP 时间同步">同步</button>
-            </div>
-            <span class="form-hint-text">当前服务器时间</span>
-        </div>
+      </div>
+      <span class="form-hint-text">留空则不修改当前密码</span>
     </div>
 
-    <!-- 目录设置 -->
-    <div class="settings-content" id="settings-directory">
-        <!-- 建站目录 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">默认建站目录</label>
-            <input type="text" id="web-root-dir" class="form-input-inline" placeholder="./web">
-            <span class="form-hint-text">新建网站时的默认根目录</span>
+    <!-- 面板端口 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">面板端口</label>
+      
+      <div class="number-input-wrapper">
+        <input
+          type="number"
+          id="admin-port"
+          class="form-input-inline"
+          placeholder="9527"
+          min="1"
+          max="65535"
+        />
+        <div class="number-input-controls">
+          <button type="button" class="number-input-btn" data-action="up">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 4l-4 4h8z" fill="currentColor" />
+            </svg>
+          </button>
+          <button type="button" class="number-input-btn" data-action="down">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 8l4-4h-8z" fill="currentColor" />
+            </svg>
+          </button>
         </div>
+      </div>
 
-        <!-- FTP 根目录 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">FTP根目录</label>
-            <input type="text" id="ftp-root-dir" class="form-input-inline" placeholder="./ftp">
-            <span class="form-hint-text">FTP 服务的文件存储目录</span>
-        </div>
-
-        <!-- 默认备份目录 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">备份目录</label>
-            <input type="text" id="backup-dir" class="form-input-inline" placeholder="./backups">
-            <span class="form-hint-text">配置和网站备份的存储位置</span>
-        </div>
+      <span class="form-hint-text">访问管理面板的端口，修改后需重启</span>
     </div>
 
-    <!-- 安全设置 -->
-    <div class="settings-content" id="settings-security">
-        <!-- IP 白名单 -->
-        <div class="form-group-inline-vertical">
-            <label class="form-label-inline">IP 白名单</label>
-            <textarea id="admin-allow-ips" class="form-textarea-inline" rows="3" placeholder="每行一个 IP，例如：&#10;192.168.1.100&#10;10.0.0.0/24"></textarea>
-            <span class="form-hint-text">仅允许以下 IP 访问面板，留空则不限制</span>
-        </div>
-
-        <!-- 会话超时 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">会话超时时间</label>
-            <select id="session-timeout" class="form-select-inline">
-                <option value="3600">1 小时</option>
-                <option value="7200">2 小时</option>
-                <option value="86400">1 天</option>
-                <option value="604800">7 天</option>
-                <option value="0">永不超时</option>
-            </select>
-            <span class="form-hint-text">多久没有操作后自动退出登录</span>
-        </div>
-
-        <!-- 启用双因素认证 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">双因素认证</label>
-            <label class="toggle">
-                <input type="checkbox" id="admin-2fa" disabled>
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="form-hint-text">登录时需要额外验证码</span>
-        </div>
-
-        <!-- 记录操作日志 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">记录操作日志</label>
-            <label class="toggle">
-                <input type="checkbox" id="admin-log-operations" checked>
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="form-hint-text">记录所有管理操作到日志文件</span>
-        </div>
-
-        <!-- 敏感操作确认 -->
-        <div class="form-group-inline">
-            <label class="form-label-inline">敏感操作确认</label>
-            <label class="toggle">
-                <input type="checkbox" id="admin-confirm-dangerous" checked>
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="form-hint-text">删除网站、清空日志等操作需要二次确认</span>
-        </div>
-
-        <!-- 安全建议 -->
-        <div class="security-tips">
-            <div class="tip-item">
-                <i class="icon icon-tip tip-icon"></i>
-                <div class="tip-content">
-                    <strong>使用强密码</strong>
-                    <p>建议使用 8 位以上，包含大小写字母、数字和符号的密码</p>
-                </div>
-            </div>
-            <div class="tip-item">
-                <i class="icon icon-tip tip-icon"></i>
-                <div class="tip-content">
-                    <strong>定期修改密码</strong>
-                    <p>建议每月修改一次面板密码</p>
-                </div>
-            </div>
-            <div class="tip-item">
-                <i class="icon icon-tip tip-icon"></i>
-                <div class="tip-content">
-                    <strong>修改安全入口</strong>
-                    <p>将默认的 /admin 修改为不易猜到的路径</p>
-                </div>
-            </div>
-            <div class="tip-item">
-                <i class="icon icon-tip tip-icon"></i>
-                <div class="tip-content">
-                    <strong>配置 IP 白名单</strong>
-                    <p>仅允许可信 IP 访问面板（如果有固定 IP）</p>
-                </div>
-            </div>
-        </div>
+    <!-- 安全入口 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">安全入口</label>
+      <input
+        type="text"
+        id="admin-path"
+        class="form-input-inline"
+        placeholder="/admin"
+      />
+      <span class="form-hint-text">自定义访问路径，隐藏面板入口</span>
     </div>
 
-    <!-- 界面设置（占位） -->
-    <div class="settings-content" id="settings-interface">
-        <div class="settings-placeholder">
-            <i class="icon icon-palette placeholder-icon"></i>
-            <h3>界面设置</h3>
-            <p>主题切换、自定义配色等功能正在开发中...</p>
-        </div>
+    <!-- 绑定域名 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">绑定域名</label>
+      <input
+        type="text"
+        id="admin-domain"
+        class="form-input-inline"
+        placeholder="panel.example.com"
+      />
+      <span class="form-hint-text">为面板绑定访问域名</span>
     </div>
 
-    <!-- 保存按钮 -->
-    <div class="settings-actions">
-        <button class="btn btn-secondary" id="reset-settings"><i class="icon icon-refresh"></i> 恢复默认</button>
-        <button class="btn btn-primary" id="save-settings"><i class="icon icon-save"></i> 保存设置</button>
+    <!-- 面板 SSL -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">面板 SSL</label>
+      <label class="toggle">
+        <input type="checkbox" id="admin-ssl" />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="form-hint-text">为面板设置 HTTPS 协议访问</span>
     </div>
+
+    <!-- 服务器时区 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">服务器时区</label>
+      <select id="server-timezone" class="form-select-inline">
+        <option value="Asia/Shanghai" selected>上海 (GMT+8)</option>
+        <option value="Asia/Hong_Kong">香港 (GMT+8)</option>
+        <option value="Asia/Taipei">台北 (GMT+8)</option>
+        <option value="Asia/Tokyo">东京 (GMT+9)</option>
+        <option value="Asia/Seoul">首尔 (GMT+9)</option>
+        <option value="Asia/Singapore">新加坡 (GMT+8)</option>
+        <option value="Asia/Dubai">迪拜 (GMT+4)</option>
+        <option value="Europe/London">伦敦 (GMT+0/BST+1)</option>
+        <option value="Europe/Paris">巴黎 (GMT+1/CEST+2)</option>
+        <option value="Europe/Berlin">柏林 (GMT+1/CEST+2)</option>
+        <option value="America/New_York">纽约 (GMT-5/EDT-4)</option>
+        <option value="America/Los_Angeles">洛杉矶 (GMT-8/PDT-7)</option>
+        <option value="America/Chicago">芝加哥 (GMT-6/CDT-5)</option>
+        <option value="Australia/Sydney">悉尼 (GMT+10/AEDT+11)</option>
+        <option value="UTC">UTC (GMT+0)</option>
+      </select>
+      <span class="form-hint-text">设置服务器时区</span>
+    </div>
+
+    <!-- 服务器时间 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">服务器时间</label>
+      <div class="server-time-display-inline">
+        <span id="server-time">--</span>
+        <button
+          type="button"
+          class="btn btn-sm btn-secondary"
+          id="sync-time-btn"
+          disabled
+          title="需要后端支持 NTP 时间同步"
+        >
+          同步
+        </button>
+      </div>
+      <span class="form-hint-text">当前服务器时间</span>
+    </div>
+  </div>
+
+  <!-- 日志设置 -->
+  <div class="settings-content" id="settings-log">
+    <div class="settings-section-title">日志轮转</div>
+
+    <!-- 保留天数 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">保留天数</label>
+      <div class="number-input-wrapper">
+        <input
+          type="number"
+          id="log-retention-days"
+          class="form-input-inline"
+          min="1"
+          max="365"
+          value="30"
+        />
+        <div class="number-input-controls">
+          <button type="button" class="number-input-btn" data-action="up">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 4l-4 4h8z" fill="currentColor" />
+            </svg>
+          </button>
+          <button type="button" class="number-input-btn" data-action="down">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 8l4-4h-8z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <span class="form-hint-text">超过此天数的日志将被自动删除</span>
+    </div>
+
+    <!-- 单文件大小限制 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">单文件大小</label>
+      <div class="number-input-wrapper">
+        <input
+          type="number"
+          id="log-max-size-mb"
+          class="form-input-inline"
+          min="1"
+          max="1000"
+          value="100"
+        />
+        <div class="number-input-controls">
+          <button type="button" class="number-input-btn" data-action="up">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 4l-4 4h8z" fill="currentColor" />
+            </svg>
+          </button>
+          <button type="button" class="number-input-btn" data-action="down">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 8l4-4h-8z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <span class="form-hint-text">单个日志文件超过此大小将自动轮转（MB）</span>
+    </div>
+
+    <!-- 压缩旧日志 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">压缩旧日志</label>
+      <div class="number-input-wrapper">
+        <input
+          type="number"
+          id="log-compress-days"
+          class="form-input-inline"
+          min="1"
+          max="365"
+          value="7"
+        />
+        <div class="number-input-controls">
+          <button type="button" class="number-input-btn" data-action="up">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 4l-4 4h8z" fill="currentColor" />
+            </svg>
+          </button>
+          <button type="button" class="number-input-btn" data-action="down">
+            <svg class="icon" viewBox="0 0 12 12">
+              <path d="M6 8l4-4h-8z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <span class="form-hint-text">超过此天数的日志将被压缩保存</span>
+    </div>
+
+    <!-- 清理时间 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">清理时间</label>
+      <select id="log-cleanup-hour" class="form-select-inline">
+        <option value="0">凌晨 0 点</option>
+        <option value="1">凌晨 1 点</option>
+        <option value="2">凌晨 2 点</option>
+        <option value="3" selected>凌晨 3 点</option>
+        <option value="4">凌晨 4 点</option>
+        <option value="5">凌晨 5 点</option>
+      </select>
+      <span class="form-hint-text">每天自动清理过期日志的时间</span>
+    </div>
+
+    <div class="settings-section-title">日志级别</div>
+
+    <!-- 全局日志级别 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">全局级别</label>
+      <select id="log-level" class="form-select-inline">
+        <option value="debug">Debug - 调试（详细）</option>
+        <option value="info" selected>Info - 信息（默认）</option>
+        <option value="warn">Warn - 警告</option>
+        <option value="error">Error - 错误（精简）</option>
+      </select>
+      <span class="form-hint-text">低于此级别的日志不会被记录</span>
+    </div>
+
+    <!-- HTTP 日志级别 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">HTTP 服务</label>
+      <select id="log-level-http" class="form-select-inline">
+        <option value="">跟随全局</option>
+        <option value="debug">Debug</option>
+        <option value="info">Info</option>
+        <option value="warn">Warn</option>
+        <option value="error">Error</option>
+      </select>
+    </div>
+
+    <!-- FTP 日志级别 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">FTP 服务</label>
+      <select id="log-level-ftp" class="form-select-inline">
+        <option value="">跟随全局</option>
+        <option value="debug">Debug</option>
+        <option value="info">Info</option>
+        <option value="warn">Warn</option>
+        <option value="error">Error</option>
+      </select>
+    </div>
+
+    <!-- 面板日志级别 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">管理面板</label>
+      <select id="log-level-panel" class="form-select-inline">
+        <option value="">跟随全局</option>
+        <option value="debug">Debug</option>
+        <option value="info">Info</option>
+        <option value="warn">Warn</option>
+        <option value="error">Error</option>
+      </select>
+    </div>
+
+    <div class="security-tips">
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>日志级别说明</strong>
+          <p>
+            Debug：最详细，包含所有操作；Info：正常记录；Warn：仅警告和错误；Error：仅错误
+          </p>
+        </div>
+      </div>
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>磁盘空间</strong>
+          <p>建议定期检查日志目录大小，避免占用过多磁盘空间</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 目录设置 -->
+  <div class="settings-content" id="settings-directory">
+    <!-- FTP 根目录 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">FTP根目录</label>
+      <input
+        type="text"
+        id="ftp-root-dir"
+        class="form-input-inline"
+        placeholder="./ftp"
+      />
+      <span class="form-hint-text">FTP 服务的文件存储目录</span>
+    </div>
+
+    <!-- 备份目录 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">备份目录</label>
+      <input
+        type="text"
+        id="backup-dir"
+        class="form-input-inline"
+        placeholder="./backups"
+      />
+      <span class="form-hint-text">配置和网站备份的存储位置</span>
+    </div>
+  </div>
+
+  <!-- 安全设置 -->
+  <div class="settings-content" id="settings-security">
+    <!-- IP 白名单 -->
+    <div class="form-group-inline-vertical">
+      <label class="form-label-inline">IP 白名单</label>
+      <textarea
+        id="admin-allow-ips"
+        class="form-textarea-inline"
+        rows="3"
+        placeholder="每行一个 IP，例如：&#10;192.168.1.100&#10;10.0.0.0/24"
+      ></textarea>
+      <span class="form-hint-text">仅允许以下 IP 访问面板，留空则不限制</span>
+    </div>
+
+    <!-- 会话超时 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">会话超时时间</label>
+      <select id="session-timeout" class="form-select-inline">
+        <option value="3600">1 小时</option>
+        <option value="7200">2 小时</option>
+        <option value="86400">1 天</option>
+        <option value="604800">7 天</option>
+        <option value="0">永不超时</option>
+      </select>
+      <span class="form-hint-text">多久没有操作后自动退出登录</span>
+    </div>
+
+    <!-- 启用双因素认证 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">双因素认证</label>
+      <label class="toggle">
+        <input type="checkbox" id="admin-2fa" disabled />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="form-hint-text">登录时需要额外验证码</span>
+    </div>
+
+    <!-- 记录操作日志 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">记录操作日志</label>
+      <label class="toggle">
+        <input type="checkbox" id="admin-log-operations" checked />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="form-hint-text">记录所有管理操作到日志文件</span>
+    </div>
+
+    <!-- 敏感操作确认 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">敏感操作确认</label>
+      <label class="toggle">
+        <input type="checkbox" id="admin-confirm-dangerous" checked />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="form-hint-text">删除网站、清空日志等操作需要二次确认</span>
+    </div>
+
+    <!-- 安全建议 -->
+    <div class="security-tips">
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>使用强密码</strong>
+          <p>建议使用 8 位以上，包含大小写字母、数字和符号的密码</p>
+        </div>
+      </div>
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>定期修改密码</strong>
+          <p>建议每月修改一次面板密码</p>
+        </div>
+      </div>
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>修改安全入口</strong>
+          <p>将默认的 /admin 修改为不易猜到的路径</p>
+        </div>
+      </div>
+      <div class="tip-item">
+        <i class="icon icon-tip tip-icon"></i>
+        <div class="tip-content">
+          <strong>配置 IP 白名单</strong>
+          <p>仅允许可信 IP 访问面板（如果有固定 IP）</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 界面设置（占位） -->
+  <div class="settings-content" id="settings-interface">
+    <div class="settings-placeholder">
+      <i class="icon icon-palette placeholder-icon"></i>
+      <h3>界面设置</h3>
+      <p>主题切换、自定义配色等功能正在开发中...</p>
+    </div>
+  </div>
+
+  <!-- 保存按钮 -->
+  <div class="settings-actions">
+    <button class="btn btn-secondary" id="reset-settings">
+      <i class="icon icon-refresh"></i> 恢复默认
+    </button>
+    <button class="btn btn-primary" id="save-settings">
+      <i class="icon icon-save"></i> 保存设置
+    </button>
+  </div>
 </div>

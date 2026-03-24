@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"pixelbeast/src/config"
@@ -83,6 +86,76 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "站点状态已更新")
 }
 
+// handleSitesBatch 处理批量操作
+func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "方法不允许")
+		return
+	}
+
+	var req struct {
+		Action string   `json:"action"` // enable, disable, delete
+		IDs    []string `json:"ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "参数错误")
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		BadRequest(w, "未选择站点")
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var count int
+	for _, id := range req.IDs {
+		site := h.Config.GetSiteByID(id)
+		if site == nil {
+			continue
+		}
+
+		switch req.Action {
+		case "enable":
+			site.Enabled = true
+			site.UpdatedAt = time.Now().Format(time.RFC3339)
+			count++
+		case "disable":
+			site.Enabled = false
+			site.UpdatedAt = time.Now().Format(time.RFC3339)
+			count++
+		case "delete":
+			if len(h.Config.Sites) <= 1 {
+				continue // 不允许删除最后一个站点
+			}
+			if h.Config.DeleteSite(id) {
+				count++
+			}
+		}
+	}
+
+	if count == 0 {
+		SuccessMessage(w, "没有站点被修改")
+		return
+	}
+
+	// 保存配置
+	if err := h.Config.Save(h.ConfigPath); err != nil {
+		InternalServerError(w, "保存配置失败")
+		return
+	}
+
+	// 重新加载站点
+	if h.ServerManager != nil {
+		h.ServerManager.ReloadSites()
+	}
+
+	SuccessMessage(w, fmt.Sprintf("已处理 %d 个站点", count))
+}
+
 // listSites 列出所有站点
 func (h *Handler) listSites(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
@@ -119,6 +192,11 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 	if site.Type != "static" && site.Type != "proxy" {
 		BadRequest(w, "站点类型必须是 static 或 proxy")
 		return
+	}
+
+	// 智能路径转换：静态站点的根目录
+	if site.Type == "static" && site.Root != "" {
+		site.Root = smartPathConversion(site.Root)
 	}
 
 	// 设置默认值
@@ -180,6 +258,11 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 	if err := json.NewDecoder(r.Body).Decode(&site); err != nil {
 		BadRequest(w, "参数错误")
 		return
+	}
+
+	// 智能路径转换：静态站点的根目录
+	if site.Type == "static" && site.Root != "" {
+		site.Root = smartPathConversion(site.Root)
 	}
 
 	h.mu.Lock()
@@ -279,4 +362,39 @@ func extractIDFromPath(path, prefix string) string {
 		return ""
 	}
 	return path[len(prefix):]
+}
+
+// smartPathConversion 智能路径转换
+// 如果路径在程序目录内，转换为相对路径 (./xxx)
+// 如果路径在程序目录外，保持绝对路径
+func smartPathConversion(path string) string {
+	if path == "" {
+		return path
+	}
+
+	// 获取程序运行目录
+	programDir, err := os.Getwd()
+	if err != nil {
+		return path
+	}
+
+	// 规范化路径
+	absPath := path
+	if !filepath.IsAbs(path) {
+		absPath = filepath.Join(programDir, path)
+	}
+	absPath = filepath.Clean(absPath)
+	programDir = filepath.Clean(programDir)
+
+	// 检查是否在程序目录内
+	if strings.HasPrefix(absPath, programDir+string(filepath.Separator)) {
+		// 在程序目录内，转换为相对路径
+		relPath, err := filepath.Rel(programDir, absPath)
+		if err == nil {
+			return "./" + relPath
+		}
+	}
+
+	// 不在程序目录内，保持原路径
+	return path
 }

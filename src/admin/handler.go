@@ -44,23 +44,37 @@ type (
 	}
 )
 
+// PasswordValidator 密码验证器接口
+type PasswordValidator interface {
+	ValidateAdmin(username, password string) bool
+	ValidateFTPUser(username, password string) bool
+}
+
 // Handler 管理面板处理器
 type Handler struct {
-	Config        *config.Config
-	ConfigPath    string
-	ServerManager *handlers.ServerManager
-	sessions      map[string]*Session
-	loginAttempts map[string]*LoginAttempt
-	csrfTokens    map[string]*CSRFToken
-	mu            sync.RWMutex
+	Config           *config.Config
+	ConfigPath       string
+	ServerManager    *handlers.ServerManager
+	passwordValidator PasswordValidator // 密码验证器（支持加密密码）
+	adminPath        string              // 安全入口路径
+	sessions         map[string]*Session
+	loginAttempts    map[string]*LoginAttempt
+	csrfTokens       map[string]*CSRFToken
+	mu               sync.RWMutex
 }
 
 // ==================== 构造函数 ====================
 
 func New(cfg *config.Config, configPath string) *Handler {
+	adminPath := "/admin"
+	if cfg != nil && cfg.Admin.Path != "" {
+		adminPath = cfg.Admin.Path
+	}
+
 	h := &Handler{
 		Config:        cfg,
 		ConfigPath:    configPath,
+		adminPath:     adminPath,
 		sessions:      make(map[string]*Session),
 		loginAttempts: make(map[string]*LoginAttempt),
 		csrfTokens:    make(map[string]*CSRFToken),
@@ -69,8 +83,25 @@ func New(cfg *config.Config, configPath string) *Handler {
 	return h
 }
 
+// SetAdminPath 设置安全入口路径
+func (h *Handler) SetAdminPath(path string) {
+	if path != "" {
+		h.adminPath = path
+	}
+}
+
+// GetAdminPath 获取安全入口路径
+func (h *Handler) GetAdminPath() string {
+	return h.adminPath
+}
+
 func (h *Handler) SetServerManager(sm *handlers.ServerManager) {
 	h.ServerManager = sm
+}
+
+// SetPasswordValidator 设置密码验证器
+func (h *Handler) SetPasswordValidator(validator PasswordValidator) {
+	h.passwordValidator = validator
 }
 
 // ==================== 路由 ====================
@@ -81,8 +112,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path = "/"
 	}
 
-	// 公开路由
-	switch path {
+	// 安全入口检查：只有匹配 adminPath 的请求才会被处理
+	// 其他请求返回 404，隐藏后台存在
+	adminPath := h.adminPath
+	if !strings.HasPrefix(path, adminPath) {
+		http.NotFound(w, r)
+		return
+	}
+
+	// 去掉安全入口前缀，得到实际路径
+	actualPath := strings.TrimPrefix(path, adminPath)
+	if actualPath == "" {
+		actualPath = "/"
+	}
+
+	// 修改 r.URL.Path，让后续处理函数可以直接使用
+	r.URL.Path = actualPath
+
+	// 公开路由（不需要认证）
+	switch actualPath {
 	case "/login":
 		h.loginPage(w, r)
 		return
@@ -92,26 +140,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/logout":
 		h.logoutAPI(w, r)
 		return
+	case "/favicon.svg", "/favicon.ico":
+		h.serveFavicon(w, r)
+		return
 	}
 
-	// 静态资源
-	if strings.HasPrefix(path, "/css/") {
+	// 静态资源（不需要认证）
+	if strings.HasPrefix(actualPath, "/css/") {
 		h.serveCSS(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/js/") {
+	if strings.HasPrefix(actualPath, "/js/") {
 		h.serveJS(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/components/") {
+	if strings.HasPrefix(actualPath, "/components/") {
 		h.serveComponents(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/images/") {
+	if strings.HasPrefix(actualPath, "/images/") {
 		h.serveImages(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/icons/") {
+	if strings.HasPrefix(actualPath, "/icons/") {
 		h.serveIcons(w, r)
 		return
 	}
@@ -119,22 +170,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 认证检查
 	session := h.getSession(r)
 	if session == nil {
-		if strings.HasPrefix(path, "/api/") {
+		if strings.HasPrefix(actualPath, "/api/") {
 			Unauthorized(w, "未登录")
 		} else {
-			http.Redirect(w, r, h.Config.Admin.Path+"/login", http.StatusFound)
+			http.Redirect(w, r, adminPath+"/login", http.StatusFound)
 		}
 		return
 	}
 
 	// 已认证路由
-	switch path {
+	switch actualPath {
 	// 页面
 	case "/", "/index.html":
 		h.indexPage(w, r)
 	// 状态
 	case "/api/status":
 		h.getStatus(w, r)
+	// 系统监控
+	case "/api/system/status":
+		h.getSystemStatus(w, r)
+	case "/api/system/free-memory":
+		h.freeMemory(w, r)
+	case "/api/system/cleanup-scan":
+		h.scanCleanup(w, r)
+	case "/api/system/cleanup":
+		h.executeCleanup(w, r)
 	// 配置
 	case "/api/config":
 		h.getConfig(w, r)
@@ -159,11 +219,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.downloadFile(w, r)
 	case "/api/files/copy":
 		h.copyFile(w, r)
-	// 日志
+	// 日志管理
 	case "/api/logs":
-		h.getLogs(w, r)
+		h.handleLogsList(w, r)
+	case "/api/logs/read":
+		h.handleLogsRead(w, r)
+	case "/api/logs/stats":
+		h.handleLogsStats(w, r)
+	case "/api/logs/download":
+		h.handleLogsDownload(w, r)
 	case "/api/logs/clear":
-		h.clearLogs(w, r)
+		h.handleLogsClear(w, r)
+	case "/api/logs/config":
+		h.handleLogsConfig(w, r)
 	// FTP 服务
 	case "/api/service/ftp/toggle":
 		h.toggleFTP(w, r)
@@ -198,9 +266,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleSitesList(w, r)
 	case "/api/sites/toggle":
 		h.handleSiteToggle(w, r)
+	case "/api/sites/batch":
+		h.handleSitesBatch(w, r)
 	default:
 		// 处理带 ID 的站点路由
-		if strings.HasPrefix(path, "/api/sites/") {
+		if strings.HasPrefix(actualPath, "/api/sites/") {
 			h.handleSitesDetail(w, r)
 		} else {
 			http.NotFound(w, r)
@@ -366,6 +436,16 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(staticFS, "favicon.svg")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Write(data)
+}
+
 func (h *Handler) serveCSS(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimPrefix(r.URL.Path, "/css/")
 	data, err := fs.ReadFile(staticFS, "css/"+file)
@@ -448,8 +528,19 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	r.ParseForm()
 	username, password := r.FormValue("username"), r.FormValue("password")
-	if subtle.ConstantTimeCompare([]byte(username), []byte(h.Config.Admin.Username)) != 1 ||
-		subtle.ConstantTimeCompare([]byte(password), []byte(h.Config.Admin.Password)) != 1 {
+	
+	// 验证密码
+	valid := false
+	if h.passwordValidator != nil {
+		// 使用验证器（支持加密密码）
+		valid = h.passwordValidator.ValidateAdmin(username, password)
+	} else {
+		// 兼容旧模式：明文密码比较
+		valid = subtle.ConstantTimeCompare([]byte(username), []byte(h.Config.Admin.Username)) == 1 &&
+			subtle.ConstantTimeCompare([]byte(password), []byte(h.Config.Admin.Password)) == 1
+	}
+	
+	if !valid {
 		h.recordLoginAttempt(clientIP, false)
 		handlers.LogPanelAuth("登录", username, clientIP, false, "用户名或密码错误")
 		h.mu.RLock()

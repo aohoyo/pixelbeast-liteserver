@@ -133,6 +133,18 @@ class API {
     }
 
     /**
+     * 发送 POST 请求（自动解析 JSON）
+     * @param {string} endpoint - API 端点
+     * @param {Object} data - 请求体数据
+     * @returns {Promise<Object>} 解析后的数据
+     */
+    async postJSON(endpoint, data) {
+        const response = await this.post(endpoint, data);
+        if (!response) return null;
+        return this.parseJSON(response);
+    }
+
+    /**
      * 发送 PUT 请求
      * @param {string} endpoint - API 端点
      * @param {Object} data - 请求体数据

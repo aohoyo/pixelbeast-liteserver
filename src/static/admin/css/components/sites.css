@@ -1,0 +1,228 @@
+/* ==================== 站点管理 ==================== */
+
+/* 主容器 - 直接作为 card 的 flex 子元素 */
+.site-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: var(--space-lg);
+}
+
+/* 工具栏 - 固定高度 */
+.site-container .toolbar {
+    flex-shrink: 0;
+}
+
+/* 表格容器 - 占用剩余空间，可滚动 */
+.site-container .table-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* DataTable 容器继承高度 */
+.site-container .table-wrapper .dt-container {
+    height: 100%;
+}
+
+/* DataTable 表格包装器 */
+.site-container .table-wrapper .dt-table-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* 站点名称单元格 */
+.site-name-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.site-icon {
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    background: var(--primary-alpha);
+    border-radius: var(--radius);
+    color: var(--primary);
+}
+
+.site-name-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.site-name {
+    font-weight: 500;
+}
+
+.site-type-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    border-radius: var(--radius-full);
+    width: fit-content;
+}
+
+.site-type-badge.static {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+.site-type-badge.proxy {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+/* 状态 */
+.site-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.site-status-text {
+    font-size: 0.875rem;
+}
+
+.site-status-text.running {
+    color: var(--success);
+}
+
+.site-status-text.stopped {
+    color: var(--text-muted);
+}
+
+/* 端口 */
+.site-port {
+    font-family: monospace;
+    font-size: 0.875rem;
+}
+
+.site-port.empty {
+    color: var(--text-muted);
+}
+
+/* 域名 */
+.site-domain {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.site-domain.empty {
+    color: var(--text-muted);
+}
+
+/* 根目录/代理目标 */
+.site-root,
+.site-proxy {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.875rem;
+}
+
+.site-root .icon-sm,
+.site-proxy .icon-sm {
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+}
+
+.site-root code,
+.site-proxy code {
+    font-family: monospace;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* 快速链接 */
+.site-quick-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    max-width: 200px;
+}
+
+.site-link-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.site-link-copy,
+.site-link-open {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.site-link-copy:hover,
+.site-link-open:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.site-link-copy svg,
+.site-link-open svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 操作按钮 */
+.site-actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.site-action-btn {
+    background: none;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    transition: all var(--transition);
+}
+
+.site-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.site-action-btn.edit:hover {
+    color: var(--primary);
+}
+
+.site-action-btn.delete:hover {
+    color: var(--danger);
+}
+
+.site-action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 站点表单 */
+.site-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}

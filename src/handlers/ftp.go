@@ -22,25 +22,37 @@ func isValidUTF8(s string) bool {
 	return utf8.ValidString(s)
 }
 
+// PasswordValidator 密码验证器接口
+type PasswordValidator interface {
+	ValidateFTPUser(username, password string) bool
+}
+
 // FTPServer 简易FTP服务器
 type FTPServer struct {
-	Config   *config.FTPConfig
-	listener net.Listener
-	clients  map[net.Conn]bool
-	mu       sync.Mutex
-	running  bool
+	Config    *config.FTPConfig
+	validator PasswordValidator // 密码验证器（支持加密密码）
+	listener  net.Listener
+	clients   map[net.Conn]bool
+	mu        sync.Mutex
+	running   bool
 }
 
 // NewFTPServer 创建FTP服务器
 func NewFTPServer(cfg *config.FTPConfig) (*FTPServer, error) {
+	return NewFTPServerWithValidator(cfg, nil)
+}
+
+// NewFTPServerWithValidator 创建FTP服务器（带密码验证器）
+func NewFTPServerWithValidator(cfg *config.FTPConfig, validator PasswordValidator) (*FTPServer, error) {
 	// 确保FTP根目录存在
 	if err := os.MkdirAll(cfg.Root, 0755); err != nil {
 		return nil, err
 	}
 
 	return &FTPServer{
-		Config:  cfg,
-		clients: make(map[net.Conn]bool),
+		Config:    cfg,
+		validator: validator,
+		clients:   make(map[net.Conn]bool),
 	}, nil
 }
 
@@ -266,12 +278,23 @@ func (c *FTPClient) handleUSER(username string) {
 
 // handlePASS 处理PASS命令
 func (c *FTPClient) handlePASS(password string) {
-	for _, user := range c.server.Config.Users {
-		if user.Username == c.username && user.Password == password {
+	// 使用验证器验证（支持加密密码）
+	if c.server.validator != nil {
+		if c.server.validator.ValidateFTPUser(c.username, password) {
 			c.loggedIn = true
 			c.sendMessage("230 Login successful")
 			LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
 			return
+		}
+	} else {
+		// 兼容旧模式：明文密码比较
+		for _, user := range c.server.Config.Users {
+			if user.Username == c.username && user.Password == password {
+				c.loggedIn = true
+				c.sendMessage("230 Login successful")
+				LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
+				return
+			}
 		}
 	}
 	c.sendMessage("530 Login incorrect")
