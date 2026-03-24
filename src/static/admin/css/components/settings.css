@@ -1,0 +1,206 @@
+/* ==================== 设置页面组件 ==================== */
+
+/* ==================== Tab 切换 ==================== */
+.settings-tabs {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    border-bottom: 2px solid var(--border);
+}
+
+.settings-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: var(--space-sm) var(--space-lg);
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    margin-bottom: -2px;
+}
+
+.settings-tab .icon {
+    width: 18px;
+    height: 18px;
+}
+
+.settings-tab:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--bg-hover);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.settings-tab:hover:not(:disabled) .icon {
+    filter: var(--icon-filter);
+}
+
+.settings-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.settings-tab.active .icon {
+    filter: var(--icon-filter-primary);
+}
+
+.settings-tab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==================== 设置内容区域 ==================== */
+.settings-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.settings-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.settings-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+
+.settings-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 var(--space-md) 0;
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+}
+
+/* ==================== 开关 ==================== */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    transition: var(--transition);
+}
+
+.switch-slider::before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: var(--transition);
+}
+
+.switch input:checked + .switch-slider {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.switch input:checked + .switch-slider::before {
+    transform: translateX(22px);
+    background: #fff;
+}
+
+.switch input:focus + .switch-slider {
+    box-shadow: 0 0 0 3px var(--primary-alpha);
+}
+
+/* ==================== 设置页面其他样式 ==================== */
+.settings-placeholder {
+    text-align: center;
+    padding: var(--space-xl);
+    color: var(--text-muted);
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-md);
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.settings-actions .btn {
+    min-width: 100px;
+}
+
+/* ==================== 证书管理 ==================== */
+.cert-list {
+    display: grid;
+    gap: var(--space-md);
+}
+
+.cert-item {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all var(--transition);
+}
+
+.cert-item:hover {
+    border-color: var(--border-light);
+    box-shadow: var(--shadow-md);
+}
+
+.cert-info h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px 0;
+}
+
+.cert-domain {
+    font-size: 0.875rem;
+    color: var(--primary-light);
+    font-family: var(--font-mono);
+}
+
+.cert-expire {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.cert-actions {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+}

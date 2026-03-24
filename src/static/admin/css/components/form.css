@@ -1,0 +1,302 @@
+/* ==================== 表单组件 ==================== */
+
+/* ==================== 表单组 ==================== */
+.form-group {
+    margin-bottom: var(--space-md);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="password"],
+.form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    color: var(--text);
+    transition: all var(--transition);
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-alpha);
+}
+
+.form-group input::placeholder {
+    color: var(--text-muted);
+}
+
+.form-group small {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.form-row {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 180px;
+}
+
+/* ==================== 输入框附加操作按钮 ==================== */
+.input-with-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-actions .form-input {
+    flex: 1;
+    padding-right: 80px;
+}
+
+.input-actions {
+    position: absolute;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+}
+
+.input-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.input-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.input-action-btn .icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* ==================== 表单左右布局 ==================== */
+.form-group-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--transition);
+}
+
+.form-group-inline:hover {
+    border-bottom-color: var(--border-light);
+}
+
+.form-group-inline:last-child {
+    border-bottom: none;
+}
+
+.form-label-inline {
+    min-width: 100px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.form-hint-text {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* 垂直布局的表单组 */
+.form-group-inline-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid transparent;
+}
+
+.form-group-inline-vertical .form-label-inline {
+    min-width: auto;
+}
+
+.form-textarea-inline {
+    width: 100%;
+    max-width: 500px;
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: var(--font-mono);
+    resize: vertical;
+    transition: all var(--transition);
+}
+
+.form-textarea-inline:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-alpha);
+}
+
+.form-input-inline {
+    flex: 1;
+    max-width: 300px;
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    transition: all var(--transition);
+}
+
+.form-input-inline:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-alpha);
+}
+
+/* 带操作按钮的输入框 */
+.input-with-actions-inline {
+    position: relative;
+    flex: 1;
+    max-width: 300px;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-actions-inline .form-input-inline {
+    flex: 1;
+    max-width: none;
+    padding-right: 80px;
+}
+
+/* 带眼睛按钮的输入框 */
+.input-with-eye {
+    position: relative;
+    flex: 1;
+    max-width: 300px;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-eye .form-input-inline {
+    flex: 1;
+    max-width: none;
+    padding-right: 40px;
+}
+
+.input-with-eye .inside-input {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: color var(--transition-fast);
+}
+
+.input-with-eye .inside-input:hover {
+    color: var(--text);
+}
+
+.input-with-eye .inside-input .icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* 下拉选择框 inline */
+.form-select-inline {
+    flex: 1;
+    max-width: 300px;
+    padding: 10px 36px 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23a8a29e' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+.form-select-inline:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-alpha);
+}
+
+/* 服务器时间显示 inline */
+.server-time-display-inline {
+    flex: 1;
+    max-width: 300px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.server-time-display-inline span {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+/* ==================== 表单验证错误样式 ==================== */
+.form-input-inline.input-error,
+.form-textarea-inline.input-error {
+    border-color: var(--danger) !important;
+}
+
+.form-input-inline.input-error:focus,
+.form-textarea-inline.input-error:focus {
+    box-shadow: 0 0 0 3px var(--danger-alpha) !important;
+}
+
+.field-error {
+    display: block;
+    color: var(--danger);
+    font-size: 0.8rem;
+    margin-top: 4px;
+    font-weight: 400;
+    line-height: 1.4;
+}

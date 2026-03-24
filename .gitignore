@@ -1,0 +1,52 @@
+# ========================================
+# PixelBeast LiteServer - Git Ignore
+# ========================================
+
+# 编译输出 / 二进制文件
+pixelbeast
+pixelbeast.exe
+*.exe
+*.o
+*.a
+*.so
+*.dll
+
+# Go 工作区
+go.work
+
+# 开发模式临时文件
+web/admin/
+tmp/
+.air.toml.bak
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code 工作目录
+.claude/
+
+# 运行时数据（保留目录结构，忽略内容）
+data/sites/*
+!data/sites/.gitkeep
+data/ssl/*
+!data/ssl/.gitkeep
+
+# 日志文件
+logs/*
+*.log
+
+# FTP 上传目录
+ftp/*
+!ftp/.gitkeep
+
+# HTTP 网站目录
+web/*
+!web/.gitkeep
+
+# 本地配置（可选：如果包含敏感信息）
+# pixelbeast.json

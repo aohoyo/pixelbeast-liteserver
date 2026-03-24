@@ -1,0 +1,135 @@
+<!-- 核心指标区 -->
+<div class="dashboard-header">
+    <div class="dashboard-title">
+        <h2>系统概览</h2>
+        <p class="dashboard-subtitle">实时监控服务器运行状态</p>
+    </div>
+    <div class="dashboard-right">
+        <!-- 系统信息 -->
+        <div class="system-badge">
+            <i class="icon icon-computer"></i>
+            <span class="system-badge-text" id="sysinfo-value">--</span>
+        </div>
+        <button class="refresh-btn" id="refresh-status" title="刷新状态">
+            <i class="icon icon-refresh"></i>
+        </button>
+    </div>
+</div>
+
+<!-- 主状态卡片 -->
+<div class="metrics-container">
+    <!-- 进程内存 -->
+    <div class="metric-card memory-metric">
+        <div class="metric-header">
+            <div class="metric-icon-wrapper">
+                <i class="icon icon-server"></i>
+            </div>
+            <span class="metric-label">进程内存</span>
+        </div>
+        <div class="metric-value-group">
+            <span class="metric-value" id="memory-value">--</span>
+            <span class="metric-unit">MB</span>
+        </div>
+        <div class="metric-bar">
+            <div class="metric-fill memory-fill" id="memory-fill"></div>
+        </div>
+        <div class="metric-footer">
+            <span class="metric-percent" id="memory-percent">0%</span>
+            <span class="metric-max">最大 1GB</span>
+        </div>
+    </div>
+
+    <!-- 协程数量 -->
+    <div class="metric-card goroutine-metric">
+        <div class="metric-header">
+            <div class="metric-icon-wrapper">
+                <i class="icon icon-cpu"></i>
+            </div>
+            <span class="metric-label">协程数量</span>
+        </div>
+        <div class="metric-value-group">
+            <span class="metric-value" id="goroutine-value">--</span>
+            <span class="metric-unit">个</span>
+        </div>
+        <div class="metric-bar">
+            <div class="metric-fill goroutine-fill" id="goroutine-fill"></div>
+        </div>
+        <div class="metric-footer">
+            <span class="metric-status" id="goroutine-status">正常</span>
+            <span class="metric-max">参考值 &lt;500</span>
+        </div>
+    </div>
+
+    <!-- 运行时间 -->
+    <div class="metric-card uptime-metric">
+        <div class="metric-header">
+            <div class="metric-icon-wrapper">
+                <i class="icon icon-clock"></i>
+            </div>
+            <span class="metric-label">运行时间</span>
+        </div>
+        <div class="uptime-display">
+            <div class="uptime-segment" id="uptime-days">
+                <span class="segment-value">0</span>
+                <span class="segment-label">天</span>
+            </div>
+            <div class="uptime-segment" id="uptime-hours">
+                <span class="segment-value">0</span>
+                <span class="segment-label">时</span>
+            </div>
+            <div class="uptime-segment" id="uptime-minutes">
+                <span class="segment-value">0</span>
+                <span class="segment-label">分</span>
+            </div>
+            <div class="uptime-segment" id="uptime-seconds">
+                <span class="segment-value">0</span>
+                <span class="segment-label">秒</span>
+            </div>
+        </div>
+        <div class="metric-footer">
+            <span class="uptime-start">启动于 <span id="uptime-start-time">--</span></span>
+        </div>
+    </div>
+</div>
+
+<!-- 服务状态网格 -->
+<div class="services-status-section">
+    <h3 class="section-title">服务状态</h3>
+    <div class="services-status-grid">
+        <!-- HTTP 服务 -->
+        <div class="service-status-card" id="http-service-card">
+            <div class="service-status-header">
+                <i class="icon icon-globe service-status-icon http-icon"></i>
+                <div class="service-status-info">
+                    <span class="service-status-name">HTTP 服务</span>
+                    <span class="service-status-port">端口 <strong id="http-port-display">8080</strong></span>
+                </div>
+            </div>
+            <div class="service-status-footer">
+                <div class="status-indicator-wrapper">
+                    <span class="status-dot" id="http-status-dot"></span>
+                    <span class="status-text" id="http-status-text">运行中</span>
+                </div>
+                <div class="service-status-arrow">→</div>
+            </div>
+        </div>
+
+        <!-- FTP 服务 -->
+        <div class="service-status-card" id="ftp-service-card">
+            <div class="service-status-header">
+                <i class="icon icon-folder service-status-icon ftp-icon"></i>
+                <div class="service-status-info">
+                    <span class="service-status-name">FTP 服务</span>
+                    <span class="service-status-port">端口 <strong id="ftp-port-display">2121</strong></span>
+                </div>
+            </div>
+            <div class="service-status-footer">
+                <div class="status-indicator-wrapper">
+                    <span class="status-dot" id="ftp-status-dot"></span>
+                    <span class="status-text" id="ftp-status-text">运行中</span>
+                </div>
+                <div class="service-status-arrow">→</div>
+            </div>
+        </div>
+    </div>
+</div>

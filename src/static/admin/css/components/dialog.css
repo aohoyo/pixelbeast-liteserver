@@ -1,0 +1,88 @@
+/* ==================== 对话框 ==================== */
+.dialog {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.dialog.active {
+    display: flex;
+    opacity: 1;
+}
+
+.dialog-content {
+    background: var(--card-bg);
+    border-radius: var(--radius-xl);
+    min-width: 360px;
+    max-width: 480px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    transform: scale(0.95);
+    transition: transform 0.2s ease;
+}
+
+.dialog.active .dialog-content {
+    transform: scale(1);
+}
+
+.dialog-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dialog-header .icon {
+    width: 24px;
+    height: 24px;
+}
+
+.dialog-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.dialog-body {
+    padding: 20px 24px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.dialog-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Dialog 类型样式 */
+.dialog--warning .dialog-header .icon {
+    filter: var(--icon-filter-primary);
+}
+
+.dialog--danger .dialog-header .icon {
+    filter: brightness(0) saturate(100%) invert(32%) sepia(89%) saturate(4362%) hue-rotate(359deg) brightness(93%) contrast(93%);
+}
+
+.dialog--danger .dialog-header h3 {
+    color: var(--danger);
+}
+
+.dialog--info .dialog-header .icon {
+    filter: var(--icon-filter);
+}

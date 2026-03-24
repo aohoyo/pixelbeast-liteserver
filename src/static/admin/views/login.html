@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 像素兽 PixelBeast</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>像素兽 管理面板</h1>
+        </div>
+        <div class="warning-box" id="warningBox"></div>
+        <form id="loginForm" autocomplete="off" onsubmit="return false;">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" placeholder="请输入用户名" value="admin" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" placeholder="请输入密码" value="admin123" autocomplete="new-password" required>
+            </div>
+            <button type="button" class="btn-login" id="loginBtn" onclick="doLogin()">登录</button>
+            <div class="error-message" id="errorMessage"></div>
+        </form>
+    </div>
+    <script src="js/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+/**
+ * SVG 线性图标系统
+ * 使用外部 SVG 文件 + background-image + CSS 变量
+ */
+
+/* 图标通用类 */
+.icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    vertical-align: middle;
+    /* 默认使用 --icon-filter 变量 */
+    filter: var(--icon-filter);
+}
+
+/* 菜单图标 - 继承菜单文字颜色 */
+.menu-item .icon {
+    width: 20px;
+    height: 20px;
+    filter: var(--icon-filter);
+}
+
+/* 菜单激活状态 - 白色 */
+.menu-item.active .icon {
+    filter: var(--icon-filter-white);
+}
+
+/* 菜单 hover 状态 - primary 颜色 */
+.menu-item:hover .icon {
+    filter: var(--icon-filter-primary);
+}
+
+/* 按钮中的图标 - 白色 */
+.btn .icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    filter: var(--icon-filter-white);
+}
+
+/* ===== 图标定义 ===== */
+
+/* 设置图标 - 齿轮 */
+.icon-settings {
+    background-image: url("../../icons/settings.svg");
+}
+
+/* 目录图标 - 文件夹 */
+.icon-folder {
+    background-image: url("../../icons/folder.svg");
+}
+
+/* 安全图标 - 锁 */
+.icon-lock {
+    background-image: url("../../icons/lock.svg");
+}
+
+/* 界面图标 - 调色板 */
+.icon-palette {
+    background-image: url("../../icons/palette.svg");
+}
+
+/* 保存图标 - 软盘 */
+.icon-save {
+    background-image: url("../../icons/save.svg");
+}
+
+/* 刷新图标 */
+.icon-refresh {
+    background-image: url("../../icons/refresh.svg");
+}
+
+/* 删除图标 */
+.icon-delete {
+    background-image: url("../../icons/delete.svg");
+}
+
+/* 编辑图标 */
+.icon-edit {
+    background-image: url("../../icons/edit.svg");
+}
+
+/* 添加图标 */
+.icon-add {
+    background-image: url("../../icons/add.svg");
+}
+
+/* 关闭图标 */
+.icon-close {
+    background-image: url("../../icons/close.svg");
+}
+
+/* 搜索图标 */
+.icon-search {
+    background-image: url("../../icons/search.svg");
+}
+
+/* 首页图标 */
+.icon-home {
+    background-image: url("../../icons/home.svg");
+}
+
+/* 网站图标 */
+.icon-globe {
+    background-image: url("../../icons/globe.svg");
+}
+
+/* FTP 图标 */
+.icon-upload {
+    background-image: url("../../icons/upload.svg");
+}
+
+/* 文件图标 */
+.icon-file {
+    background-image: url("../../icons/file.svg");
+}
+
+/* 日志图标 */
+.icon-file-text {
+    background-image: url("../../icons/file-text.svg");
+}
+
+/* 证书图标 */
+.icon-shield {
+    background-image: url("../../icons/shield.svg");
+}
+
+/* 更多图标 - 三个点 */
+.icon-more {
+    background-image: url("../../icons/more.svg");
+}
+
+/* 提示图标 - 灯泡 */
+.icon-tip {
+    background-image: url("../../icons/tip.svg");
+}
+
+/* 电脑图标 */
+.icon-computer {
+    background-image: url("../../icons/computer.svg");
+}
+
+/* 线程图标 */
+.icon-cpu {
+    background-image: url("../../icons/cpu.svg");
+}
+
+/* 垃圾桶图标 */
+.icon-trash {
+    background-image: url("../../icons/trash.svg");
+}
+
+/* 服务器图标 */
+.icon-server {
+    background-image: url("../../icons/server.svg");
+}
+
+/* 时钟图标 */
+.icon-clock {
+    background-image: url("../../icons/clock.svg");
+}
+
+/* 眼睛图标 */
+.icon-eye {
+    background-image: url("../../icons/eye.svg");
+}
+
+/* 眼睛关闭图标 */
+.icon-eye-off {
+    background-image: url("../../icons/eye-off.svg");
+}

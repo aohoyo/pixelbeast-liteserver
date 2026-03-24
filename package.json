@@ -1,0 +1,25 @@
+{
+  "name": "pixelbeast-liteserver",
+  "version": "1.0.0",
+  "description": "PixelBeast LiteServer - 轻量级 Web+FTP 服务器",
+  "scripts": {
+    "dev": "./dev.sh",
+    "dev:go": "air",
+    "build": "go build -o pixelbeast",
+    "build:windows": "GOOS=windows GOARCH=amd64 go build -o pixelbeast.exe",
+    "build:linux": "GOOS=linux GOARCH=amd64 go build -o pixelbeast",
+    "build:arm": "GOOS=linux GOARCH=arm64 go build -o pixelbeast",
+    "run": "./pixelbeast",
+    "clean": "rm -f pixelbeast pixelbeast.exe && rm -rf tmp",
+    "logs:clear": "rm -rf logs/*"
+  },
+  "keywords": [
+    "ftp",
+    "http",
+    "server",
+    "go",
+    "lightweight"
+  ],
+  "author": "PixelBeast",
+  "license": "MIT"
+}

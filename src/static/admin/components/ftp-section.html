@@ -1,0 +1,25 @@
+<div class="card">
+    <div class="card-header">
+        <i class="icon icon-upload"></i>
+        <h3>FTP 文件管理</h3>
+    </div>
+    <div class="toolbar">
+        <button class="btn" id="refresh-ftp-files"><i class="icon icon-refresh"></i> 刷新</button>
+        <button class="btn btn-primary" id="ftp-mkdir-btn"><i class="icon icon-folder"></i> 新建目录</button>
+        <button class="btn btn-success" id="ftp-upload-btn"><i class="icon icon-upload"></i> 上传文件</button>
+        <input type="file" id="ftp-file-input" style="display: none;" multiple>
+    </div>
+    <div class="upload-progress" id="ftp-upload-progress" style="display: none;">
+        <div class="progress-info">
+            <span id="ftp-progress-text">正在上传...</span>
+            <span id="ftp-progress-percent">0%</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="ftp-progress-fill"></div>
+        </div>
+    </div>
+    <div class="file-path" id="ftp-current-path">/</div>
+    <div class="file-list" id="ftp-file-list">
+        <p class="loading">加载中...</p>
+    </div>
+</div>

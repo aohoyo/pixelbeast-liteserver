@@ -1,0 +1,25 @@
+<div class="card">
+    <div class="card-header">
+        <i class="icon icon-folder"></i>
+        <h3>HTTP 文件管理</h3>
+    </div>
+    <div class="toolbar">
+        <button class="btn" id="refresh-files"><i class="icon icon-refresh"></i> 刷新</button>
+        <button class="btn btn-primary" id="mkdir-btn"><i class="icon icon-folder"></i> 新建目录</button>
+        <button class="btn btn-success" id="upload-btn"><i class="icon icon-upload"></i> 上传文件</button>
+        <input type="file" id="file-input" style="display: none;" multiple>
+    </div>
+    <div class="upload-progress" id="upload-progress" style="display: none;">
+        <div class="progress-info">
+            <span id="progress-text">正在上传...</span>
+            <span id="progress-percent">0%</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+    </div>
+    <div class="file-path" id="current-path">/</div>
+    <div class="file-list" id="file-list">
+        <p class="loading">加载中...</p>
+    </div>
+</div>

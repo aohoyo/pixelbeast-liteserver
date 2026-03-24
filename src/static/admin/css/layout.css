@@ -1,0 +1,224 @@
+/* ==================== 布局 - 顶部栏 ==================== */
+.top-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-lg);
+}
+
+.header-left,
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.brand-logo {
+    width: 32px;
+    height: 32px;
+}
+
+.brand-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.5px;
+}
+
+.brand-version {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    background: var(--primary-alpha);
+    color: var(--primary);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+}
+
+.header-icon {
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition);
+    padding: 8px;
+    border-radius: var(--radius);
+}
+
+.header-icon:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* ==================== 布局 - 主容器 ==================== */
+.main-container {
+    display: flex;
+    margin-top: 60px;
+    min-height: calc(100vh - 60px);
+}
+
+/* ==================== 布局 - 左侧菜单 ==================== */
+.left-menu {
+    width: 220px;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-lg) 0;
+    z-index: 90;
+}
+
+.menu-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 12px var(--space-md);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all var(--transition);
+    text-align: left;
+    width: 100%;
+    text-decoration: none;
+}
+
+.menu-item:hover {
+    background: linear-gradient(90deg, rgba(249, 115, 22, 0.15), rgba(249, 115, 22, 0.05));
+    color: var(--primary);
+}
+
+.menu-item.active {
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    color: white;
+    box-shadow: var(--shadow-glow);
+}
+
+.menu-item .icon {
+    width: 20px;
+    height: 20px;
+    filter: var(--icon-filter);
+}
+
+.menu-item.active .icon {
+    filter: var(--icon-filter-white);
+}
+
+.menu-item:hover .icon {
+    filter: var(--icon-filter-primary);
+}
+
+.menu-icon {
+    font-size: 1.1rem;
+    width: 24px;
+    text-align: center;
+}
+
+.menu-label {
+    flex: 1;
+}
+
+.menu-footer {
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.menu-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: var(--space-sm);
+    padding: 0 var(--space-md);
+}
+
+.menu-slogan {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 1px;
+}
+
+.menu-logout {
+    color: var(--danger);
+}
+
+.menu-logout:hover {
+    background: var(--danger-alpha);
+    color: var(--danger);
+}
+
+/* ==================== 布局 - 右侧内容区 ==================== */
+.right-content {
+    flex: 1;
+    margin-left: 220px;
+    background: var(--bg);
+    min-height: calc(100vh - 60px);
+}
+
+.content-area {
+    padding: var(--space-xl);
+}
+
+/* ==================== 布局 - 主内容区 ==================== */
+.main-content {
+    flex: 1;
+    margin-left: 240px;
+    display: flex;
+    flex-direction: column;
+}
+
+.content-header {
+    padding: var(--space-lg) var(--space-xl);
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+}
+
+.content-body {
+    padding: var(--space-xl);
+}
+
+/* ==================== 布局 - 标签内容 ==================== */
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
