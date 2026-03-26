@@ -783,6 +783,7 @@ export class FileManager {
             
             // 单击选择
             item.addEventListener('click', (e) => {
+                e.stopPropagation(); // 阻止冒泡
                 if (e.ctrlKey || e.metaKey) {
                     if (tab.selectedItems.has(name)) {
                         tab.selectedItems.delete(name);
@@ -801,7 +802,8 @@ export class FileManager {
             });
             
             // 双击打开
-            item.addEventListener('dblclick', () => {
+            item.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
                 if (isDir) {
                     this.navigate(this.joinPath(tab.path, name));
                 } else {
@@ -810,6 +812,16 @@ export class FileManager {
                 }
             });
         });
+        
+        // 点击空白处取消选中
+        this.els.content.addEventListener('click', (e) => {
+            // 只有点击 content 本身才取消选中
+            if (e.target === this.els.content || e.target.classList.contains('fm-list-body') || e.target.classList.contains('fm-list-view') || e.target.classList.contains('fm-grid-view')) {
+                tab.selectedItems.clear();
+                this.els.content.querySelectorAll('[data-name]').forEach(i => i.classList.remove('selected'));
+                this.updateToolbarButtons();
+            }
+        }, { once: true }); // once: true 防止重复绑定
     }
     
     // ========== 搜索功能 ==========
@@ -1601,30 +1613,59 @@ export class FileManager {
     showEditor(filename, data) {
         const tab = this.getActiveTab();
         
+        // 检查数据
+        if (!data) {
+            this.options.toast?.error?.('无法读取文件数据');
+            return;
+        }
+        
+        const content = data.content || '';
+        const fileSize = data.size || 0;
+        const fileModified = data.modified || new Date().toISOString();
+        const fileType = data.type || 'text';
+        
         // 创建编辑器弹窗
         const overlay = document.createElement('div');
         overlay.className = 'editor-overlay';
         overlay.innerHTML = `
             <div class="editor-dialog">
                 <div class="editor-header">
-                    <div class="editor-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                        <span class="editor-filename">${filename}</span>
-                        <span class="editor-type">${data.type || 'text'}</span>
+                    <div class="editor-drag-area">
+                        <div class="editor-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            <span class="editor-filename">${this.escapeHtml(filename)}</span>
+                            <span class="editor-type">${fileType}</span>
+                        </div>
                     </div>
-                    <div class="editor-actions">
-                        <button class="editor-btn editor-btn-save" id="editor-save">
+                    <div class="editor-toolbar">
+                        <button class="editor-tool-btn" id="editor-format" title="格式化 (Ctrl+Shift+F)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <line x1="21" y1="10" x2="3" y2="10"/>
+                                <line x1="21" y1="6" x2="3" y2="6"/>
+                                <line x1="21" y1="14" x2="3" y2="14"/>
+                                <line x1="21" y1="18" x2="3" y2="18"/>
+                            </svg>
+                        </button>
+                        <button class="editor-tool-btn primary" id="editor-save" title="保存 (Ctrl+S)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                                 <polyline points="17 21 17 13 7 13 7 21"/>
                                 <polyline points="7 3 7 8 15 8"/>
                             </svg>
-                            保存
                         </button>
-                        <button class="editor-btn editor-btn-close" id="editor-close">
+                        <div class="editor-divider"></div>
+                        <button class="editor-tool-btn" id="editor-maximize" title="最大化">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <polyline points="15 3 21 3 21 9"/>
+                                <polyline points="9 21 3 21 3 15"/>
+                                <line x1="21" y1="3" x2="14" y2="10"/>
+                                <line x1="3" y1="21" x2="10" y2="14"/>
+                            </svg>
+                        </button>
+                        <button class="editor-tool-btn close" id="editor-close" title="关闭">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                 <line x1="18" y1="6" x2="6" y2="18"/>
                                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -1633,12 +1674,12 @@ export class FileManager {
                     </div>
                 </div>
                 <div class="editor-body">
-                    <textarea class="editor-textarea" id="editor-content" spellcheck="false">${this.escapeHtml(data.content)}</textarea>
+                    <textarea class="editor-textarea" id="editor-content" spellcheck="false"></textarea>
                 </div>
                 <div class="editor-footer">
-                    <span class="editor-info">大小: ${this.formatSize(data.size)}</span>
-                    <span class="editor-info">修改: ${new Date(data.modified).toLocaleString()}</span>
-                    <span class="editor-info">行数: ${data.content.split('\n').length}</span>
+                    <span class="editor-info">大小: ${this.formatSize(fileSize)}</span>
+                    <span class="editor-info">修改: ${new Date(fileModified).toLocaleString()}</span>
+                    <span class="editor-info">行数: ${content.split('\n').length}</span>
                 </div>
             </div>
         `;
@@ -1646,12 +1687,18 @@ export class FileManager {
         document.body.appendChild(overlay);
 
         // 缓存元素
+        const dialog = overlay.querySelector('.editor-dialog');
         const textarea = overlay.querySelector('#editor-content');
         const saveBtn = overlay.querySelector('#editor-save');
         const closeBtn = overlay.querySelector('#editor-close');
+        const maximizeBtn = overlay.querySelector('#editor-maximize');
+        const formatBtn = overlay.querySelector('#editor-format');
+
+        // 使用 value 设置内容（安全，不会解析 HTML）
+        textarea.value = content;
 
         // 设置 textarea 样式基于文件类型
-        if (['json', 'javascript', 'typescript', 'go', 'python', 'css', 'html', 'xml', 'yaml', 'shell', 'sql'].includes(data.type)) {
+        if (['json', 'javascript', 'typescript', 'go', 'python', 'css', 'html', 'xml', 'yaml', 'shell', 'sql'].includes(fileType)) {
             textarea.style.fontFamily = "'Fira Code', 'JetBrains Mono', 'Consolas', monospace";
         }
 
@@ -1663,7 +1710,7 @@ export class FileManager {
             }
             if (e.key === 'Escape') {
                 e.preventDefault();
-                this.closeEditor(overlay);
+                this.confirmCloseEditor(overlay, textarea, content);
             }
         };
         
@@ -1677,18 +1724,144 @@ export class FileManager {
 
         // 关闭按钮
         closeBtn.addEventListener('click', () => {
-            this.closeEditor(overlay);
+            this.confirmCloseEditor(overlay, textarea, content);
         });
 
-        // 点击背景关闭
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                this.closeEditor(overlay);
+        // 最大化按钮
+        let isMaximized = false;
+        maximizeBtn.addEventListener('click', () => {
+            isMaximized = !isMaximized;
+            if (isMaximized) {
+                dialog.classList.add('maximized');
+                maximizeBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <polyline points="4 14 10 14 10 20"/>
+                        <polyline points="20 10 14 10 14 4"/>
+                        <line x1="14" y1="10" x2="21" y2="3"/>
+                        <line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                `;
+            } else {
+                dialog.classList.remove('maximized');
+                maximizeBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <polyline points="15 3 21 3 21 9"/>
+                        <polyline points="9 21 3 21 3 15"/>
+                        <line x1="21" y1="3" x2="14" y2="10"/>
+                        <line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                `;
             }
         });
 
+        // 格式化按钮
+        formatBtn.addEventListener('click', () => {
+            this.formatContent(textarea, fileType);
+        });
+
+        // 拖动功能（居中显示）
+        this.makeDraggable(overlay, dialog, overlay.querySelector('.editor-drag-area'));
+
         // 聚焦到编辑器
         textarea.focus();
+    }
+
+    /**
+     * 格式化内容
+     */
+    formatContent(textarea, fileType) {
+        const content = textarea.value;
+        let formatted = content;
+        
+        try {
+            if (fileType === 'json') {
+                formatted = JSON.stringify(JSON.parse(content), null, 2);
+            } else if (fileType === 'html' || fileType === 'xml') {
+                // 简单的 HTML/XML 格式化
+                formatted = content
+                    .replace(/></g, '>\n<')
+                    .replace(/^\s+|\s+$/gm, '');
+            }
+            textarea.value = formatted;
+            this.options.toast?.success?.('格式化完成');
+        } catch (error) {
+            this.options.toast?.error?.('格式化失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 使元素可拖动
+     */
+    makeDraggable(overlay, dialog, dragArea) {
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+        
+        // 计算初始居中位置（先让 dialog 渲染，获取尺寸）
+        requestAnimationFrame(() => {
+            const rect = dialog.getBoundingClientRect();
+            initialLeft = (window.innerWidth - rect.width) / 2;
+            initialTop = (window.innerHeight - rect.height) / 2;
+            dialog.style.left = initialLeft + 'px';
+            dialog.style.top = initialTop + 'px';
+        });
+
+        dragArea.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            const rect = dialog.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+            
+            dragArea.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            
+            const newLeft = initialLeft + deltaX;
+            const newTop = initialTop + deltaY;
+            
+            // 边界限制
+            const maxLeft = window.innerWidth - 100;
+            const maxTop = window.innerHeight - 50;
+            
+            dialog.style.left = Math.max(-dialog.offsetWidth + 100, Math.min(maxLeft, newLeft)) + 'px';
+            dialog.style.top = Math.max(0, Math.min(maxTop, newTop)) + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                dragArea.style.cursor = 'move';
+            }
+        });
+    }
+
+    /**
+     * 确认关闭编辑器（检查未保存更改）
+     */
+    async confirmCloseEditor(overlay, textarea, originalContent) {
+        // 如果已保存，直接关闭
+        if (overlay.dataset.saved === 'true') {
+            this.closeEditor(overlay);
+            return;
+        }
+        
+        const currentContent = textarea.value;
+        
+        // 检查是否有未保存的更改
+        if (currentContent !== originalContent) {
+            const confirmed = await this.showConfirmDialog('关闭编辑器', '有未保存的更改，确定要关闭吗？');
+            if (!confirmed) return;
+        }
+        
+        this.closeEditor(overlay);
     }
 
     /**
@@ -1713,6 +1886,8 @@ export class FileManager {
             const result = await response.json();
             if (result?.code === 200) {
                 this.options.toast?.success?.('保存成功');
+                // 标记已保存
+                overlay.dataset.saved = 'true';
                 // 更新页脚信息
                 const footer = overlay.querySelector('.editor-footer');
                 const lines = content.split('\n').length;
