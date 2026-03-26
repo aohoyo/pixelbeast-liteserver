@@ -4,58 +4,33 @@
  * 负责 SSL 证书的管理、申请、续签
  */
 
-import { globalEvents } from '../core/events.js';
+import { BaseTab } from './BaseTab.js';
 
-// 存储依赖以便在闭包函数中使用
-let deps = null;
+class CertTab extends BaseTab {
+    constructor(deps) {
+        super(deps, 'cert');
+    }
 
-/**
- * 初始化证书标签页
- * @param {Object} dependencies - 依赖注入 { api, toast }
- */
-export function initCertTab({ api, toast }) {
-    console.log('🔐 初始化证书标签页...');
+    onInit() {
+        console.log('🔐 初始化证书标签页...');
+        this.bindEvents();
+    }
 
-    // 保存依赖
-    deps = { api, toast };
+    bindEvents() {
+        // 添加证书按钮
+        const addBtn = document.getElementById('add-cert-btn');
+        addBtn?.addEventListener('click', () => {
+            this.toast.info('证书申请功能开发中...');
+        });
+    }
 
-    // 绑定事件
-    bindEvents();
+    async onLoad() {
+        const certList = document.getElementById('cert-list');
+        if (!certList) return;
 
-    // 监听标签页切换
-    globalEvents.match('tab:switch:cert', () => {
-        loadCerts();
-    });
-}
-
-/**
- * 绑定事件监听器
- */
-function bindEvents() {
-    if (!deps) return;
-    const { toast } = deps;
-
-    // 添加证书按钮
-    const addBtn = document.getElementById('add-cert-btn');
-    addBtn?.addEventListener('click', () => {
-        toast.info('证书申请功能开发中...');
-    });
-}
-
-/**
- * 加载证书列表
- */
-async function loadCerts() {
-    if (!deps) return;
-    const { toast } = deps;
-
-    const certList = document.getElementById('cert-list');
-    if (!certList) return;
-
-    try {
         // TODO: 调用 API 获取证书列表
-        // const response = await api.get('/api/certs');
-        // const certs = await api.parseJSON(response);
+        // const response = await this.api.get('/api/certs');
+        // const certs = await this.api.parseJSON(response);
 
         // 暂时显示默认证书
         certList.innerHTML = `
@@ -70,8 +45,19 @@ async function loadCerts() {
                 </div>
             </div>
         `;
-    } catch (error) {
-        console.error('加载证书失败:', error);
-        toast.error('加载证书失败');
     }
+}
+
+// 单例
+let instance = null;
+
+/**
+ * 初始化证书标签页
+ */
+export function initCertTab(deps) {
+    if (!instance) {
+        instance = new CertTab(deps);
+        instance.init();
+    }
+    return instance;
 }

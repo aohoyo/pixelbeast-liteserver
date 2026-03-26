@@ -1,580 +1,199 @@
 /**
  * 文件管理模块
- *
- * 负责 HTTP 和 FTP 文件浏览、上传、下载、删除、复制、创建目录
+ * 
+ * 宝塔风格文件管理器
+ * 直接管理服务器文件系统
+ * 根据操作系统类型显示不同的快捷目录
  */
 
-import { globalEvents } from '../core/events.js';
+import { BaseTab } from './BaseTab.js';
+import { FileManager } from '../components/file-manager.js';
 
-/**
- * 格式化文件大小
- * @param {number} bytes - 字节数
- * @returns {string} 格式化后的大小
- */
-function formatSize(bytes) {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+// 快捷目录配置
+const QUICK_DIRS = {
+    // Linux 系统目录
+    linux: [
+        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
+        { section: '系统目录' },
+        { path: '/', name: '根目录', icon: 'server' },
+        { path: '/home', name: 'home', icon: 'home' },
+        { path: '/var', name: 'var', icon: 'database' },
+        { path: '/etc', name: 'etc', icon: 'settings' },
+        { path: '/tmp', name: 'tmp', icon: 'trash' },
+        { path: '/usr', name: 'usr', icon: 'package' }
+    ],
+    
+    // Windows 系统目录
+    windows: [
+        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
+        { section: '系统目录' },
+        { path: '此电脑', name: '此电脑', icon: 'computer' },
+        { path: 'C:/', name: 'C 盘', icon: 'hard-drive' },
+        { path: 'D:/', name: 'D 盘', icon: 'hard-drive' },
+        { path: 'E:/', name: 'E 盘', icon: 'hard-drive' }
+    ],
+    
+    // macOS 系统目录
+    darwin: [
+        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
+        { section: '系统目录' },
+        { path: '/', name: '根目录', icon: 'server' },
+        { path: '/Users', name: 'Users', icon: 'users' },
+        { path: '/Applications', name: 'Applications', icon: 'package' },
+        { path: '/Library', name: 'Library', icon: 'folder' },
+        { path: '/tmp', name: 'tmp', icon: 'trash' }
+    ]
+};
+
+// 图标 SVG
+const ICONS = {
+    server: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>`,
+    home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
+    database: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+    settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+    package: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+    folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+    'file-text': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+    computer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+    'hard-drive': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`,
+    users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
+};
+
+class FilesTab extends BaseTab {
+    constructor(deps) {
+        super(deps, 'files');
+        this.fileManager = null;
+        this.programDir = null;
+        this.systemInfo = null;
+    }
+
+    onInit() {
+        console.log('初始化文件管理...');
+        
+        // 获取系统信息
+        this.systemInfo = this.state.get('system') || { os: 'linux', isWindows: false, isLinux: true };
+        console.log('系统信息:', this.systemInfo);
+
+        // 渲染快捷目录
+        this.renderQuickNav();
+        
+        // 初始化文件管理器
+        this.initFileManager();
+    }
+
+    /**
+     * 根据系统类型渲染快捷目录
+     */
+    renderQuickNav() {
+        const container = this.$('#fm-quick-nav');
+        if (!container) return;
+
+        const os = this.systemInfo.os || 'linux';
+        const dirs = QUICK_DIRS[os] || QUICK_DIRS.linux;
+
+        let html = '';
+        for (const item of dirs) {
+            if (item.section) {
+                // 分隔标题
+                html += `<div class="fm-quick-divider"></div>`;
+                html += `<div class="fm-quick-section-title">${item.section}</div>`;
+            } else {
+                // 快捷项
+                const icon = ICONS[item.icon] || ICONS.folder;
+                // 显示名称，hover 显示完整路径
+                let displayName = item.name;
+                let titlePath = item.path;
+                
+                // 项目目录特殊处理：始终显示"项目目录"，hover 显示完整路径
+                if (item.showFullPath) {
+                    titlePath = this.programDir || item.path;
+                }
+                
+                html += `
+                    <a class="fm-quick-item" data-path="${item.path}" title="${titlePath}">
+                        ${icon}
+                        <span class="fm-quick-name">${displayName}</span>
+                    </a>
+                `;
+            }
+        }
+
+        container.innerHTML = html;
+
+        // 绑定点击事件
+        this.$$('.fm-quick-item').forEach(item => {
+            item.addEventListener('click', () => {
+                this.$$('.fm-quick-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                const path = item.dataset.path;
+                if (this.fileManager && path) {
+                    this.fileManager.navigate(path);
+                }
+            });
+        });
+    }
+
+    initFileManager() {
+        const container = this.$('#file-manager-container');
+        if (!container) return;
+
+        this.fileManager = new FileManager({
+            container: container,
+            apiPath: '/admin/api/files',
+            root: '.',  // 默认程序运行目录（Windows/Linux 通用）
+            viewMode: 'grid',  // 默认图标模式
+            toast: this.toast,
+            dialog: this.dialog,  // 传递 dialog 组件
+            onOpen: (path) => {
+                window.open(`/admin/api/files/download?path=${encodeURIComponent(path)}`, '_blank');
+            },
+            onPathChange: (path, programDir) => {
+                // 更新项目目录显示
+                if (programDir && !this.programDir) {
+                    this.programDir = programDir;
+                    this.renderQuickNav();
+                }
+            }
+        });
+
+        // 监听路径变化
+        const originalNavigate = this.fileManager.navigate.bind(this.fileManager);
+        this.fileManager.navigate = (path) => {
+            originalNavigate(path);
+            this.updateQuickNavActive(path);
+        };
+
+        // 延迟加载检查
+        setTimeout(() => {
+            if (this.$('#files')?.classList.contains('active')) {
+                this.fileManager?.loadFilesForTab();
+            }
+        }, 500);
+    }
+
+    updateQuickNavActive(path) {
+        this.$$('.fm-quick-item').forEach(item => {
+            const itemPath = item.dataset.path;
+            item.classList.toggle('active', itemPath === path);
+        });
+    }
+
+    async onLoad() {
+        if (this.fileManager) {
+            this.fileManager.loadFilesForTab();
+        }
+    }
 }
 
-/**
- * 初始化文件面板
- * @param {Object} dependencies - 依赖注入 { state, api, toast, message }
- */
-export function initFilesTab({ state, api, toast, message }) {
-    console.log('初始化文件面板...');
+// 单例
+let instance = null;
 
-    // 状态
-    let currentPath = '/';
-    let currentFtpPath = '/';
-    let currentType = 'http'; // 'http' or 'ftp'
-
-    // 加载状态标记
-    let httpLoaded = false;
-    let ftpLoaded = false;
-
-    // 保存管理器引用
-    let httpManager = null;
-    let ftpManager = null;
-
-    // 保存依赖引用供闭包使用
-    const depsRef = { toast, message };
-
-    /**
-     * 初始化 HTTP 文件管理器
-     */
-    function initHttpFileManager() {
-        const manager = createFileManager('http');
-        manager.init(); // 初始化事件绑定
-        
-        // 监听加载事件
-        globalEvents.on('files:load', (data) => {
-            if (data.type === 'http') {
-                manager.loadFiles();
-            }
-        });
-
-        return manager;
+export function initFilesTab(deps) {
+    if (!instance) {
+        instance = new FilesTab(deps);
+        instance.init();
     }
-
-    /**
-     * 初始化 FTP 文件管理器
-     */
-    function initFtpFileManager() {
-        const manager = createFileManager('ftp');
-        manager.init(); // 初始化事件绑定
-        
-        // 监听加载事件
-        globalEvents.on('files:load', (data) => {
-            if (data.type === 'ftp') {
-                manager.loadFiles();
-            }
-        });
-
-        return manager;
-    }
-
-    // 创建管理器实例
-    httpManager = initHttpFileManager();
-    ftpManager = initFtpFileManager();
-
-    // 监听标签页切换事件
-    globalEvents.on('tab:switch:files', loadFilesIfNotLoaded);
-
-    // 也监听通用的标签页切换事件
-    globalEvents.on('tab:switch:*', (data) => {
-        if (data.tabName === 'files') {
-            loadFilesIfNotLoaded();
-        }
-    });
-
-    // 初始加载检查（处理刷新后直接在文件页的情况）
-    setTimeout(() => {
-        const filesTab = document.getElementById('files');
-        if (filesTab && filesTab.classList.contains('active')) {
-            console.log('文件标签页已激活，加载文件...');
-            loadFilesIfNotLoaded();
-        }
-    }, 500);
-
-    function loadFilesIfNotLoaded() {
-        if (!httpLoaded && httpManager) {
-            console.log('加载 HTTP 文件列表...');
-            httpManager.loadFiles();
-            httpLoaded = true;
-        }
-        if (!ftpLoaded && ftpManager) {
-            console.log('加载 FTP 文件列表...');
-            ftpManager.loadFiles();
-            ftpLoaded = true;
-        }
-    }
-
-    /**
-     * 创建文件管理器
-     * @param {string} type - 类型 ('http' | 'ftp')
-     * @returns {Object} 文件管理器对象
-     */
-    function createFileManager(type) {
-        const prefix = type === 'ftp' ? 'ftp-' : '';
-        const apiPath = type === 'ftp' ? '/api/ftp/files' : '/api/files';
-
-        return {
-            init(autoLoad = true) {
-                // 刷新按钮
-                const refreshBtn = document.getElementById(`${prefix}refresh-files`);
-                refreshBtn?.addEventListener('click', () => this.loadFiles());
-
-                // 新建目录按钮
-                const mkdirBtn = document.getElementById(`${prefix}mkdir-btn`);
-                mkdirBtn?.addEventListener('click', () => this.showMkdirModal());
-
-                // 上传按钮
-                const uploadBtn = document.getElementById(`${prefix}upload-btn`);
-                uploadBtn?.addEventListener('click', () => {
-                    const fileInput = document.getElementById(`${prefix}file-input`);
-                    if (fileInput) {
-                        fileInput.value = ''; // 清空以允许重复选择同一文件
-                        fileInput.click();
-                    }
-                });
-
-                // 文件输入
-                const fileInput = document.getElementById(`${prefix}file-input`);
-                fileInput?.addEventListener('change', (e) => {
-                    this.handleFileUpload(e.target.files);
-                });
-
-                // 新建目录对话框
-                const mkdirConfirm = document.getElementById('mkdir-confirm');
-                const mkdirCancel = document.getElementById('mkdir-cancel');
-                const mkdirModal = document.getElementById('mkdir-modal');
-                const mkdirName = document.getElementById('mkdir-name');
-
-                mkdirConfirm?.addEventListener('click', async () => {
-                    const name = mkdirName?.value.trim();
-                    if (name) {
-                        await this.createDirectory(name);
-                        mkdirModal?.classList.remove('active');
-                        if (mkdirName) mkdirName.value = '';
-                    }
-                });
-
-                mkdirCancel?.addEventListener('click', () => {
-                    mkdirModal?.classList.remove('active');
-                    if (mkdirName) mkdirName.value = '';
-                });
-
-                // 点击模态框背景关闭
-                mkdirModal?.addEventListener('click', (e) => {
-                    if (e.target === mkdirModal) {
-                        mkdirModal?.classList.remove('active');
-                        if (mkdirName) mkdirName.value = '';
-                    }
-                });
-
-                // 回车键确认
-                mkdirName?.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        mkdirConfirm?.click();
-                    }
-                });
-            },
-
-            async loadFiles(path = null) {
-                const loadPath = path || (type === 'ftp' ? currentFtpPath : currentPath);
-
-                try {
-                    const response = await api.get(`${apiPath}?path=${encodeURIComponent(loadPath)}`);
-                    if (response && response.ok) {
-                        const data = await api.parseJSON(response);
-                        this.renderFiles(data.files || []);
-                    } else {
-                        toast.error('加载文件列表失败');
-                    }
-                } catch (error) {
-                    console.error('加载文件失败:', error);
-                    toast.error('加载文件列表失败');
-                }
-            },
-
-            renderFiles(files) {
-                const fileList = document.getElementById(`${prefix}file-list`);
-                const pathEl = document.getElementById(`${prefix}current-path`);
-
-                if (!fileList) return;
-
-                // 更新路径显示
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-                if (pathEl) pathEl.textContent = current;
-
-                // 清空列表
-                fileList.innerHTML = '';
-
-                // 添加父目录
-                if (current !== '/') {
-                    const parentItem = document.createElement('div');
-                    parentItem.className = 'file-item parent-dir';
-                    parentItem.innerHTML = `
-                        <div class="file-name">.. 父目录</div>
-                    `;
-                    parentItem.addEventListener('click', () => {
-                        this.navigateToParent();
-                    });
-                    fileList.appendChild(parentItem);
-                }
-
-                // 渲染文件列表
-                for (const file of files) {
-                    const item = document.createElement('div');
-                    item.className = 'file-item';
-
-                    const icon = file.is_dir ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>` : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
-                    const size = file.is_dir ? '' : formatSize(file.size);
-
-                    item.innerHTML = `
-                        <div class="file-name"><span class="file-icon">${icon}</span> ${this.escapeHtml(file.name)}</div>
-                        <div class="file-size">${size}</div>
-                        <div class="file-actions">
-                            ${!file.is_dir ? `<button class="download-btn" data-name="${this.escapeHtml(file.name)}" title="下载文件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}
-                            <button class="rename-btn" data-name="${this.escapeHtml(file.name)}" title="重命名"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                            <button class="copy-btn" data-name="${this.escapeHtml(file.name)}" title="复制"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-                            <button class="delete-btn" data-name="${this.escapeHtml(file.name)}" title="删除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-                        </div>
-                    `;
-
-                    // 点击导航
-                    item.addEventListener('click', (e) => {
-                        if (!e.target.closest('.file-actions')) {
-                            if (file.is_dir) {
-                                this.navigateTo(file.name);
-                            }
-                        }
-                    });
-
-                    // 下载按钮
-                    const downloadBtn = item.querySelector('.download-btn');
-                    downloadBtn?.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        await this.downloadFile(file.name);
-                    });
-
-                    // 重命名按钮
-                    const renameBtn = item.querySelector('.rename-btn');
-                    renameBtn?.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        await this.renameFile(file.name);
-                    });
-
-                    // 复制按钮
-                    const copyBtn = item.querySelector('.copy-btn');
-                    copyBtn?.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        await this.copyFile(file.name);
-                    });
-
-                    // 删除按钮
-                    const deleteBtn = item.querySelector('.delete-btn');
-                    deleteBtn?.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (confirm(`确定要删除 "${file.name}" 吗？`)) {
-                            await this.deleteFile(file.name, file.is_dir);
-                        }
-                    });
-
-                    fileList.appendChild(item);
-                }
-
-                // 如果没有文件
-                if (files.length === 0) {
-                    const emptyMsg = document.createElement('div');
-                    emptyMsg.className = 'file-list-empty';
-                    emptyMsg.textContent = '此目录为空';
-                    fileList.appendChild(emptyMsg);
-                }
-            },
-
-            navigateTo(dirname) {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-                let newPath;
-
-                if (current === '/') {
-                    newPath = '/' + dirname;
-                } else {
-                    newPath = current + '/' + dirname;
-                }
-
-                // 规范化路径
-                newPath = newPath.replace(/\/+/g, '/');
-
-                if (type === 'ftp') {
-                    currentFtpPath = newPath;
-                } else {
-                    currentPath = newPath;
-                }
-
-                this.loadFiles(newPath);
-            },
-
-            navigateToParent() {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                if (current === '/') return;
-
-                const parts = current.split('/').filter(Boolean);
-                parts.pop();
-                const parentPath = parts.length > 0 ? '/' + parts.join('/') : '/';
-
-                if (type === 'ftp') {
-                    currentFtpPath = parentPath;
-                } else {
-                    currentPath = parentPath;
-                }
-
-                this.loadFiles(parentPath);
-            },
-
-            showMkdirModal() {
-                const modal = document.getElementById('mkdir-modal');
-                modal?.classList.add('active');
-                document.getElementById('mkdir-name')?.focus();
-            },
-
-            async createDirectory(name) {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                try {
-                    const response = await api.post(`${apiPath}/mkdir`, {
-                        path: current,
-                        name: name
-                    });
-
-                    const data = response ? await api.parseJSON(response) : null;
-                    if (data) {
-                        depsRef.message.success('目录创建成功');
-                        this.loadFiles();
-                    } else {
-                        depsRef.message.error('目录创建失败');
-                    }
-                } catch (error) {
-                    console.error('创建目录失败:', error);
-                    depsRef.message.error(error.message || '目录创建失败');
-                }
-            },
-
-            async deleteFile(name, isDir) {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                try {
-                    const response = await api.post(`${apiPath}/delete`, {
-                        path: current,
-                        name: name
-                    });
-
-                    const data = response ? await api.parseJSON(response) : null;
-                    if (data) {
-                        toast.success(isDir ? '目录删除成功' : '文件删除成功', 2000);
-                        this.loadFiles();
-                    } else {
-                        toast.error(isDir ? '目录删除失败' : '文件删除失败', 3000);
-                    }
-                } catch (error) {
-                    console.error('删除失败:', error);
-                    toast.error(error.message || (isDir ? '目录删除失败' : '文件删除失败'), 3000);
-                }
-            },
-
-            async downloadFile(name) {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                try {
-                    // 获取当前页面路径（管理面板基础路径）
-                    const basePath = window.location.pathname.replace(/\/(index\.html)?$/, '') || '';
-
-                    // 构建下载 URL
-                    const downloadUrl = `${basePath}${apiPath}/download?path=${encodeURIComponent(current)}&name=${encodeURIComponent(name)}`;
-
-                    // 创建隐藏的 a 标签触发下载
-                    const link = document.createElement('a');
-                    link.href = downloadUrl;
-                    link.download = name;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
-                    toast.success('开始下载', 2000);
-                } catch (error) {
-                    console.error('下载失败:', error);
-                    toast.error('下载失败', 3000);
-                }
-            },
-
-            async renameFile(name) {
-                const newName = prompt('请输入新文件名:', name);
-                if (!newName || newName === name) return;
-
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                try {
-                    const response = await api.post(`${apiPath}/rename`, {
-                        path: current,
-                        oldName: name,
-                        newName: newName
-                    });
-
-                    const data = response ? await api.parseJSON(response) : null;
-                    if (data) {
-                        toast.success('重命名成功', 2000);
-                        this.loadFiles();
-                    } else {
-                        toast.error('重命名失败', 3000);
-                    }
-                } catch (error) {
-                    console.error('重命名失败:', error);
-                    toast.error(error.message || '重命名失败', 3000);
-                }
-            },
-
-            async copyFile(name) {
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                // 构建文件访问链接
-                let fileUrl = '';
-                if (type === 'http') {
-                    // HTTP 文件：构建完整 URL
-                    const protocol = window.location.protocol;
-                    const host = window.location.host;
-
-                    // 构建文件路径（相对于 HTTP 根目录）
-                    let filePath = current === '/' ? name : current.replace(/^\//, '') + '/' + name;
-
-                    // 构建完整 URL
-                    fileUrl = `${protocol}//${host}/${filePath}`;
-
-                    // 复制链接到剪贴板
-                    try {
-                        await navigator.clipboard.writeText(fileUrl);
-                        depsRef.message.success('链接已复制');
-                    } catch (err) {
-                        // 降级方案：使用传统方法
-                        const textArea = document.createElement('textarea');
-                        textArea.value = fileUrl;
-                        textArea.style.position = 'fixed';
-                        textArea.style.opacity = '0';
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        try {
-                            document.execCommand('copy');
-                            depsRef.message.success('链接已复制');
-                        } catch (e) {
-                            depsRef.message.error('复制失败，请手动复制链接');
-                            console.log('文件链接:', fileUrl);
-                        }
-                        document.body.removeChild(textArea);
-                    }
-                } else {
-                    // FTP 文件：执行文件复制功能
-                    // 生成新文件名
-                    let newName = name;
-                    const extIndex = name.lastIndexOf('.');
-                    if (extIndex > 0) {
-                        const baseName = name.substring(0, extIndex);
-                        const ext = name.substring(extIndex);
-                        newName = `${baseName}-copy${ext}`;
-                    } else {
-                        newName = `${name}-copy`;
-                    }
-
-                    try {
-                        const response = await api.post(`${apiPath}/copy`, {
-                            srcPath: current,
-                            srcName: name,
-                            dstName: newName
-                        });
-
-                        const data = response ? await api.parseJSON(response) : null;
-                        if (data) {
-                            toast.success('文件复制成功', 2000);
-                            this.loadFiles();
-                        } else {
-                            toast.error('文件复制失败', 3000);
-                        }
-                    } catch (error) {
-                        console.error('复制失败:', error);
-                        toast.error(error.message || '文件复制失败', 3000);
-                    }
-                }
-            },
-
-            async handleFileUpload(files) {
-                if (files.length === 0) return;
-
-                const current = type === 'ftp' ? currentFtpPath : currentPath;
-
-                // 批量上传：显示总进度
-                const totalFiles = files.length;
-                let uploadedCount = 0;
-                let failedFiles = [];
-
-                const progressContainer = document.getElementById(`${prefix}upload-progress`);
-                const progressText = document.getElementById(`${prefix}progress-text`);
-                const progressPercent = document.getElementById(`${prefix}progress-percent`);
-                const progressFill = document.getElementById(`${prefix}progress-fill`);
-
-                progressContainer?.style.removeProperty('display');
-
-                for (const file of files) {
-                    try {
-                        await this.uploadFile(file, current, (percent) => {
-                            if (progressText) {
-                                progressText.textContent = `正在上传 ${file.name} (${uploadedCount + 1}/${totalFiles})...`;
-                            }
-                            if (progressPercent) {
-                                const overallPercent = Math.round(((uploadedCount * 100) + percent) / totalFiles);
-                                progressPercent.textContent = `${overallPercent}%`;
-                            }
-                            if (progressFill) {
-                                const overallPercent = ((uploadedCount * 100) + percent) / totalFiles;
-                                progressFill.style.width = `${overallPercent}%`;
-                            }
-                        });
-                        uploadedCount++;
-                    } catch (error) {
-                        console.error(`上传失败: ${file.name}`, error);
-                        failedFiles.push(file.name);
-                    }
-                }
-
-                // 隐藏进度条
-                if (progressContainer) progressContainer.style.display = 'none';
-                if (progressFill) progressFill.style.width = '0%';
-
-                // 显示结果
-                if (failedFiles.length === 0) {
-                    depsRef.message.success(`成功上传 ${uploadedCount} 个文件`);
-                } else {
-                    depsRef.message.error(`上传完成：成功 ${uploadedCount} 个，失败 ${failedFiles.length} 个`);
-                }
-
-                // 刷新文件列表
-                this.loadFiles();
-            },
-
-            async uploadFile(file, path, onProgress) {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('path', path);
-
-                await api.upload(`${apiPath}/upload`, formData, onProgress);
-            },
-
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-        };
-    }
+    return instance;
 }

@@ -179,6 +179,7 @@
     width: calc(100% - 220px);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .content-area {
@@ -226,6 +227,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    height: 100%;
 }
 
 @keyframes fadeIn {

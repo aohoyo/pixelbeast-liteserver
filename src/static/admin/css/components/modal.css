@@ -101,6 +101,13 @@
     border-top: 1px solid var(--border);
 }
 
+/* 模态框操作按钮组 */
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 .modal-content {
     background: var(--card-bg);
     padding: 28px;

@@ -1,25 +1,142 @@
-<div class="card">
-    <div class="card-header">
-        <i class="icon icon-folder"></i>
-        <h3>HTTP 文件管理</h3>
-    </div>
-    <div class="toolbar">
-        <button class="btn" id="refresh-files"><i class="icon icon-refresh"></i> 刷新</button>
-        <button class="btn btn-primary" id="mkdir-btn"><i class="icon icon-folder"></i> 新建目录</button>
-        <button class="btn btn-success" id="upload-btn"><i class="icon icon-upload"></i> 上传文件</button>
-        <input type="file" id="file-input" style="display: none;" multiple>
-    </div>
-    <div class="upload-progress" id="upload-progress" style="display: none;">
-        <div class="progress-info">
-            <span id="progress-text">正在上传...</span>
-            <span id="progress-percent">0%</span>
+<div class="file-manager-page">
+    <!-- 左侧快捷目录 -->
+    <aside class="fm-sidebar">
+        <div class="fm-sidebar-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <span>快捷目录</span>
         </div>
-        <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-        </div>
-    </div>
-    <div class="file-path" id="current-path">/</div>
-    <div class="file-list" id="file-list">
-        <p class="loading">加载中...</p>
+        <nav class="fm-quick-nav" id="fm-quick-nav">
+            <!-- 由 JS 动态生成 -->
+        </nav>
+    </aside>
+    
+    <!-- 文件管理器主体 -->
+    <div class="fm-main">
+        <div id="file-manager-container" class="fm-container"></div>
     </div>
 </div>
+
+<style>
+.file-manager-page {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: var(--space-md);
+}
+
+/* 侧边栏 */
+.fm-sidebar {
+    width: 180px;
+    flex-shrink: 0;
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.fm-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-sm);
+}
+
+.fm-sidebar-header .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.fm-quick-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-quick-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.fm-quick-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-quick-item:hover {
+    background: var(--bg-hover);
+}
+
+.fm-quick-item.active {
+    background: var(--primary-alpha);
+    color: var(--primary);
+}
+
+.fm-quick-item svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+}
+
+.fm-quick-item.active svg {
+    color: var(--primary);
+}
+
+.fm-quick-divider {
+    height: 1px;
+    background: var(--border);
+    margin: var(--space-sm) 0;
+}
+
+.fm-quick-section-title {
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 主区域 */
+.fm-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-container {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .fm-sidebar {
+        display: none;
+    }
+}
+</style>

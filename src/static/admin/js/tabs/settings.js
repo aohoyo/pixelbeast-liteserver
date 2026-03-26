@@ -4,644 +4,210 @@
  * 负责系统设置的加载、编辑、保存
  */
 
-import { globalEvents } from '../core/events.js';
+import { BaseTab } from './BaseTab.js';
 import { settingsValidator } from './settings-validator.js';
 
-/**
- * 默认配置模板
- */
-const DEFAULT_CONFIG = {
-    http: {
-        enabled: true,
-        port: 8080,
-        root: './web',
-        domain: ''
-    },
-    ftp: {
-        enabled: true,
-        port: 2121,
-        root: './ftp',
-        users: [
-            { username: 'flash', password: 'flash' }
-        ]
-    },
-    admin: {
-        enabled: true,
-        path: '/admin',
-        username: 'admin',
-        password: 'admin123',
-        port: 9527,
-        domain: '',
-        ssl: false
-    },
-    security: {
-        allowIps: [],
-        sessionTimeout: 86400,
-        enable2FA: false,
-        logOperations: true,
-        confirmDangerous: true
-    },
-    directories: {
-        defaultWebRoot: './web',
-        defaultBackupDir: './backups'
-    }
-};
-
-// 存储依赖以便在闭包函数中使用
-let deps = null;
-
-// 存储当前配置
-let currentConfig = null;
-
-// 存储原始表单值快照（用于取消时恢复）
-let originalFormValues = {};
-
-// 跟踪是否有未保存的修改
-let hasUnsavedChanges = false;
-// 当前活跃的 Tab
-let currentTab = 'panel';
-
-/**
- * 生成随机密码
- * @param {number} length - 密码长度
- * @returns {string} 随机密码
- */
-function generateRandomPassword(length = 16) {
-    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-    let password = '';
-
-    // 确保包含各种字符类型
-    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // 小写
-    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // 大写
-    password += '0123456789'[Math.floor(Math.random() * 10)]; // 数字
-    password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // 特殊字符
-
-    // 填充剩余长度
-    for (let i = password.length; i < length; i++) {
-        password += charset[Math.floor(Math.random() * charset.length)];
+class SettingsTab extends BaseTab {
+    constructor(deps) {
+        super(deps, 'settings');
+        this.config = null;
+        this.hasChanges = false;
+        this.currentTab = 'panel';
     }
 
-    // 打乱顺序
-    return password.split('').sort(() => Math.random() - 0.5).join('');
-}
+    onInit() {
+        console.log('初始化设置面板...');
+        this.bindEvents();
+        this.initValidation();
+    }
 
-/**
- * 初始化配置面板
- * @param {Object} dependencies - 依赖注入 { state, api, toast, dialog }
- */
-export function initSettingsTab({ state, api, toast, message, dialog }) {
-    console.log('初始化设置面板...');
+    async onLoad() {
+        await this.loadConfig();
+    }
 
-    // 保存依赖
-    deps = { state, api, toast, message, dialog };
-
-    // 绑定事件
-    bindEvents();
-
-    // 初始化实时验证
-    settingsValidator.initRealtimeValidation();
-
-    // 监听配置加载事件
-    globalEvents.on('config:loaded', (data) => {
-        loadConfigToForm(data);
-    });
-
-    // 监听标签页切换
-    globalEvents.on('tab:switch:settings', () => {
-        loadConfig();
-    });
-
-    /**
-     * 绑定事件监听器
-     */
-    function bindEvents() {
+    bindEvents() {
         // Tab 切换
-        const tabs = document.querySelectorAll('.settings-tab');
-        tabs.forEach(tab => {
+        this.$$('.settings-tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                const tabName = tab.dataset.tab;
-                switchSettingsTab(tabName);
+                this.switchTab(tab.dataset.tab);
             });
         });
 
-        // 保存设置
-        const saveBtn = document.getElementById('save-settings');
-        saveBtn?.addEventListener('click', saveSettings);
+        // 保存
+        this.$('#save-settings')?.addEventListener('click', () => this.save());
 
         // 恢复默认
-        const resetBtn = document.getElementById('reset-settings');
-        resetBtn?.addEventListener('click', () => {
-            deps.dialog.confirm('确定要恢复默认设置吗？<br><small>此操作将所有设置重置为默认值</small>', () => {
-                resetToDefault();
-            });
+        this.$('#reset-settings')?.addEventListener('click', () => {
+            this.dialog.confirm('确定要恢复默认设置吗？', () => this.reset());
         });
 
-        // 密码显示/隐藏切换
-        const togglePasswordBtn = document.getElementById('toggle-password');
-        const passwordInput = document.getElementById('admin-password');
-        let passwordVisible = false;
-
-        // 更新密码显示状态
-        function updatePasswordVisibility(visible) {
-            passwordVisible = visible;
-            passwordInput.type = visible ? 'text' : 'password';
-            // 更新图标：显示时用睁眼，隐藏时用闭眼
-            togglePasswordBtn.innerHTML = visible
-                ? '<i class="icon icon-eye"></i>'
-                : '<i class="icon icon-eye-off"></i>';
-            togglePasswordBtn.title = visible ? '隐藏密码' : '显示密码';
-        }
-
-        togglePasswordBtn?.addEventListener('click', () => {
-            updatePasswordVisibility(!passwordVisible);
-        });
-
-        // 随机密码生成
-        const generatePasswordBtn = document.getElementById('generate-password');
-        generatePasswordBtn?.addEventListener('click', () => {
-            const password = generateRandomPassword(16);
-            passwordInput.value = password;
-            passwordInput.type = 'text'; // 显示生成的密码
-            updatePasswordVisibility(true);
-            hasUnsavedChanges = true;
-        });
-
-        // 监听表单变化
-        const formInputs = document.querySelectorAll('.settings-content input, .settings-content select, .settings-content textarea');
-        formInputs.forEach(input => {
-            input.addEventListener('input', () => {
-                hasUnsavedChanges = true;
-            });
-            input.addEventListener('change', () => {
-                hasUnsavedChanges = true;
-            });
-        });
-
-        // 服务器时间同步按钮
-        const syncTimeBtn = document.getElementById('sync-time-btn');
-        syncTimeBtn?.addEventListener('click', syncServerTime);
-
-        // 初始化服务器时间显示
-        updateServerTimeDisplay();
-        // 每秒更新时间显示
-        setInterval(updateServerTimeDisplay, 1000);
-
-        // 初始化数字输入控件
-        initNumberInputs();
-    }
-
-    /**
-     * 更新服务器时间显示
-     */
-    function updateServerTimeDisplay() {
-        const timeElement = document.getElementById('server-time');
-        if (!timeElement) return;
-
-        try {
-            const frontendSettings = JSON.parse(localStorage.getItem('pixelbeast_frontend_settings') || '{}');
-            const timezone = frontendSettings.serverTimezone || 'Asia/Shanghai';
-
-            // 使用 Intl.DateTimeFormat 格式化时间
-            const now = new Date();
-            const formatter = new Intl.DateTimeFormat('zh-CN', {
-                timeZone: timezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-
-            timeElement.textContent = formatter.format(now);
-        } catch (e) {
-            // 如果时区无效，使用本地时间
-            timeElement.textContent = now.toLocaleString('zh-CN');
-        }
-    }
-
-    /**
-     * 同步服务器时间（功能暂未启用，等待后端实现）
-     */
-    async function syncServerTime() {
-        if (!deps) return;
-        const { toast } = deps;
-
-        // 按钮已禁用，此函数不会被调用
-        // 等待后端实现 NTP 时间同步后再启用
-        toast.info('时间同步功能需要后端支持，暂未启用');
-    }
-
-    /**
-     * 切换设置 Tab
-     */
-    function switchSettingsTab(tabName) {
-        // 如果有未保存的修改，提示用户
-        if (hasUnsavedChanges && tabName !== currentTab) {
-            // 使用 dialog 确认
-            deps.dialog.show({
-                title: '未保存的修改',
-                message: '您有未保存的修改，是否放弃更改？',
-                type: 'warning',
-                confirmText: '继续切换',
-                cancelText: '留在当前页',
-                onConfirm: () => {
-                    // 用户确认切换，恢复表单值并切换
-                    restoreFormValues();
-                    hasUnsavedChanges = false;
-                    performTabSwitch(tabName);
-                },
-                onCancel: () => {
-                    // 用户取消，留在当前页，保留修改
-                    // 不做任何操作
-                }
-            });
-            return;
-        }
-
-        // 没有未保存修改，直接切换
-        performTabSwitch(tabName);
-    }
-
-    /**
-     * 执行标签页切换
-     */
-    function performTabSwitch(tabName) {
-
-        // 更新当前 Tab
-        currentTab = tabName;
-
-        // 更新按钮状态
-        document.querySelectorAll('.settings-tab').forEach(tab => {
-            if (tab.dataset.tab === tabName) {
-                tab.classList.add('active');
-            } else {
-                tab.classList.remove('active');
+        // 密码显示/隐藏
+        this.$('#toggle-password')?.addEventListener('click', () => {
+            const input = this.$('#admin-password');
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
             }
         });
+
+        // 生成密码
+        this.$('#generate-password')?.addEventListener('click', () => {
+            this.$('#admin-password').value = this.generatePassword();
+        });
+
+        // 表单变化追踪
+        this.$$('.settings-form input, .settings-form select').forEach(input => {
+            input.addEventListener('change', () => { this.hasChanges = true; });
+        });
+
+        // 端口输入数字控制
+        this.$$('.port-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '');
+            });
+        });
+    }
+
+    initValidation() {
+        settingsValidator.initRealtimeValidation();
+    }
+
+    switchTab(tabName) {
+        this.currentTab = tabName;
+
+        // 更新 Tab 样式
+        this.$$('.settings-tab').forEach(t => t.classList.remove('active'));
+        this.$(`.settings-tab[data-tab="${tabName}"]`)?.classList.add('active');
 
         // 更新内容显示
-        document.querySelectorAll('.settings-content').forEach(content => {
-            content.classList.remove('active');
-            if (content.id === `settings-${tabName}`) {
-                content.classList.add('active');
-            }
-        });
+        this.$$('.settings-content').forEach(c => c.classList.remove('active'));
+        this.$(`#${tabName}-settings`)?.classList.add('active');
     }
 
-    /**
-     * 加载配置
-     */
-    async function loadConfig() {
-        if (!deps) return;
-        const { api } = deps;
-
+    async loadConfig() {
         try {
-            const response = await api.get('/api/config');
-            if (response && response.ok) {
-                const data = await api.parseJSON(response);
-                currentConfig = data;
-                loadConfigToForm(data);
-            }
+            this.config = await this.api.getJSON('/api/config');
+            this.populateForm();
         } catch (error) {
-            console.error('加载配置失败:', error);
+            this.toast.error('加载配置失败: ' + error.message);
         }
     }
 
-    /**
-     * 加载配置到表单
-     */
-    function loadConfigToForm(config) {
-        if (!config) return;
+    populateForm() {
+        if (!this.config) return;
 
-        // 面板设置 - 从 global.admin_port 获取端口
-        setFieldValue('admin-username', config.admin?.username || 'admin');
-        setFieldValue('admin-port', config.global?.admin_port || config.admin?.port || 9527);
-        setFieldValue('admin-path', config.admin?.path || '/admin');
-        setFieldValue('admin-domain', config.admin?.domain || '');
-        setCheckboxValue('admin-ssl', config.admin?.ssl || false);
+        // HTTP
+        this.setInputValue('http-enabled', this.config.http?.enabled);
+        this.setInputValue('http-port', this.config.http?.port);
+        this.setInputValue('http-root', this.config.http?.root);
 
-        // 目录设置
-        setFieldValue('ftp-root-dir', config.global?.ftp_dir || config.ftp?.root || './ftp');
-        setFieldValue('backup-dir', config.global?.backup_dir || './backups');
+        // FTP
+        this.setInputValue('ftp-enabled', this.config.ftp?.enabled);
+        this.setInputValue('ftp-port', this.config.ftp?.port);
+        this.setInputValue('ftp-root', this.config.ftp?.root);
 
-        // 从 localStorage 读取前端设置
-        try {
-            const frontendSettings = JSON.parse(localStorage.getItem('pixelbeast_frontend_settings') || '{}');
-            setFieldValue('server-timezone', frontendSettings.serverTimezone || config.server?.timezone || 'Asia/Shanghai');
+        // Admin
+        this.setInputValue('admin-username', this.config.admin?.username);
+        this.setInputValue('admin-password', this.config.admin?.password);
+        this.setInputValue('admin-port', this.config.admin?.port);
 
-            // 安全设置
-            const securitySettings = JSON.parse(localStorage.getItem('pixelbeast_security_settings') || '{}');
-            // IP 白名单
-            const allowIpsTextarea = document.getElementById('admin-allow-ips');
-            if (allowIpsTextarea && securitySettings.allowIps) {
-                allowIpsTextarea.value = securitySettings.allowIps.join('\n');
-            }
-            // 会话超时
-            setFieldValue('session-timeout', securitySettings.sessionTimeout || 86400);
-            // 2FA
-            setCheckboxValue('admin-2fa', securitySettings.enable2FA || false);
-            // 记录操作日志
-            setCheckboxValue('admin-log-operations', securitySettings.logOperations !== false);
-            // 敏感操作确认
-            setCheckboxValue('admin-confirm-dangerous', securitySettings.confirmDangerous !== false);
-        } catch (e) {
-            console.log('无法读取前端设置:', e);
-        }
-
-        // 日志设置
-        loadLogConfig(config);
-
-        // 重置未保存标记
-        hasUnsavedChanges = false;
-
-        // 保存表单值快照（用于取消时恢复）
-        saveFormSnapshot();
+        this.hasChanges = false;
     }
 
-    /**
-     * 加载日志配置到表单
-     */
-    function loadLogConfig(config) {
-        if (!config || !config.log) return;
+    setInputValue(id, value) {
+        const el = this.$(`#${id}`);
+        if (!el) return;
 
-        const log = config.log;
-        setFieldValue('log-retention-days', log.retention_days || 30);
-        setFieldValue('log-max-size-mb', log.max_size_mb || 100);
-        setFieldValue('log-compress-days', log.compress_days || 7);
-        setFieldValue('log-cleanup-hour', log.cleanup_hour || 3);
-        setFieldValue('log-level', log.level || 'info');
-
-        // 分类级别
-        if (log.levels) {
-            setFieldValue('log-level-http', log.levels.http || '');
-            setFieldValue('log-level-ftp', log.levels.ftp || '');
-            setFieldValue('log-level-panel', log.levels.panel || '');
+        if (el.type === 'checkbox') {
+            el.checked = !!value;
+        } else {
+            el.value = value ?? '';
         }
     }
 
-    /**
-     * 保存当前表单值的快照
-     */
-    function saveFormSnapshot() {
-        originalFormValues = {};
+    getInputValue(id) {
+        const el = this.$(`#${id}`);
+        if (!el) return null;
 
-        // 保存所有输入框的值
-        const inputs = document.querySelectorAll('.settings-content input, .settings-content select, .settings-content textarea');
-        inputs.forEach(input => {
-            if (input.id) {
-                if (input.type === 'checkbox') {
-                    originalFormValues[input.id] = input.checked;
-                } else {
-                    originalFormValues[input.id] = input.value;
-                }
-            }
-        });
+        if (el.type === 'checkbox') {
+            return el.checked;
+        }
+        return el.value;
     }
 
-    /**
-     * 恢复表单值到快照状态
-     */
-    function restoreFormValues() {
-        if (!originalFormValues || Object.keys(originalFormValues).length === 0) {
-            return;
-        }
-
-        // 恢复所有输入框的值
-        Object.keys(originalFormValues).forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                if (el.type === 'checkbox') {
-                    el.checked = originalFormValues[id];
-                } else {
-                    el.value = originalFormValues[id];
-                }
-            }
-        });
-    }
-
-    /**
-     * 保存设置
-     */
-    async function saveSettings() {
-        if (!deps) return;
-        const { api, toast, message } = deps;
-
-        // 验证表单
-        const validation = settingsValidator.validateAll();
-        if (!validation.valid) {
-            message.error(validation.message);
-            return;
-        }
-
-        try {
-            const config = getFormConfig();
-
-            const response = await api.post('/api/config/save', config);
-            if (response && response.ok) {
-                const data = await api.parseJSON(response);
-                message.success(data.message || '设置保存成功，请重启程序生效');
-                // 保存成功后重置未保存标记
-                hasUnsavedChanges = false;
-            } else {
-                message.error('设置保存失败');
-            }
-        } catch (error) {
-            console.error('保存设置失败:', error);
-            message.error('保存设置失败: ' + error.message);
-        }
-    }
-
-    /**
-     * 从表单获取配置
-     */
-    function getFormConfig() {
-        // 获取当前完整配置，优先使用模块级变量，然后从 state 获取
-        const storedConfig = currentConfig || deps?.state?.get('config') || {};
-
-        // 面板设置
-        const adminUsername = getFieldValue('admin-username') || 'admin';
-        const adminPassword = getFieldValue('admin-password');
-        const adminPort = parseInt(getFieldValue('admin-port')) || 9527;
-        const adminPath = getFieldValue('admin-path') || '/admin';
-        const adminDomain = getFieldValue('admin-domain') || '';
-        const adminSsl = getCheckboxValue('admin-ssl');
-        const serverTimezone = getFieldValue('server-timezone') || 'Asia/Shanghai';
-
-        // 目录设置
-        const ftpRootDir = getFieldValue('ftp-root-dir') || './ftp';
-        const backupDir = getFieldValue('backup-dir') || './backups';
-
-        // 安全设置（暂存到 localStorage，不发送到后端）
-        const allowIpsText = getFieldValue('admin-allow-ips') || '';
-        const allowIps = allowIpsText.split('\n')
-            .map(ip => ip.trim())
-            .filter(ip => ip.length > 0);
-
-        const sessionTimeout = parseInt(getFieldValue('session-timeout')) || 86400;
-        const enable2FA = getCheckboxValue('admin-2fa');
-        const logOperations = getCheckboxValue('admin-log-operations');
-        const confirmDangerous = getCheckboxValue('admin-confirm-dangerous');
-
-        // 保存前端设置到 localStorage
-        localStorage.setItem('pixelbeast_frontend_settings', JSON.stringify({
-            serverTimezone
-        }));
-        localStorage.setItem('pixelbeast_security_settings', JSON.stringify({
-            allowIps,
-            sessionTimeout,
-            enable2FA,
-            logOperations,
-            confirmDangerous
-        }));
-
-        // 日志设置
-        const logRetentionDays = parseInt(getFieldValue('log-retention-days')) || 30;
-        const logMaxSizeMb = parseInt(getFieldValue('log-max-size-mb')) || 100;
-        const logCompressDays = parseInt(getFieldValue('log-compress-days')) || 7;
-        const logCleanupHour = parseInt(getFieldValue('log-cleanup-hour')) || 3;
-        const logLevel = getFieldValue('log-level') || 'info';
-        const logLevelHttp = getFieldValue('log-level-http') || '';
-        const logLevelFtp = getFieldValue('log-level-ftp') || '';
-        const logLevelPanel = getFieldValue('log-level-panel') || '';
-
-        // 构建日志级别映射
-        const logLevels = {};
-        if (logLevelHttp) logLevels.http = logLevelHttp;
-        if (logLevelFtp) logLevels.ftp = logLevelFtp;
-        if (logLevelPanel) logLevels.panel = logLevelPanel;
-
-        // 构建配置对象，只包含后端支持的字段
-        const newConfig = {
-            // 保留现有站点配置
-            sites: storedConfig.sites || [],
-            // 保留现有 HTTP 配置（向后兼容）
-            http: storedConfig.http || { enabled: true, port: 8080, root: './web', domain: '' },
-            // FTP 配置
+    collectFormData() {
+        return {
+            http: {
+                enabled: this.getInputValue('http-enabled'),
+                port: parseInt(this.getInputValue('http-port')) || 8080,
+                root: this.getInputValue('http-root') || './web'
+            },
             ftp: {
-                enabled: storedConfig.ftp?.enabled ?? true,
-                port: storedConfig.ftp?.port || 2121,
-                root: ftpRootDir,
-                users: storedConfig.ftp?.users || [{ username: 'flash', password: 'flash' }]
+                enabled: this.getInputValue('ftp-enabled'),
+                port: parseInt(this.getInputValue('ftp-port')) || 2121,
+                root: this.getInputValue('ftp-root') || './ftp'
             },
-            // Admin 配置
             admin: {
-                enabled: true,
-                username: adminUsername,
-                password: adminPassword || storedConfig.admin?.password || 'admin123',
-                path: adminPath,
-                domain: adminDomain,
-                ssl: adminSsl
-            },
-            // 日志配置
-            log: {
-                retention_days: logRetentionDays,
-                max_size_mb: logMaxSizeMb,
-                compress_days: logCompressDays,
-                cleanup_hour: logCleanupHour,
-                level: logLevel,
-                levels: logLevels
-            },
-            global: {
-                admin_port: adminPort,
-                ftp_dir: ftpRootDir,
-                backup_dir: backupDir
-            },
-            // Server 配置
-            server: {
-                timezone: serverTimezone
+                username: this.getInputValue('admin-username') || 'admin',
+                password: this.getInputValue('admin-password') || 'admin123',
+                port: parseInt(this.getInputValue('admin-port')) || 9527
             }
         };
-
-        return newConfig;
     }
 
-    /**
-     * 恢复默认设置
-     */
-    function resetToDefault() {
-        if (!deps) return;
-        const { toast } = deps;
+    async save() {
+        const data = this.collectFormData();
 
-        loadConfigToForm(DEFAULT_CONFIG);
-        toast.info('已恢复默认设置，请点击保存按钮保存');
+        // 验证
+        const errors = settingsValidator.validate(data);
+        if (errors.length > 0) {
+            this.toast.error(errors[0]);
+            return;
+        }
+
+        try {
+            await this.api.post('/api/config', data);
+            this.toast.success('设置已保存');
+            this.hasChanges = false;
+            await this.loadConfig();
+        } catch (error) {
+            this.toast.error('保存失败: ' + error.message);
+        }
     }
 
-    /**
-     * 辅助函数：设置输入框值
-     */
-    function setFieldValue(id, value) {
-        const el = document.getElementById(id);
-        if (el) el.value = value;
+    async reset() {
+        try {
+            await this.api.post('/api/config/reset');
+            this.toast.success('已恢复默认设置');
+            await this.loadConfig();
+        } catch (error) {
+            this.toast.error('重置失败: ' + error.message);
+        }
     }
 
-    /**
-     * 辅助函数：获取输入框值
-     */
-    function getFieldValue(id) {
-        const el = document.getElementById(id);
-        return el ? el.value : '';
+    generatePassword(length = 16) {
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+        let password = '';
+        for (let i = 0; i < length; i++) {
+            password += charset.charAt(Math.floor(Math.random() * charset.length));
+        }
+        return password;
     }
 
-    /**
-     * 辅助函数：设置复选框值
-     */
-    function setCheckboxValue(id, checked) {
-        const el = document.getElementById(id);
-        if (el) el.checked = checked;
+    // 提示未保存
+    onDestroy() {
+        if (this.hasChanges) {
+            // 可以提示用户保存
+        }
     }
+}
 
-    /**
-     * 辅助函数：获取复选框值
-     */
-    function getCheckboxValue(id) {
-        const el = document.getElementById(id);
-        return el ? el.checked : false;
+// 单例
+let instance = null;
+
+export function initSettingsTab(deps) {
+    if (!instance) {
+        instance = new SettingsTab(deps);
+        instance.init();
     }
-
-    /**
-     * 初始化数字输入控件
-     */
-    function initNumberInputs() {
-        document.querySelectorAll('.number-input-wrapper').forEach(wrapper => {
-            const input = wrapper.querySelector('input[type="number"]');
-            const upBtn = wrapper.querySelector('[data-action="up"]');
-            const downBtn = wrapper.querySelector('[data-action="down"]');
-
-            if (!input) return;
-
-            const step = parseInt(input.dataset.step) || 1;
-            const min = input.min !== '' ? parseInt(input.min) : null;
-            const max = input.max !== '' ? parseInt(input.max) : null;
-
-            const updateValue = (delta) => {
-                let value = parseInt(input.value) || 0;
-                value += delta;
-
-                if (min !== null && value < min) value = min;
-                if (max !== null && value > max) value = max;
-
-                input.value = value;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            };
-
-            upBtn?.addEventListener('click', () => updateValue(step));
-            downBtn?.addEventListener('click', () => updateValue(-step));
-
-            // 键盘支持
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    updateValue(step);
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    updateValue(-step);
-                }
-            });
-        });
-    }
-
-    // 初始加载
-    loadConfig();
+    return instance;
 }

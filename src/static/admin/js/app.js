@@ -60,7 +60,11 @@ async function init() {
         // 5. 初始化各标签页模块
         initTabModules();
 
-        // 6. 加载初始数据
+        // 6. 激活默认标签页（触发数据加载）
+        const defaultTab = state.get('currentTab') || 'home';
+        switchTab(defaultTab);
+
+        // 7. 加载初始数据
         loadInitialData();
 
         // 7. 设置自动刷新
@@ -168,23 +172,19 @@ function initEventListeners() {
 function initTabs() {
     // 支持 .menu-item
     const tabButtons = document.querySelectorAll('.menu-item');
-    console.log('🏷️ 初始化标签页, 找到按钮数量:', tabButtons.length);
 
-    tabButtons.forEach((button, index) => {
+    tabButtons.forEach((button) => {
         const tabName = button.dataset.tab;
-        console.log(`按钮 ${index}:`, tabName, button);
         if (tabName) {
             button.addEventListener('click', () => {
-                console.log('点击标签页:', tabName);
                 switchTab(tabName);
             });
         }
     });
 
     // 默认激活第一个标签页
-    const defaultTab = tabButtons[0]?.dataset.tab || 'status';
+    const defaultTab = tabButtons[0]?.dataset.tab || 'home';
     state.set('currentTab', defaultTab, false);
-    console.log('默认标签页:', defaultTab);
 }
 
 /**
@@ -219,15 +219,11 @@ const tabTitles = {
  * @param {string} tabName - 标签页名称
  */
 function switchTab(tabName) {
-    console.log('switchTab 被调用:', tabName);
-
     // 更新按钮状态
     const buttons = document.querySelectorAll('.menu-item');
-    console.log('找到按钮数量:', buttons.length);
     buttons.forEach(btn => {
         if (btn.dataset.tab === tabName) {
             btn.classList.add('active');
-            console.log('激活按钮:', btn.dataset.tab);
         } else {
             btn.classList.remove('active');
         }
@@ -235,13 +231,10 @@ function switchTab(tabName) {
 
     // 更新内容显示
     const contents = document.querySelectorAll('.tab-content');
-    console.log('找到内容区域数量:', contents.length);
     contents.forEach(content => {
-        console.log('内容区域 id:', content.id);
         content.classList.remove('active');
         if (content.id === tabName) {
             content.classList.add('active');
-            console.log('显示内容:', content.id);
         }
     });
 
@@ -263,16 +256,26 @@ function switchTab(tabName) {
  * 加载初始数据
  */
 function loadInitialData() {
-    // 初始加载状态数据
-    api.get('/api/status')
+    // 初始加载系统状态数据
+    api.get('/api/system/status')
         .then(async response => {
             if (response && response.ok) {
                 const data = await api.parseJSON(response);
                 if (data) {
-                    state.batch({
-                        'services': data.services || {},
-                        'config': data.config || null
+                    // 初始化系统信息（只执行一次）
+                    state.initSystem({
+                        os: data.os,
+                        arch: data.arch,
+                        hostname: data.hostname
                     });
+
+                    state.batch({
+                        'services': {
+                            http: { running: true, port: data.http_port },
+                            ftp: { running: data.ftp_running, port: data.ftp_port }
+                        }
+                    });
+
                     globalEvents.emit('status:loaded', data);
                 }
             }

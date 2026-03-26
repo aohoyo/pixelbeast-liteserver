@@ -3,6 +3,8 @@
  * 通用的数据表格组件，支持分页、选择、自定义渲染
  */
 
+import { escapeHtml } from '../core/utils.js';
+
 export class DataTable {
     constructor(options) {
         this.options = {
@@ -487,14 +489,4 @@ export class DataTable {
             this.container.innerHTML = '';
         }
     }
-}
-
-/**
- * HTML 转义
- */
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }

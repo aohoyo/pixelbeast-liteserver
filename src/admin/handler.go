@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -79,6 +80,10 @@ func New(cfg *config.Config, configPath string) *Handler {
 		loginAttempts: make(map[string]*LoginAttempt),
 		csrfTokens:    make(map[string]*CSRFToken),
 	}
+	
+	// 初始化分享服务
+	InitShareService(configPath)
+	
 	go h.cleanupSessions()
 	return h
 }
@@ -142,6 +147,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/favicon.svg", "/favicon.ico":
 		h.serveFavicon(w, r)
+		return
+	}
+
+	// 分享链接下载（不需要认证）- 使用 /s/ 短路径
+	if strings.HasPrefix(actualPath, "/s/") || strings.HasPrefix(actualPath, "/share/") {
+		h.downloadSharedFile(w, r)
 		return
 	}
 
@@ -219,6 +230,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.downloadFile(w, r)
 	case "/api/files/copy":
 		h.copyFile(w, r)
+	case "/api/files/touch":
+		h.touchFile(w, r)
+	case "/api/files/move":
+		h.moveFile(w, r)
+	case "/api/files/chmod":
+		h.chmodFile(w, r)
+	case "/api/files/permissions":
+		h.getFilePermissions(w, r)
+	case "/api/files/read":
+		h.readFileContent(w, r)
+	case "/api/files/save":
+		h.saveFileContent(w, r)
+	case "/api/files/compress":
+		h.compressFiles(w, r)
+	case "/api/files/extract":
+		h.extractFile(w, r)
+	case "/api/files/share":
+		h.shareFile(w, r)
+	case "/api/files/share/list":
+		h.listShareLinks(w, r)
+	case "/api/files/share/delete":
+		h.deleteShareLink(w, r)
 	// 日志管理
 	case "/api/logs":
 		h.handleLogsList(w, r)
@@ -526,8 +559,25 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 		TooManyRequests(w, msg)
 		return
 	}
-	r.ParseForm()
-	username, password := r.FormValue("username"), r.FormValue("password")
+	
+	// 解析请求体（支持 JSON 和表单）
+	var username, password string
+	contentType := r.Header.Get("Content-Type")
+	
+	if contentType == "application/json" {
+		var req struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			username = req.Username
+			password = req.Password
+		}
+	} else {
+		r.ParseForm()
+		username = r.FormValue("username")
+		password = r.FormValue("password")
+	}
 	
 	// 验证密码
 	valid := false

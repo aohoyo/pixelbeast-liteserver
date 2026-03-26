@@ -476,3 +476,135 @@
         display: none;
     }
 }
+
+/* ==================== 主页面文件列表样式 ==================== */
+
+/* 文件路径 */
+.file-path {
+    background: var(--bg-elevated);
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    margin-bottom: var(--space-md);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+/* 文件列表 */
+.file-list {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    max-height: 500px;
+    overflow-y: auto;
+    background: var(--bg);
+}
+
+.file-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.file-list::-webkit-scrollbar-track {
+    background: var(--bg);
+}
+
+.file-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius);
+}
+
+.file-list::-webkit-scrollbar-thumb:hover {
+    background: var(--border-light);
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-item:hover {
+    background: var(--bg-elevated);
+    padding-left: 22px;
+}
+
+.file-item.parent-dir {
+    background: var(--bg);
+    font-weight: 500;
+    color: var(--primary-light);
+}
+
+.file-name {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+.file-size {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    margin-right: 15px;
+}
+
+.file-actions {
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.file-item:hover .file-actions {
+    opacity: 1;
+}
+
+.file-actions button {
+    padding: 6px 10px;
+    border: none;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    transition: all var(--transition-fast);
+}
+
+.file-actions button:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    transform: scale(1.1);
+}
+
+.file-actions .delete-btn:hover {
+    background: var(--danger-alpha);
+    color: var(--danger);
+}
+
+.file-actions .download-btn:hover {
+    background: var(--success-alpha);
+    color: var(--success);
+}
+
+.file-actions .copy-btn:hover {
+    background: var(--info-alpha);
+    color: var(--info);
+}
+
+.file-actions .rename-btn:hover {
+    background: var(--warning-alpha);
+    color: var(--warning);
+}
+
+/* 空文件列表提示 */
+.file-list-empty {
+    text-align: center;
+    padding: var(--space-xl);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}

@@ -19,6 +19,16 @@ export default class StateManager {
             // 服务器配置
             config: null,
 
+            // 系统信息（初始化时设置）
+            system: {
+                os: 'linux',        // 'linux' | 'windows' | 'darwin'
+                arch: 'amd64',
+                hostname: '',
+                isWindows: false,
+                isLinux: true,
+                isMac: false
+            },
+
             // 服务状态
             services: {
                 http: { running: true, port: 1880 },
@@ -40,6 +50,22 @@ export default class StateManager {
 
         this.listeners = new Map();
         this.history = [];
+    }
+
+    /**
+     * 初始化系统信息（应用启动时调用一次）
+     * @param {Object} sysInfo - 系统信息
+     */
+    initSystem(sysInfo) {
+        const os = (sysInfo.os || 'linux').toLowerCase();
+        this.state.system = {
+            os: os,
+            arch: sysInfo.arch || 'amd64',
+            hostname: sysInfo.hostname || '',
+            isWindows: os === 'windows',
+            isLinux: os === 'linux',
+            isMac: os === 'darwin'
+        };
     }
 
     /**

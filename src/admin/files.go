@@ -19,7 +19,13 @@ import (
 func resolvePath(subPath string) string {
 	rootDir, _ := os.Getwd()
 	
-	if subPath == "" || subPath == "/" {
+	// 空路径返回项目目录
+	if subPath == "" {
+		return rootDir
+	}
+	
+	// "." 或 "./" 返回项目目录
+	if subPath == "." || subPath == "./" {
 		return rootDir
 	}
 	
@@ -27,19 +33,19 @@ func resolvePath(subPath string) string {
 	// filepath.IsAbs 期望反斜杠，所以需要先转换
 	normalizedPath := filepath.FromSlash(subPath)
 	
-	// 检查是否是绝对路径
+	// 检查是否是绝对路径（Linux/Unix 以 / 开头）
 	if filepath.IsAbs(normalizedPath) {
 		// 绝对路径：直接使用，并清理 ".."
 		return filepath.Clean(normalizedPath)
 	}
 	
-	// 检查是否是原始的正斜杠格式绝对路径
+	// 检查是否是 Windows 驱动器格式的绝对路径
 	if len(subPath) >= 2 && subPath[1] == ':' {
 		// Windows 驱动器格式 (C:/...)
 		return filepath.Clean(normalizedPath)
 	}
 	
-	// 相对路径：相对于程序目录
+	// 相对路径：相对于项目目录
 	return filepath.Join(rootDir, normalizedPath)
 }
 
@@ -381,49 +387,390 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		SrcPath string `json:"srcPath"`
-		SrcName string `json:"srcName"`
-		DstName string `json:"dstName"`
+		SrcPath string `json:"srcPath"` // 源目录
+		SrcName string `json:"srcName"` // 源文件名
+		DstPath string `json:"dstPath"` // 目标目录（可选，默认同源目录）
+		DstName string `json:"dstName"` // 目标文件名（可选，默认同源文件名）
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstName, "..") {
+	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstPath, "..") || strings.Contains(req.DstName, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	// 源文件路径
+	srcDir := resolvePath(req.SrcPath)
+	srcPath := filepath.Join(srcDir, req.SrcName)
+
+	// 目标路径
+	dstDir := srcDir // 默认同源目录
+	if req.DstPath != "" {
+		dstDir = resolvePath(req.DstPath)
+	}
+	dstName := req.SrcName // 默认同源文件名
+	if req.DstName != "" {
+		dstName = req.DstName
+	}
+	dstPath := filepath.Join(dstDir, dstName)
+
+	// 检查源文件是否存在
+	srcInfo, err := os.Stat(srcPath)
+	if err != nil {
+		InternalServerError(w, "源文件不存在")
+		return
+	}
+
+	if srcInfo.IsDir() {
+		// 目录：递归复制
+		if err := h.copyDir(srcPath, dstPath); err != nil {
+			InternalServerError(w, err.Error())
+			return
+		}
+	} else {
+		// 文件：复制
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			InternalServerError(w, err.Error())
+			return
+		}
+		defer srcFile.Close()
+
+		// 确保目标目录存在
+		os.MkdirAll(dstDir, 0755)
+
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			InternalServerError(w, err.Error())
+			return
+		}
+		defer dstFile.Close()
+
+		if _, err = io.Copy(dstFile, srcFile); err != nil {
+			InternalServerError(w, err.Error())
+			return
+		}
+	}
+
+	SuccessMessage(w, "复制成功")
+}
+
+// copyDir 递归复制目录
+func (h *Handler) copyDir(srcPath, dstPath string) error {
+	// 创建目标目录
+	if err := os.MkdirAll(dstPath, 0755); err != nil {
+		return err
+	}
+
+	// 遍历源目录
+	entries, err := os.ReadDir(srcPath)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		src := filepath.Join(srcPath, entry.Name())
+		dst := filepath.Join(dstPath, entry.Name())
+
+		if entry.IsDir() {
+			if err := h.copyDir(src, dst); err != nil {
+				return err
+			}
+		} else {
+			// 复制文件
+			srcFile, err := os.Open(src)
+			if err != nil {
+				return err
+			}
+			dstFile, err := os.Create(dst)
+			if err != nil {
+				srcFile.Close()
+				return err
+			}
+			_, err = io.Copy(dstFile, srcFile)
+			srcFile.Close()
+			dstFile.Close()
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// touchFile 创建空文件
+func (h *Handler) touchFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
 		BadRequest(w, "Invalid path")
 		return
 	}
 
 	// 获取目标目录
-	targetDir := resolvePath(req.SrcPath)
+	targetDir := resolvePath(req.Path)
+	filePath := filepath.Join(targetDir, req.Name)
+
+	// 创建空文件
+	file, err := os.Create(filePath)
+	if err != nil {
+		InternalServerError(w, err.Error())
+		return
+	}
+	defer file.Close()
+
+	SuccessMessage(w, "文件创建成功")
+}
+
+// moveFile 移动文件（剪切+粘贴）
+func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req struct {
+		SrcPath string `json:"srcPath"` // 源目录
+		SrcName string `json:"srcName"` // 源文件名
+		DstPath string `json:"dstPath"` // 目标目录
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstPath, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
 
 	// 源文件路径
-	srcPath := filepath.Join(targetDir, req.SrcName)
+	srcDir := resolvePath(req.SrcPath)
+	srcPath := filepath.Join(srcDir, req.SrcName)
 
-	// 目标文件路径
-	dstPath := filepath.Join(targetDir, req.DstName)
+	// 目标路径
+	dstDir := resolvePath(req.DstPath)
+	dstPath := filepath.Join(dstDir, req.SrcName)
 
-	// 打开源文件
-	srcFile, err := os.Open(srcPath)
+	// 移动（重命名）
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		InternalServerError(w, err.Error())
+		return
+	}
+
+	SuccessMessage(w, "移动成功")
+}
+
+// chmodFile 修改文件权限（仅 Linux）
+func (h *Handler) chmodFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Windows 不支持
+	if runtime.GOOS == "windows" {
+		Error(w, http.StatusBadRequest, "Windows 系统不支持此操作")
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+		Mode string `json:"mode"` // 如 "755", "644"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	// 解析权限模式
+	var mode uint32
+	if _, err := fmt.Sscanf(req.Mode, "%o", &mode); err != nil {
+		BadRequest(w, "Invalid mode format")
+		return
+	}
+
+	// 获取文件路径
+	targetDir := resolvePath(req.Path)
+	filePath := filepath.Join(targetDir, req.Name)
+
+	// 修改权限
+	if err := os.Chmod(filePath, os.FileMode(mode)); err != nil {
+		InternalServerError(w, err.Error())
+		return
+	}
+
+	SuccessMessage(w, "权限修改成功")
+}
+
+// getFilePermissions 获取文件权限信息
+func (h *Handler) getFilePermissions(w http.ResponseWriter, r *http.Request) {
+	// Windows 不支持
+	if runtime.GOOS == "windows" {
+		Success(w, map[string]interface{}{
+			"supported": false,
+			"message":   "Windows 系统不支持权限管理",
+		})
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	name := r.URL.Query().Get("name")
+
+	if strings.Contains(path, "..") || strings.Contains(name, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	// 获取文件路径
+	targetDir := resolvePath(path)
+	filePath := filepath.Join(targetDir, name)
+
+	// 获取文件信息
+	info, err := os.Stat(filePath)
 	if err != nil {
 		InternalServerError(w, err.Error())
 		return
 	}
-	defer srcFile.Close()
 
-	// 创建目标文件
-	dstFile, err := os.Create(dstPath)
+	// 获取权限
+	mode := info.Mode()
+	perm := fmt.Sprintf("%04o", mode.Perm())
+
+	Success(w, map[string]interface{}{
+		"supported": true,
+		"mode":      perm,
+		"is_dir":    info.IsDir(),
+		"size":      info.Size(),
+		"modified":  info.ModTime().Format(time.RFC3339),
+	})
+}
+
+// readFileContent 读取文件内容
+func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	name := r.URL.Query().Get("name")
+
+	if strings.Contains(path, "..") || strings.Contains(name, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	// 获取文件路径
+	targetDir := resolvePath(path)
+	filePath := filepath.Join(targetDir, name)
+
+	// 检查文件信息
+	info, err := os.Stat(filePath)
+	if err != nil {
+		Error(w, http.StatusNotFound, "文件不存在")
+		return
+	}
+	if info.IsDir() {
+		Error(w, http.StatusBadRequest, "不能读取目录")
+		return
+	}
+
+	// 限制文件大小 (最大 10MB)
+	if info.Size() > 10*1024*1024 {
+		Error(w, http.StatusBadRequest, "文件太大，超过 10MB 限制")
+		return
+	}
+
+	// 读取文件内容
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		InternalServerError(w, err.Error())
 		return
 	}
-	defer dstFile.Close()
 
-	// 复制内容
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
+	// 检测文件类型
+	ext := strings.ToLower(filepath.Ext(name))
+	fileType := "text"
+	switch ext {
+	case ".json":
+		fileType = "json"
+	case ".md", ".markdown":
+		fileType = "markdown"
+	case ".js", ".javascript":
+		fileType = "javascript"
+	case ".ts":
+		fileType = "typescript"
+	case ".go":
+		fileType = "go"
+	case ".py":
+		fileType = "python"
+	case ".css":
+		fileType = "css"
+	case ".html":
+		fileType = "html"
+	case ".xml":
+		fileType = "xml"
+	case ".yaml", ".yml":
+		fileType = "yaml"
+	case ".sh":
+		fileType = "shell"
+	case ".sql":
+		fileType = "sql"
+	}
+
+	Success(w, map[string]interface{}{
+		"content":  string(content),
+		"size":     info.Size(),
+		"modified": info.ModTime().Format(time.RFC3339),
+		"type":     fileType,
+		"path":     path,
+		"name":     name,
+	})
+}
+
+// saveFileContent 保存文件内容
+func (h *Handler) saveFileContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Path    string `json:"path"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+
+	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	// 获取文件路径
+	targetDir := resolvePath(req.Path)
+	filePath := filepath.Join(targetDir, req.Name)
+
+	// 写入文件
+	if err := os.WriteFile(filePath, []byte(req.Content), 0644); err != nil {
 		InternalServerError(w, err.Error())
 		return
 	}
 
-	SuccessMessage(w, "复制成功")
+	SuccessMessage(w, "保存成功")
 }

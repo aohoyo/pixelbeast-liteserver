@@ -6,10 +6,12 @@
  * - CSRF token 管理
  * - 错误处理
  * - 请求/响应拦截
+ * - 请求缓存
  */
 
 import StateManager from './state.js';
 import { globalEvents } from './events.js';
+import { cache } from './cache.js';
 
 // 动态获取管理面板基础路径
 const API_BASE = (function() {
@@ -29,6 +31,13 @@ class API {
         this.requestInterceptors = [];
         this.responseInterceptors = [];
         this.baseURL = API_BASE;
+        this.cacheConfig = {
+            '/api/status': 5000,           // 状态缓存 5 秒
+            '/api/system/status': 5000,    // 系统状态 5 秒
+            '/api/sites': 10000,           // 站点列表 10 秒
+            '/api/ftp/users': 10000,       // FTP 用户 10 秒
+            '/api/logs/stats': 30000,      // 日志统计 30 秒
+        };
     }
 
     /**
@@ -88,14 +97,46 @@ class API {
     }
 
     /**
-     * 发送 GET 请求（自动解析 JSON）
+     * 发送 GET 请求（自动解析 JSON，支持缓存）
      * @param {string} endpoint - API 端点
+     * @param {Object} options - 选项 { useCache: true, ttl: 30000 }
      * @returns {Promise<Object>} 解析后的数据
      */
-    async getJSON(endpoint) {
+    async getJSON(endpoint, options = {}) {
+        const { useCache = true, ttl } = options;
+        const cacheKey = `api:${endpoint}`;
+
+        // 检查缓存配置
+        const cacheTTL = ttl ?? this.cacheConfig[endpoint];
+
+        // 使用缓存
+        if (useCache && cacheTTL && cache.has(cacheKey)) {
+            return cache.get(cacheKey);
+        }
+
         const response = await this.get(endpoint);
         if (!response) return null;
-        return this.parseJSON(response);
+        
+        const data = await this.parseJSON(response);
+
+        // 缓存结果
+        if (useCache && cacheTTL && data) {
+            cache.set(cacheKey, data, cacheTTL);
+        }
+
+        return data;
+    }
+
+    /**
+     * 清除 API 缓存
+     * @param {string} pattern - 匹配模式（可选）
+     */
+    clearCache(pattern) {
+        if (pattern) {
+            cache.deletePattern(`api:${pattern}`);
+        } else {
+            cache.deletePattern(/^api:/);
+        }
     }
 
     /**
