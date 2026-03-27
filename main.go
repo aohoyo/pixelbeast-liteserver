@@ -41,7 +41,7 @@ func main() {
 
 	// 初始化日志
 	logCfg := cm.Server.Log
-	if err := handlers.InitLoggerWithConfig("./logs", &config.LogConfig{
+	if err := handlers.InitLoggerWithConfig("./log", &config.LogConfig{
 		RetentionDays: logCfg.RetentionDays,
 		MaxSizeMB:     logCfg.MaxSizeMB,
 		CompressDays:  logCfg.CompressDays,

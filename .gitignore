@@ -38,6 +38,7 @@ data/ssl/*
 
 # 日志目录
 log/
+logs/
 
 # FTP 上传目录
 ftp/
@@ -48,3 +49,4 @@ web/
 # 本地配置（可选：如果包含敏感信息）
 # pixelbeast.json
 config/
+/log/

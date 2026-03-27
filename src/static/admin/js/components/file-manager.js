@@ -2307,6 +2307,18 @@ export class FileManager {
         const tab = this.getActiveTab();
         if (!tab) return;
 
+        // 生成随机提取码
+        const generateCode = () => {
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let code = '';
+            for (let i = 0; i < 4; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        };
+
+        const randomCode = generateCode();
+
         // 显示分享设置对话框
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
@@ -2320,21 +2332,26 @@ export class FileManager {
                         <span class="share-file-icon">📄</span>
                         <span class="share-file-name">${filename}</span>
                     </div>
-                    <div class="share-form-group">
+                    <div class="share-form-row">
                         <label>有效期</label>
-                        <select id="share-duration">
-                            <option value="1">1 小时</option>
-                            <option value="6">6 小时</option>
-                            <option value="12">12 小时</option>
-                            <option value="24" selected>1 天</option>
-                            <option value="72">3 天</option>
-                            <option value="168">7 天</option>
-                            <option value="720">30 天</option>
-                        </select>
+                        <div class="share-duration-btns">
+                            <button class="share-duration-btn active" data-hours="24">1天</button>
+                            <button class="share-duration-btn" data-hours="168">7天</button>
+                            <button class="share-duration-btn" data-hours="720">30天</button>
+                            <button class="share-duration-btn" data-hours="8760">1年</button>
+                            <button class="share-duration-btn" data-hours="0">永久</button>
+                        </div>
                     </div>
-                    <div class="share-form-group">
-                        <label>访问密码 <span class="share-hint">(留空则无需密码)</span></label>
-                        <input type="text" id="share-password" placeholder="可选，留空无密码保护">
+                    <div class="share-form-row">
+                        <label>提取码</label>
+                        <div class="share-password-wrap">
+                            <input type="text" id="share-password" value="${randomCode}" placeholder="提取码" maxlength="8">
+                            <button class="share-gen-btn" id="share-gen-code" title="随机生成">🎲</button>
+                        </div>
+                        <label class="share-checkbox">
+                            <input type="checkbox" id="share-auto-fill" checked>
+                            <span>分享链接自动填充提取码</span>
+                        </label>
                     </div>
                 </div>
                 <div class="dialog-footer">
@@ -2348,14 +2365,32 @@ export class FileManager {
 
         const cancelBtn = overlay.querySelector('#share-cancel-btn');
         const createBtn = overlay.querySelector('#share-create-btn');
-        const durationSelect = overlay.querySelector('#share-duration');
+        const durationBtns = overlay.querySelectorAll('.share-duration-btn');
         const passwordInput = overlay.querySelector('#share-password');
+        const genCodeBtn = overlay.querySelector('#share-gen-code');
+        const autoFillCheck = overlay.querySelector('#share-auto-fill');
+        
+        let selectedDuration = 24;
+
+        // 有效期按钮切换
+        durationBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                durationBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedDuration = parseInt(btn.dataset.hours) || 0;
+            });
+        });
+
+        // 随机生成提取码
+        genCodeBtn.addEventListener('click', () => {
+            passwordInput.value = generateCode();
+        });
 
         const close = () => overlay.remove();
 
         const createShare = async () => {
-            const duration = parseInt(durationSelect.value) || 24;
             const password = passwordInput.value.trim();
+            const autoFill = autoFillCheck.checked;
 
             createBtn.disabled = true;
             createBtn.textContent = '创建中...';
@@ -2367,7 +2402,7 @@ export class FileManager {
                     body: JSON.stringify({
                         path: tab.path,
                         name: filename,
-                        duration: duration,
+                        duration: selectedDuration,
                         password: password || undefined
                     })
                 });
@@ -2375,7 +2410,7 @@ export class FileManager {
                 if (result?.code === 200) {
                     close();
                     // 显示分享结果
-                    this.showShareDialog(result.data);
+                    this.showShareDialog(result.data, password, autoFill);
                 } else {
                     this.options.toast?.error?.(result?.message || '分享失败');
                     createBtn.disabled = false;
@@ -2407,14 +2442,20 @@ export class FileManager {
     /**
      * 显示分享对话框
      */
-    showShareDialog(data) {
+    showShareDialog(data, password = '', autoFill = false) {
         // 检查数据
         if (!data || !data.url) {
             this.options.toast?.error?.('分享链接生成失败');
             return;
         }
         
-        const shareUrl = data.url;
+        // 如果有密码且需要自动填充，拼接提取码
+        let shareUrl = data.url;
+        if (password && autoFill) {
+            const separator = shareUrl.includes('?') ? '&' : '?';
+            shareUrl = `${shareUrl}${separator}pwd=${encodeURIComponent(password)}`;
+        }
+        
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
         overlay.innerHTML = `
@@ -2423,17 +2464,20 @@ export class FileManager {
                     <span class="dialog-title">✅ 分享链接已创建</span>
                 </div>
                 <div class="dialog-body">
-                    <div class="share-result-info">
-                        <label>文件名:</label>
-                        <span>${data.fileName || '未知'}</span>
-                    </div>
-                    <div class="share-result-info">
-                        <label>文件大小:</label>
-                        <span>${this.formatSize(data.fileSize || 0)}</span>
-                    </div>
-                    <div class="share-result-info">
-                        <label>过期时间:</label>
-                        <span>${data.expiresAt ? new Date(data.expiresAt).toLocaleString() : '未知'}</span>
+                    <div class="share-result-row">
+                        <div class="share-result-info">
+                            <label>文件名:</label>
+                            <span>${data.fileName || '未知'}</span>
+                        </div>
+                        <div class="share-result-info">
+                            <label>文件大小:</label>
+                            <span>${this.formatSize(data.fileSize || 0)}</span>
+                        </div>
+                        <div class="share-result-info">
+                            <label>过期时间:</label>
+                            <span>${data.expiresAt ? new Date(data.expiresAt).toLocaleString() : '永久有效'}</span>
+                        </div>
+                        ${password ? `<div class="share-result-info"><label>提取码:</label><span class="share-pwd">${password}</span></div>` : ''}
                     </div>
                     <div class="share-link-box">
                         <input type="text" class="share-link-input" id="share-url" value="${shareUrl}" readonly>
