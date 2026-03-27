@@ -55,6 +55,7 @@ type PasswordValidator interface {
 type Handler struct {
 	Config           *config.Config
 	ConfigPath       string
+	ConfigManager    *config.ConfigManager // 新配置管理器
 	ServerManager    *handlers.ServerManager
 	passwordValidator PasswordValidator // 密码验证器（支持加密密码）
 	adminPath        string              // 安全入口路径
@@ -66,24 +67,38 @@ type Handler struct {
 
 // ==================== 构造函数 ====================
 
-func New(cfg *config.Config, configPath string) *Handler {
-	adminPath := "/admin"
-	if cfg != nil && cfg.Admin.Path != "" {
-		adminPath = cfg.Admin.Path
+// New 创建管理面板处理器
+func New(cm *config.ConfigManager, configPath string) *Handler {
+	adminPath := cm.Server.AdminPath
+	if adminPath == "" {
+		adminPath = "/admin"
 	}
 
 	h := &Handler{
-		Config:        cfg,
-		ConfigPath:    configPath,
-		adminPath:     adminPath,
-		sessions:      make(map[string]*Session),
-		loginAttempts: make(map[string]*LoginAttempt),
-		csrfTokens:    make(map[string]*CSRFToken),
+		ConfigPath:        configPath,
+		adminPath:         adminPath,
+		sessions:          make(map[string]*Session),
+		loginAttempts:     make(map[string]*LoginAttempt),
+		csrfTokens:        make(map[string]*CSRFToken),
+		passwordValidator: cm,
+		Config: &config.Config{
+			Global: config.GlobalConfig{
+				AdminPort: cm.Server.AdminPort,
+				FTPDir:    cm.Server.FTPDir,
+				BackupDir: cm.Server.BackupDir,
+			},
+			Admin: config.AdminConfig{
+				Username: cm.Server.AdminUsername,
+				Path:     cm.Server.AdminPath,
+			},
+			FTP:   *cm.FTP,
+			Sites: cm.Sites.Sites,
+		},
 	}
-	
+
 	// 初始化分享服务
 	InitShareService(configPath)
-	
+
 	go h.cleanupSessions()
 	return h
 }
@@ -104,9 +119,8 @@ func (h *Handler) SetServerManager(sm *handlers.ServerManager) {
 	h.ServerManager = sm
 }
 
-// SetPasswordValidator 设置密码验证器
-func (h *Handler) SetPasswordValidator(validator PasswordValidator) {
-	h.passwordValidator = validator
+func (h *Handler) SetConfigManager(cm *config.ConfigManager) {
+	h.ConfigManager = cm
 }
 
 // ==================== 路由 ====================
@@ -238,6 +252,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.getConfig(w, r)
 	case "/api/config/save":
 		h.saveConfig(w, r)
+	case "/api/config/reset":
+		h.resetConfig(w, r)
 	// HTTP 文件管理
 	case "/api/files":
 		h.listFiles(w, r)
@@ -301,6 +317,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.stopFTP(w, r)
 	case "/api/service/ftp/restart":
 		h.restartFTP(w, r)
+	case "/api/service/ftp/reload":
+		h.reloadFTP(w, r)
 	// FTP 文件管理
 	case "/api/ftp/files":
 		h.listFtpFiles(w, r)
@@ -317,10 +335,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ftp/files/copy":
 		h.copyFtpFile(w, r)
 	// FTP 用户
+	case "/api/ftp/users":
+		h.listFtpUsers(w, r)
 	case "/api/ftp/users/add":
 		h.addFtpUser(w, r)
 	case "/api/ftp/users/delete":
 		h.deleteFtpUser(w, r)
+	case "/api/ftp/users/toggle":
+		h.toggleFtpUserStatus(w, r)
+	case "/api/ftp/users/batch":
+		h.batchFtpUsers(w, r)
 	// 站点管理
 	case "/api/sites":
 		h.handleSitesList(w, r)

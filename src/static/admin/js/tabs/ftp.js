@@ -6,6 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
+import { DirectoryPicker } from '../components/directory-picker.js';
 import { escapeHtml, formatDate, copyToClipboard } from '../core/utils.js';
 
 class FtpTab extends BaseTab {
@@ -14,12 +15,38 @@ class FtpTab extends BaseTab {
         this.dataTable = null;
         this.users = [];
         this.editingUser = null;
+        this.directoryPicker = null;
     }
 
     onInit() {
         console.log('初始化 FTP 用户管理面板...');
+        this.initDirectoryPicker();
         this.initDataTable();
         this.bindEvents();
+        this.checkServiceStatus(); // 检查服务状态
+    }
+
+    // ========== DirectoryPicker ==========
+
+    initDirectoryPicker() {
+        const container = this.$('#ftp-root-picker');
+        if (!container) return;
+
+        // 从配置获取FTP根目录作为默认值
+        const defaultFtpRoot = this.state?.get?.('config')?.ftp?.root || './ftp';
+        
+        this.directoryPicker = new DirectoryPicker({
+            container,
+            api: this.api,
+            apiPath: '/api/files',  // 使用通用文件API，可以浏览整个文件系统
+            placeholder: defaultFtpRoot,
+            onChange: (path) => {
+                console.log('Selected FTP root:', path);
+            }
+        });
+        
+        // 设置默认值
+        this.directoryPicker.setValue(defaultFtpRoot);
     }
 
     // ========== DataTable ==========
@@ -35,7 +62,28 @@ class FtpTab extends BaseTab {
             pageSize: 20,
             emptyText: '暂无 FTP 用户',
             emptyHint: '点击上方"添加用户"按钮创建',
-            onSelectionChange: ({ selectedCount }) => this.updateBatchActions(selectedCount),
+            batchActions: [
+                {
+                    key: 'enable',
+                    label: '启用',
+                    icon: '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
+                    type: 'success',
+                    handler: () => this.batchToggle(true)
+                },
+                {
+                    key: 'disable',
+                    label: '禁用',
+                    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>',
+                    handler: () => this.batchToggle(false)
+                },
+                {
+                    key: 'delete',
+                    label: '删除',
+                    icon: '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+                    type: 'danger',
+                    handler: () => this.batchDelete()
+                }
+            ],
             onPageChange: () => setTimeout(() => this.bindRowEvents(), 0)
         });
     }
@@ -58,15 +106,16 @@ class FtpTab extends BaseTab {
                 title: '状态',
                 dataIndex: 'status',
                 className: 'col-status',
-                render: (value, row) => `<div class="ftp-status"><label class="switch"><input type="checkbox" class="ftp-status-toggle" data-username="${escapeHtml(row.username)}" ${value === 'enabled' ? 'checked' : ''}><span class="slider"></span></label><span class="ftp-status-text ${value}">${value === 'enabled' ? '已启用' : '已禁用'}</span></div>`
+                render: (value, row) => `<button class="ftp-status-btn ${value === 'enabled' ? 'active' : ''}" data-username="${escapeHtml(row.username)}">${value === 'enabled' ? '已启用' : '已停止'}</button>`
             },
             {
                 title: '快速链接',
                 dataIndex: 'username',
                 className: 'col-link',
-                render: (value) => {
-                    const link = `ftp://${value}@${window.location.hostname}`;
-                    return `<div class="ftp-quick-link"><span class="ftp-link-text" title="${escapeHtml(link)}">${escapeHtml(link)}</span><button class="ftp-link-copy" data-link="${escapeHtml(link)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
+                render: (value, row) => {
+                    const password = row.password || '';
+                    const link = `ftp://${value}:${password}@${window.location.hostname}:2121`;
+                    return `<div class="ftp-quick-link"><a class="ftp-link-text" href="${escapeHtml(link)}" target="_blank" title="点击打开">${escapeHtml(link)}</a><button class="ftp-link-copy" data-link="${escapeHtml(link)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
                 }
             },
             {
@@ -79,7 +128,7 @@ class FtpTab extends BaseTab {
                 title: '操作',
                 dataIndex: 'username',
                 className: 'col-actions',
-                render: (value) => `<div class="ftp-actions"><button class="ftp-action-btn edit" data-username="${escapeHtml(value)}" title="编辑"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button class="ftp-action-btn delete" data-username="${escapeHtml(value)}" title="删除"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></div>`
+                render: (value) => `<div class="ftp-actions"><button class="ftp-action-text config" data-username="${escapeHtml(value)}">配置</button><button class="ftp-action-text edit" data-username="${escapeHtml(value)}">编辑</button><button class="ftp-action-text delete" data-username="${escapeHtml(value)}">删除</button></div>`
             }
         ];
     }
@@ -88,7 +137,16 @@ class FtpTab extends BaseTab {
 
     bindEvents() {
         // 添加、刷新、搜索
-        this.$('#add-ftp-user-btn')?.addEventListener('click', () => { this.editingUser = null; this.showEditor(); });
+        // 服务控制
+        this.$('#ftp-service-toggle')?.addEventListener('click', () => this.toggleService());
+        this.$('#ftp-service-restart')?.addEventListener('click', () => this.restartService());
+        this.$('#ftp-service-reload')?.addEventListener('click', () => this.reloadConfig());
+        
+        // 添加 FTP 用户
+        this.$('#ftp-add-user-btn')?.addEventListener('click', () => { this.editingUser = null; this.showEditor(); });
+        
+        // 端口设置
+        this.$('#ftp-port-btn')?.addEventListener('click', () => this.showPortModal());
         this.$('#ftp-refresh-btn')?.addEventListener('click', () => this.refresh());
         
         let searchTimer;
@@ -97,23 +155,68 @@ class FtpTab extends BaseTab {
             searchTimer = setTimeout(() => this.filterUsers(), 300);
         });
 
-        // 批量操作
-        this.$('#ftp-batch-enable')?.addEventListener('click', () => this.batchToggle(true));
-        this.$('#ftp-batch-disable')?.addEventListener('click', () => this.batchToggle(false));
-        this.$('#ftp-batch-delete')?.addEventListener('click', () => this.batchDelete());
-
+        // 批量操作（已改用 batch-bar 组件）
+        
         // 弹窗
-        this.$('#ftp-user-modal-cancel')?.addEventListener('click', () => this.hideEditor());
-        this.$('#ftp-user-modal-close')?.addEventListener('click', () => this.hideEditor());
-        this.$('#ftp-user-modal-confirm')?.addEventListener('click', () => this.saveUser());
+        this.$('#ftp-modal-cancel')?.addEventListener('click', () => this.hideEditor());
+        this.$('#ftp-modal-close')?.addEventListener('click', () => this.hideEditor());
+        this.$('#ftp-modal-confirm')?.addEventListener('click', () => this.saveUser());
         this.$('#ftp-user-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
+
+        // 生成随机密码
+        this.$('#ftp-generate-password')?.addEventListener('click', () => {
+            this.$('#ftp-form-password').value = this.generatePassword();
+        });
+
+        // 显示/隐藏密码
+        this.$('#ftp-toggle-password')?.addEventListener('click', () => {
+            const input = this.$('#ftp-form-password');
+            const btn = this.$('#ftp-toggle-password');
+            if (input && btn) {
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                // 切换图标
+                btn.innerHTML = isPassword 
+                    ? '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+                    : '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+            }
+        });
+
+        // 端口设置弹窗
+        this.$('#ftp-port-modal-close')?.addEventListener('click', () => this.hidePortModal());
+        this.$('#ftp-port-cancel')?.addEventListener('click', () => this.hidePortModal());
+        this.$('#ftp-port-confirm')?.addEventListener('click', () => this.savePort());
+        this.$('#ftp-port-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hidePortModal());
+
+        // 配置弹窗
+        this.$('#ftp-config-modal-close')?.addEventListener('click', () => this.hideConfigModal());
+        this.$('#ftp-config-cancel')?.addEventListener('click', () => this.hideConfigModal());
+        this.$('#ftp-config-confirm')?.addEventListener('click', () => this.saveConfig());
+        this.$('#ftp-config-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideConfigModal());
+
+        // 删除确认弹窗
+        this.$('#ftp-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.$('#ftp-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.$('#ftp-delete-confirm')?.addEventListener('click', () => this.confirmDelete());
+        this.$('#ftp-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
+    }
+
+    generatePassword() {
+        const chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
     }
 
     bindRowEvents() {
-        // 状态开关
-        this.$$('.ftp-status-toggle').forEach(toggle => {
-            toggle.addEventListener('change', (e) => {
-                this.toggleStatus(e.target.dataset.username, e.target.checked);
+        // 状态按钮
+        this.$$('.ftp-status-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const username = btn.dataset.username;
+                const isEnabled = btn.classList.contains('active');
+                this.toggleStatus(username, !isEnabled);
             });
         });
 
@@ -134,19 +237,25 @@ class FtpTab extends BaseTab {
         });
 
         // 编辑
-        this.$$('.ftp-action-btn.edit').forEach(btn => {
+        this.$$('.ftp-action-text.edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editingUser = this.users.find(u => u.username === btn.dataset.username);
                 this.showEditor();
             });
         });
 
-        // 删除
-        this.$$('.ftp-action-btn.delete').forEach(btn => {
+        // 配置
+        this.$$('.ftp-action-text.config').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (confirm(`确定要删除用户 "${btn.dataset.username}" 吗？`)) {
-                    this.deleteUser(btn.dataset.username);
-                }
+                this.editingUser = this.users.find(u => u.username === btn.dataset.username);
+                this.showConfigModal();
+            });
+        });
+
+        // 删除按钮
+        this.$$('.ftp-action-text.delete').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.showDeleteConfirm(btn.dataset.username);
             });
         });
     }
@@ -158,11 +267,17 @@ class FtpTab extends BaseTab {
         this.dataTable.setLoading(true);
 
         try {
-            this.users = await this.api.getJSON('/api/ftp/users') || [];
+            const result = await this.api.getJSON('/api/ftp/users');
+            // 兼容两种格式：直接数组 或 {users: [...]}
+            this.users = Array.isArray(result) ? result : (result?.users || []);
             this.filterUsers();
         } finally {
             this.dataTable.setLoading(false);
         }
+    }
+
+    async onRefresh() {
+        await this.onLoad();
     }
 
     filterUsers() {
@@ -175,22 +290,142 @@ class FtpTab extends BaseTab {
         setTimeout(() => this.bindRowEvents(), 0);
     }
 
+    // ========== 服务控制 ==========
+
+    async checkServiceStatus() {
+        try {
+            const result = await this.api.getJSON('/api/system/status');
+            const ftpRunning = result?.services?.ftp?.running || false;
+            this.updateServiceStatus(ftpRunning);
+        } catch (error) {
+            console.error('获取服务状态失败:', error);
+        }
+    }
+
+    async toggleService() {
+        const btn = this.$('#ftp-service-toggle');
+        const isRunning = btn?.classList.contains('running');
+        
+        try {
+            if (isRunning) {
+                await this.api.post('/api/service/ftp/stop');
+                this.message.success('FTP 服务已停止');
+                this.updateServiceStatus(false);
+            } else {
+                await this.api.post('/api/service/ftp/start');
+                this.message.success('FTP 服务已启动');
+                this.updateServiceStatus(true);
+            }
+        } catch (error) {
+            this.message.error('操作失败: ' + error.message);
+        }
+    }
+
+    async startService() {
+        try {
+            await this.api.post('/api/service/ftp/start');
+            this.message.success('FTP 服务已启动');
+            this.updateServiceStatus(true);
+        } catch (error) {
+            this.message.error('启动失败: ' + error.message);
+        }
+    }
+
+    async stopService() {
+        try {
+            await this.api.post('/api/service/ftp/stop');
+            this.message.success('FTP 服务已停止');
+            this.updateServiceStatus(false);
+        } catch (error) {
+            this.message.error('停止失败: ' + error.message);
+        }
+    }
+
+    async restartService() {
+        try {
+            await this.api.post('/api/service/ftp/restart');
+            this.message.success('FTP 服务已重启');
+            this.updateServiceStatus(true);
+        } catch (error) {
+            this.message.error('重启失败: ' + error.message);
+        }
+    }
+
+    async reloadConfig() {
+        try {
+            await this.api.post('/api/service/ftp/reload');
+            this.message.success('配置已重载');
+        } catch (error) {
+            this.message.error('重载失败: ' + error.message);
+        }
+    }
+
+    updateServiceStatus(running) {
+        const statusEl = this.$('#ftp-service-status');
+        const toggleBtn = this.$('#ftp-service-toggle');
+        
+        if (statusEl) {
+            statusEl.textContent = running ? '运行中' : '已停止';
+            statusEl.classList.toggle('running', running);
+            statusEl.classList.toggle('stopped', !running);
+        }
+        
+        if (toggleBtn) {
+            toggleBtn.classList.toggle('running', running);
+            toggleBtn.classList.toggle('stopped', !running);
+            const textSpan = toggleBtn.querySelector('.btn-text');
+            if (textSpan) {
+                textSpan.textContent = running ? '停止' : '启动';
+            }
+        }
+    }
+
     async toggleStatus(username, enabled) {
         try {
-            await this.api.post('/api/ftp/users/toggle', { username, status: enabled ? 'enabled' : 'disabled' });
-            this.toast.success(`用户已${enabled ? '启用' : '禁用'}`);
+            await this.api.post('/api/ftp/users/toggle', { username, enabled });
+            this.message.success(`用户已${enabled ? '启用' : '禁用'}`);
             const user = this.users.find(u => u.username === username);
             if (user) user.status = enabled ? 'enabled' : 'disabled';
             this.filterUsers();
         } catch (error) {
-            this.toast.error('操作失败: ' + error.message);
+            this.message.error('操作失败: ' + error.message);
+        }
+    }
+
+    showDeleteConfirm(username) {
+        this.deleteTargetUsername = username;
+        this.$('#ftp-delete-username').textContent = username;
+        this.$('#ftp-delete-modal')?.classList.add('active');
+    }
+
+    hideDeleteConfirm() {
+        this.$('#ftp-delete-modal')?.classList.remove('active');
+        this.deleteTargetUsername = null;
+    }
+
+    async confirmDelete() {
+        if (!this.deleteTargetUsername) return;
+        
+        const username = this.deleteTargetUsername;
+        this.hideDeleteConfirm();
+        
+        try {
+            await this.api.post('/api/ftp/users/delete', { username });
+            this.message.success('用户已删除');
+            // 清除缓存后刷新
+            this.api.clearCache('/api/ftp/users');
+            await this.refresh();
+        } catch (error) {
+            this.message.error('删除失败: ' + error.message);
         }
     }
 
     async deleteUser(username) {
         try {
-            await this.api.delete(`/api/ftp/users/${username}`);
+            await this.api.post('/api/ftp/users/delete', { username });
             this.message.success('用户已删除');
+            // 清除缓存后刷新
+            this.api.clearCache('/api/ftp/users');
             await this.refresh();
         } catch (error) {
             this.message.error('删除失败: ' + error.message);
@@ -198,15 +433,6 @@ class FtpTab extends BaseTab {
     }
 
     // ========== 批量操作 ==========
-
-    updateBatchActions(count) {
-        const batchEl = this.$('#ftp-batch-actions');
-        const countEl = this.$('#ftp-selected-count');
-        if (batchEl && countEl) {
-            batchEl.style.display = count > 0 ? 'flex' : 'none';
-            countEl.textContent = count;
-        }
-    }
 
     async batchToggle(enabled) {
         const keys = this.dataTable?.getSelectedKeys() || [];
@@ -216,6 +442,8 @@ class FtpTab extends BaseTab {
             await this.api.post('/api/ftp/users/batch', { action: enabled ? 'enable' : 'disable', usernames: keys });
             this.message.success(`已${enabled ? '启用' : '禁用'} ${keys.length} 个用户`);
             this.dataTable.clearSelection();
+            // 清除缓存后刷新
+            this.api.clearCache('/api/ftp/users');
             await this.refresh();
         } catch (error) {
             this.message.error('操作失败: ' + error.message);
@@ -224,62 +452,175 @@ class FtpTab extends BaseTab {
 
     async batchDelete() {
         const keys = this.dataTable?.getSelectedKeys() || [];
-        if (keys.length === 0 || !confirm(`确定要删除选中的 ${keys.length} 个用户吗？`)) return;
-
-        try {
-            await this.api.post('/api/ftp/users/batch', { action: 'delete', usernames: keys });
-            this.message.success(`已删除 ${keys.length} 个用户`);
-            this.dataTable.clearSelection();
-            await this.refresh();
-        } catch (error) {
-            this.message.error('删除失败: ' + error.message);
-        }
+        if (keys.length === 0) return;
+        
+        // 使用自定义确认弹窗
+        this.deleteTargetUsername = keys.join(',');
+        this.$('#ftp-delete-username').textContent = `${keys.length} 个用户`;
+        this.$('#ftp-delete-modal')?.classList.add('active');
+        
+        // 修改确认按钮行为
+        const confirmBtn = this.$('#ftp-delete-confirm');
+        confirmBtn.onclick = async () => {
+            this.hideDeleteConfirm();
+            try {
+                await this.api.post('/api/ftp/users/batch', { action: 'delete', usernames: keys });
+                this.message.success(`已删除 ${keys.length} 个用户`);
+                this.dataTable.clearSelection();
+                // 清除缓存后刷新
+                this.api.clearCache('/api/ftp/users');
+                await this.refresh();
+            } catch (error) {
+                this.message.error('删除失败: ' + error.message);
+            }
+        };
     }
 
     // ========== 编辑器 ==========
 
     showEditor() {
         const modal = this.$('#ftp-user-modal');
-        const title = this.$('#ftp-user-modal-title');
+        const title = this.$('#ftp-modal-title');
         if (!modal) return;
 
         if (this.editingUser) {
-            title.textContent = '编辑用户';
+            title.textContent = '编辑FTP';
             this.$('#ftp-form-username').value = this.editingUser.username || '';
+            this.$('#ftp-form-username').disabled = true;  // 编辑时禁用用户名
             this.$('#ftp-form-password').value = this.editingUser.password || '';
-            this.$('#ftp-form-root').value = this.editingUser.rootPath || '';
+            this.$('#ftp-form-password').type = 'text';  // 编辑时显示密码
+            this.directoryPicker?.setValue(this.editingUser.rootPath || '/');
+            this.$('#ftp-form-quota').value = this.editingUser.quota || '';
+            this.$('#ftp-form-expiry').value = this.editingUser.expiryDays || '';
+            this.$('#ftp-form-status').value = this.editingUser.status || 'enabled';
+            this.$('#ftp-form-remark').value = this.editingUser.remark || '';
         } else {
-            title.textContent = '添加用户';
+            title.textContent = '添加FTP';
             this.$('#ftp-user-form')?.reset();
+            this.$('#ftp-form-username').disabled = false;  // 添加时启用用户名
+            this.$('#ftp-form-password').type = 'password';  // 添加时密码隐藏
+            // 默认根目录 = FTP根目录
+            const defaultFtpRoot = this.state?.get?.('config')?.ftp?.root || './ftp';
+            this.directoryPicker?.setValue(defaultFtpRoot);
         }
 
         modal.classList.add('active');
+        
+        // 监听用户名输入，自动更新根目录
+        const usernameInput = this.$('#ftp-form-username');
+        if (usernameInput && !this.editingUser) {
+            usernameInput.addEventListener('input', () => {
+                const username = usernameInput.value.trim();
+                if (username) {
+                    const defaultFtpRoot = this.state?.get?.('config')?.ftp?.root || './ftp';
+                    const userPath = defaultFtpRoot.endsWith('/') 
+                        ? defaultFtpRoot + username 
+                        : defaultFtpRoot + '/' + username;
+                    this.directoryPicker?.setValue(userPath);
+                }
+            });
+        }
     }
 
     hideEditor() {
         this.$('#ftp-user-modal')?.classList.remove('active');
         this.editingUser = null;
+        // 重置表单状态
+        this.$('#ftp-form-username').disabled = false;
+        this.$('#ftp-form-password').type = 'password';
+    }
+
+    showPortModal() {
+        this.$('#ftp-port-modal')?.classList.add('active');
+    }
+
+    hidePortModal() {
+        this.$('#ftp-port-modal')?.classList.remove('active');
+    }
+
+    showConfigModal() {
+        if (!this.editingUser) return;
+        
+        // 填充配置数据
+        this.$('#ftp-config-username').textContent = this.editingUser.username || '';
+        this.$('#ftp-config-rootpath').textContent = this.editingUser.rootPath || '/';
+        
+        // 默认值
+        this.$('#ftp-config-speed-limit').value = this.editingUser.speedLimit || 0;
+        this.$('#ftp-config-max-connections').value = this.editingUser.maxConnections || 0;
+        this.$('#ftp-config-bandwidth').value = this.editingUser.bandwidth || 0;
+        
+        this.$('#ftp-config-modal')?.classList.add('active');
+    }
+
+    hideConfigModal() {
+        this.$('#ftp-config-modal')?.classList.remove('active');
+    }
+
+    async saveConfig() {
+        if (!this.editingUser) return;
+        
+        const config = {
+            username: this.editingUser.username,
+            speedLimit: parseInt(this.$('#ftp-config-speed-limit')?.value) || 0,
+            maxConnections: parseInt(this.$('#ftp-config-max-connections')?.value) || 0,
+            bandwidth: parseInt(this.$('#ftp-config-bandwidth')?.value) || 0,
+        };
+        
+        try {
+            await this.api.post(`/api/ftp/users/${this.editingUser.username}/config`, config);
+            this.message.success('配置已保存');
+            this.hideConfigModal();
+        } catch (error) {
+            this.message.error('保存失败: ' + error.message);
+        }
+    }
+
+    async savePort() {
+        const port = parseInt(this.$('#ftp-port-input')?.value) || 2121;
+        
+        try {
+            await this.api.post('/api/ftp/port', { port });
+            this.message.success('FTP 端口已更新，重启服务生效');
+            this.hidePortModal();
+        } catch (error) {
+            this.message.error('保存失败: ' + error.message);
+        }
     }
 
     async saveUser() {
         const username = this.$('#ftp-form-username')?.value.trim();
         const password = this.$('#ftp-form-password')?.value.trim();
-        const rootPath = this.$('#ftp-form-root')?.value.trim() || '/';
+        const rootPath = this.directoryPicker?.getValue() || '/';
+        const quota = parseInt(this.$('#ftp-form-quota')?.value) || 0;
+        const expiryDays = parseInt(this.$('#ftp-form-expiry')?.value) || 0;
+        const status = this.$('#ftp-form-status')?.value || 'enabled';
+        const remark = this.$('#ftp-form-remark')?.value.trim() || '';
 
         if (!username) { this.message.error('请输入用户名'); return; }
-        if (!password) { this.message.error('请输入密码'); return; }
+        if (!this.editingUser && !password) { this.message.error('请输入密码'); return; }
 
-        const data = { username, password, rootPath, status: 'enabled' };
+        const data = { 
+            username, 
+            password,
+            rootPath, 
+            quota, 
+            expiryDays, 
+            status, 
+            remark 
+        };
 
         try {
             if (this.editingUser) {
                 await this.api.put(`/api/ftp/users/${this.editingUser.username}`, data);
                 this.message.success('用户已更新');
             } else {
-                await this.api.post('/api/ftp/users', data);
+                await this.api.post('/api/ftp/users/add', data);
                 this.message.success('用户已创建');
             }
             this.hideEditor();
+            // 清除缓存后刷新
+            this.api.clearCache('/api/ftp/users');
             await this.refresh();
         } catch (error) {
             this.message.error('保存失败: ' + error.message);

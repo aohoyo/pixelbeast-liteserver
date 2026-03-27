@@ -18,39 +18,40 @@ import (
 // 支持绝对路径、相对路径和 ".." 导航
 func resolvePath(subPath string) string {
 	rootDir, _ := os.Getwd()
-	
+
 	// 空路径返回项目目录
 	if subPath == "" {
 		return rootDir
 	}
-	
+
 	// "." 或 "./" 返回项目目录
 	if subPath == "." || subPath == "./" {
 		return rootDir
 	}
-	
+
 	// 处理正斜杠格式的 Windows 绝对路径 (如 C:/Users/...)
-	// filepath.IsAbs 期望反斜杠，所以需要先转换
+	// filepath.IsAbs 期望反斜杠,所以需要先转换
 	normalizedPath := filepath.FromSlash(subPath)
-	
-	// 检查是否是绝对路径（Linux/Unix 以 / 开头）
+
+	// 检查是否是绝对路径(Linux/Unix 以 / 开头)
 	if filepath.IsAbs(normalizedPath) {
-		// 绝对路径：直接使用，并清理 ".."
+		// 绝对路径:直接使用,并清理 ".."
 		return filepath.Clean(normalizedPath)
 	}
-	
+
 	// 检查是否是 Windows 驱动器格式的绝对路径
 	if len(subPath) >= 2 && subPath[1] == ':' {
 		// Windows 驱动器格式 (C:/...)
 		return filepath.Clean(normalizedPath)
 	}
-	
-	// 相对路径：相对于项目目录
+
+	// 相对路径:相对于项目目录
 	return filepath.Join(rootDir, normalizedPath)
 }
 
 func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	subPath := r.URL.Query().Get("path")
+	dirsOnly := r.URL.Query().Get("dirsOnly") == "true"
 
 	// Windows 特殊处理：虚拟"此电脑"路径
 	if subPath == "此电脑" {
@@ -62,12 +63,26 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
+		// 目录不存在时返回空列表
+		if os.IsNotExist(err) {
+			programDir, _ := os.Getwd()
+			Success(w, map[string]interface{}{
+				"path":        filepath.Clean(filepath.ToSlash(absPath)),
+				"program_dir": filepath.Clean(filepath.ToSlash(programDir)),
+				"files":       []map[string]interface{}{},
+			})
+			return
+		}
 		InternalServerError(w, err.Error())
 		return
 	}
 
 	files := make([]map[string]interface{}, 0)
 	for _, entry := range entries {
+		// 如果只需要目录，跳过文件
+		if dirsOnly && !entry.IsDir() {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
@@ -80,16 +95,13 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 返回当前路径（转为正斜杠格式，便于前端显示）
-	displayPath := filepath.ToSlash(absPath)
-	
-	// 获取程序目录
+	// 返回当前路径（清理多余斜杠）
+	displayPath := filepath.Clean(filepath.ToSlash(absPath))
 	programDir, _ := os.Getwd()
-	programDirDisplay := filepath.ToSlash(programDir)
-	
+
 	Success(w, map[string]interface{}{
 		"path":        displayPath,
-		"program_dir": programDirDisplay,
+		"program_dir": filepath.Clean(filepath.ToSlash(programDir)),
 		"files":       files,
 	})
 }
@@ -97,10 +109,10 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 // listDrives 列出 Windows 驱动器
 func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
 	files := make([]map[string]interface{}, 0)
-	
+
 	// 检测操作系统
 	if runtime.GOOS == "windows" {
-		// Windows：检测所有可用驱动器
+		// Windows:检测所有可用驱动器
 		for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
 			drivePath := string(drive) + ":/"
 			if _, err := os.Stat(drivePath); err == nil {
@@ -113,7 +125,7 @@ func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		// 非 Windows：返回根目录
+		// 非 Windows:返回根目录
 		files = append(files, map[string]interface{}{
 			"name":     "/",
 			"is_dir":   true,
@@ -121,7 +133,7 @@ func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
 			"modified": "",
 		})
 	}
-	
+
 	Success(w, map[string]interface{}{
 		"path":        "此电脑",
 		"program_dir": "",
@@ -389,8 +401,8 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		SrcPath string `json:"srcPath"` // 源目录
 		SrcName string `json:"srcName"` // 源文件名
-		DstPath string `json:"dstPath"` // 目标目录（可选，默认同源目录）
-		DstName string `json:"dstName"` // 目标文件名（可选，默认同源文件名）
+		DstPath string `json:"dstPath"` // 目标目录(可选,默认同源目录)
+		DstName string `json:"dstName"` // 目标文件名(可选,默认同源文件名)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")
@@ -424,13 +436,13 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if srcInfo.IsDir() {
-		// 目录：递归复制
+		// 目录:递归复制
 		if err := h.copyDir(srcPath, dstPath); err != nil {
 			InternalServerError(w, err.Error())
 			return
 		}
 	} else {
-		// 文件：复制
+		// 文件:复制
 		srcFile, err := os.Open(srcPath)
 		if err != nil {
 			InternalServerError(w, err.Error())
@@ -535,7 +547,7 @@ func (h *Handler) touchFile(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "文件创建成功")
 }
 
-// moveFile 移动文件（剪切+粘贴）
+// moveFile 移动文件(剪切+粘贴)
 func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -563,7 +575,7 @@ func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 	dstDir := resolvePath(req.DstPath)
 	dstPath := filepath.Join(dstDir, req.SrcName)
 
-	// 移动（重命名）
+	// 移动(重命名)
 	if err := os.Rename(srcPath, dstPath); err != nil {
 		InternalServerError(w, err.Error())
 		return
@@ -572,7 +584,7 @@ func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "移动成功")
 }
 
-// chmodFile 修改文件权限（仅 Linux）
+// chmodFile 修改文件权限(仅 Linux)
 func (h *Handler) chmodFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -689,7 +701,7 @@ func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
 
 	// 限制文件大小 (最大 10MB)
 	if info.Size() > 10*1024*1024 {
-		Error(w, http.StatusBadRequest, "文件太大，超过 10MB 限制")
+		Error(w, http.StatusBadRequest, "文件太大,超过 10MB 限制")
 		return
 	}
 

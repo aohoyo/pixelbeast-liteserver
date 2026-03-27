@@ -8,6 +8,7 @@
 - **单文件部署**：依赖极少，下载即用
 - **跨平台**：Windows、Linux、ARM64 从单一代码库构建
 - **功能集成**：HTTP + FTP + Web 管理界面
+- **配置加密**：敏感信息 AES-256-GCM 加密存储
 
 ## 版本信息
 
@@ -29,30 +30,32 @@
 | 服务 | 用户名 | 密码 |
 |------|--------|------|
 | 管理面板 | `admin` | `admin123` |
-| FTP | `flash` | `flash` |
 
-### 配置文件示例
+> **注意**：密码在配置文件中加密存储
 
+### 配置文件结构
+
+```
+config/
+├── server.json      # 服务配置（端口、日志、admin账号）
+├── sites.json       # 站点配置
+├── ftp.json         # FTP配置（用户密码加密）
+└── secrets.key      # 加密密钥（自动生成）
+```
+
+**server.json 示例**：
 ```json
 {
-  "global": {
-    "adminPort": 9527
-  },
-  "admin": {
-    "enabled": true,
-    "path": "/admin",
-    "username": "admin",
-    "password": "admin123"
-  },
-  "ftp": {
-    "enabled": true,
-    "port": 2121,
-    "root": "./ftp",
-    "users": [
-      {"username": "flash", "password": "flash"}
-    ]
-  },
-  "sites": []
+  "http_port": 8080,
+  "admin_port": 9527,
+  "admin_username": "admin",
+  "admin_password": "加密后的密码",
+  "admin_path": "/admin",
+  "log": {
+    "retention_days": 30,
+    "max_size_mb": 100,
+    "level": "info"
+  }
 }
 ```
 
@@ -64,7 +67,7 @@
 | HTTP 服务 | 内置 `net/http` |
 | FTP 服务 | 自实现服务器 |
 | 静态资源 | Go `embed` 包 |
-| 配置管理 | JSON 文件 |
+| 配置管理 | JSON 文件 + AES 加密 |
 | 前端 | 原生 HTML/CSS/JavaScript |
 
 ## 项目结构
@@ -72,19 +75,47 @@
 ```
 pixelbeast-liteserver/
 ├── main.go                 # 程序入口
-├── pixelbeast.json         # 运行时配置
-├── package.json            # npm 脚本
-├── dev.sh                  # 开发模式启动脚本
-├── .air.toml               # Air 热重载配置
-├── CLAUDE.md               # Claude Code 文档索引
+├── embed.go                # 静态资源嵌入
+├── go.mod                  # Go 模块依赖
+├── CLAUDE.md               # Claude AI 助手指南
+├── config/                 # 配置文件目录
+│   ├── server.json         # 服务配置
+│   ├── sites.json          # 站点配置
+│   ├── ftp.json            # FTP 配置
+│   └── secrets.key         # 加密密钥
 ├── docs/                   # 项目文档
 ├── src/                    # 源码目录
 │   ├── handlers/           # 协议层 (HTTP/FTP)
-│   ├── admin/              # 管理面板 handlers
-│   ├── static/admin/       # Web 管理界面（嵌入）
-│   ├── services/           # 业务逻辑层
-│   └── config/             # 配置管理
+│   ├── admin/              # 管理面板后端
+│   ├── config/             # 配置管理
+│   ├── crypto/             # 加密模块
+│   └── static/admin/       # Web 管理界面（嵌入）
 ├── web/                    # HTTP 运行时根目录
 ├── ftp/                    # FTP 运行时根目录
 └── logs/                   # 日志文件目录
 ```
+
+## 快速开始
+
+```bash
+# 编译
+go build -o pixelbeast
+
+# 运行
+./pixelbeast -config ./config
+
+# 访问管理面板
+# http://localhost:9527/admin
+# 默认账号: admin / admin123
+```
+
+## 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| [architecture.md](architecture.md) | 架构设计 |
+| [api.md](api.md) | API 文档 |
+| [frontend.md](frontend.md) | 前端开发指南 |
+| [coding-standards.md](coding-standards.md) | 代码规范 |
+| [deployment.md](deployment.md) | 部署指南 |
+| [CHANGELOG.md](CHANGELOG.md) | 更新日志 |

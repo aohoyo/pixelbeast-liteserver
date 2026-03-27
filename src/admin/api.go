@@ -385,14 +385,82 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		handlers.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
-	if err := newConfig.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, err.Error())
-		handlers.LogPanelConfigChange(username, "保存配置", false)
-		return
+
+	// 更新内存中的配置
+	h.Config = &newConfig
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		// 同步到 ConfigManager
+		h.ConfigManager.Server.AdminPort = newConfig.Global.AdminPort
+		h.ConfigManager.Server.FTPDir = newConfig.Global.FTPDir
+		h.ConfigManager.Server.BackupDir = newConfig.Global.BackupDir
+		h.ConfigManager.Sites.Sites = newConfig.Sites
+		h.ConfigManager.FTP = &newConfig.FTP
+		h.ConfigManager.Server.Log = newConfig.Log
+
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, err.Error())
+			handlers.LogPanelConfigChange(username, "保存配置", false)
+			return
+		}
 	}
-	*h.Config = newConfig
+
 	handlers.LogPanelConfigChange(username, "保存配置", true)
 	SuccessMessage(w, "配置已保存")
+}
+
+func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
+	username := h.getSessionUsername(r)
+	if r.Method != http.MethodPost {
+		BadRequest(w, "Method not allowed")
+		return
+	}
+
+	// 恢复默认配置
+	defaultConfig := &config.Config{
+		Global: config.GlobalConfig{
+			AdminPort: 9527,
+			FTPDir:    "./ftp",
+			BackupDir: "./backups",
+		},
+		Admin: config.AdminConfig{
+			Username: "admin",
+			Path:     "/admin",
+		},
+		FTP: config.FTPConfig{
+			Port:    2121,
+			Enabled: false,
+			Root:    "./ftp",
+		},
+		HTTP: config.HTTPConfig{
+			Port: 8080,
+			Root: "./web",
+		},
+	}
+
+	// 更新内存中的配置
+	h.Config = defaultConfig
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.Server.AdminPort = 9527
+		h.ConfigManager.Server.FTPDir = "./ftp"
+		h.ConfigManager.Server.BackupDir = "./backups"
+		h.ConfigManager.Sites.Sites = []config.SiteConfig{}
+		h.ConfigManager.FTP.Port = 2121
+		h.ConfigManager.FTP.Enabled = false
+		h.ConfigManager.FTP.Root = "./ftp"
+
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, err.Error())
+			handlers.LogPanelConfigChange(username, "重置配置", false)
+			return
+		}
+	}
+
+	handlers.LogPanelConfigChange(username, "重置配置", true)
+	SuccessMessage(w, "配置已恢复默认")
 }
 
 // ==================== 日志 ====================

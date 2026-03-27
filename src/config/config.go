@@ -42,16 +42,6 @@ type ServerConfig struct {
 	BackupDir string `json:"backup_dir"`
 }
 
-// LogConfig 日志配置
-type LogConfig struct {
-	RetentionDays int    `json:"retention_days"`
-	MaxSizeMB     int    `json:"max_size_mb"`
-	CompressDays  int    `json:"compress_days"`
-	CleanupHour   int    `json:"cleanup_hour"`
-	Level         string `json:"level"`
-	Levels        map[string]string `json:"levels,omitempty"` // 各分类级别
-}
-
 // SitesConfig 站点配置
 type SitesConfig struct {
 	Sites []SiteConfig `json:"sites"`

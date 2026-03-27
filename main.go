@@ -39,11 +39,9 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	adapter := config.NewAdapter(cm)
-
 	// 初始化日志
 	logCfg := cm.Server.Log
-	if err := handlers.InitLoggerWithConfig("./log", &config.LogConfig{
+	if err := handlers.InitLoggerWithConfig("./logs", &config.LogConfig{
 		RetentionDays: logCfg.RetentionDays,
 		MaxSizeMB:     logCfg.MaxSizeMB,
 		CompressDays:  logCfg.CompressDays,
@@ -56,16 +54,11 @@ func main() {
 	handlers.LogSystemInfo("像素兽 v%s 启动中...", version)
 	handlers.LogSystemInfo("配置目录: %s", *configDir)
 
-	// 创建服务管理器（临时用旧配置结构，后续重构）
-	tmpCfg := &config.Config{
-		Global: config.GlobalConfig{
-			AdminPort: adapter.GetAdminPort(),
-		},
-	}
-	serverManager = handlers.NewServerManager(tmpCfg, *configDir)
+	// 创建服务管理器
+	serverManager = handlers.NewServerManager(cm, *configDir)
 
 	// 创建 FTP 服务器
-	ftpCfg := adapter.GetFTP()
+	ftpCfg := cm.FTP
 	if ftpCfg.Port > 0 {
 		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm)
 		if err != nil {
@@ -79,15 +72,9 @@ func main() {
 	admin.SetStaticFS(getStaticFS())
 
 	// 创建管理面板处理器
-	tmpAdminCfg := &config.Config{
-		Admin: config.AdminConfig{
-			Username: cm.Server.AdminUsername,
-			Path:     cm.Server.AdminPath,
-		},
-	}
-	adminHandler := admin.New(tmpAdminCfg, *configDir)
+	adminHandler := admin.New(cm, *configDir)
+	adminHandler.SetConfigManager(cm)
 	adminHandler.SetServerManager(serverManager)
-	adminHandler.SetPasswordValidator(cm)
 	serverManager.SetAdminHandler(adminHandler)
 
 	// 启动管理面板服务器

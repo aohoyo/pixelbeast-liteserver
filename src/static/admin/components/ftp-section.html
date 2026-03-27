@@ -16,17 +16,21 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <div class="toolbar-batch" id="ftp-batch-actions" style="display: none">
-          <span class="toolbar-batch-label">已选择 <strong id="ftp-selected-count">0</strong> 项</span>
-          <button class="btn btn-sm" id="ftp-batch-enable">
-            <i class="icon icon-check"></i> 启用
+        <!-- FTP 服务控制 -->
+        <div class="ftp-service-control">
+          <span class="ftp-service-label">FTP服务</span>
+          <button class="btn btn-sm" id="ftp-service-toggle">
+            <svg class="icon start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <svg class="icon stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>
+            <span class="btn-text">启动</span>
           </button>
-          <button class="btn btn-sm" id="ftp-batch-disable">
-            <i class="icon icon-x"></i> 禁用
+          <button class="btn btn-sm" id="ftp-service-restart">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> 重启
           </button>
-          <button class="btn btn-sm btn-danger" id="ftp-batch-delete">
-            <i class="icon icon-trash"></i> 删除
+          <button class="btn btn-sm" id="ftp-service-reload">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 10"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 14"></path></svg> 重载配置
           </button>
+          <span class="ftp-service-status" id="ftp-service-status">已停止</span>
         </div>
       </div>
       <div class="toolbar-right">
@@ -52,6 +56,11 @@
 
     <!-- 数据表格 -->
     <div class="table-wrapper" id="ftp-table-container"></div>
+    
+    <!-- 分页 -->
+    <div class="table-footer">
+      <div id="ftp-pagination"></div>
+    </div>
   </div>
 </div>
 
@@ -60,7 +69,7 @@
   <div class="modal-overlay"></div>
   <div class="modal-container" style="width: 480px; max-width: 90vw;">
     <div class="modal-header">
-      <h3 id="ftp-modal-title">添加 FTP 用户</h3>
+      <h3 id="ftp-modal-title">添加FTP</h3>
       <button class="modal-close" id="ftp-modal-close">&times;</button>
     </div>
     <div class="modal-body">
@@ -73,9 +82,17 @@
         <div class="form-group">
           <label class="form-label">密码 <span class="required">*</span></label>
           <div class="ftp-password-input-group">
-            <input type="password" class="form-input" id="ftp-form-password" placeholder="请输入密码" required />
+            <div class="password-input-wrapper">
+              <input type="password" class="form-input" id="ftp-form-password" placeholder="请输入密码" required />
+              <button type="button" class="password-toggle-btn" id="ftp-toggle-password" title="显示/隐藏密码">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
             <button type="button" class="btn" id="ftp-generate-password" title="生成随机密码">
-              <i class="icon icon-refresh"></i> 随机
+              随机
             </button>
           </div>
           <span class="form-hint">建议设置 8 位以上包含字母和数字的密码</span>
@@ -83,7 +100,8 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">根目录 <span class="required">*</span></label>
-            <input type="text" class="form-input" id="ftp-form-root" placeholder="/ftp/user1" required />
+            <div id="ftp-root-picker"></div>
+            <span class="form-hint">用户只能访问此目录及其子目录</span>
           </div>
           <div class="form-group">
             <label class="form-label">容量限制 (MB)</label>
@@ -148,7 +166,7 @@
       <div class="form-group">
         <label class="form-label">FTP 端口 <span class="required">*</span></label>
         <div class="number-input-wrapper">
-          <input type="number" class="form-input" id="ftp-port-input" value="21" min="1" max="65535" required />
+          <input type="number" class="form-input" id="ftp-port-input" value="2121" min="1" max="65535" required />
           <div class="number-input-controls">
             <button type="button" class="number-input-btn" data-action="up">
               <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -164,6 +182,150 @@
     <div class="modal-footer">
       <button class="btn" id="ftp-port-cancel">取消</button>
       <button class="btn btn-primary" id="ftp-port-confirm">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 配置弹窗 -->
+<div class="modal" id="ftp-config-modal">
+  <div class="modal-overlay"></div>
+  <div class="modal-container" style="width: 500px; max-width: 90vw;">
+    <div class="modal-header">
+      <h3>FTP 用户配置</h3>
+      <button class="modal-close" id="ftp-config-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="ftp-config-info">
+        <div class="ftp-config-row">
+          <span class="ftp-config-label">用户名</span>
+          <span class="ftp-config-value" id="ftp-config-username">-</span>
+        </div>
+        <div class="ftp-config-row">
+          <span class="ftp-config-label">根目录</span>
+          <span class="ftp-config-value" id="ftp-config-rootpath">-</span>
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <h4 class="form-section-title">速度限制</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">下载速度 (KB/s)</label>
+            <div class="number-input-wrapper">
+              <input type="number" class="form-input" id="ftp-config-speed-limit" value="0" min="0" placeholder="0 = 无限制" />
+              <div class="number-input-controls">
+                <button type="button" class="number-input-btn" data-action="up">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                </button>
+                <button type="button" class="number-input-btn" data-action="down">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                </button>
+              </div>
+            </div>
+            <span class="form-hint">0 表示无限制</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">上传速度 (KB/s)</label>
+            <div class="number-input-wrapper">
+              <input type="number" class="form-input" id="ftp-config-bandwidth" value="0" min="0" placeholder="0 = 无限制" />
+              <div class="number-input-controls">
+                <button type="button" class="number-input-btn" data-action="up">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                </button>
+                <button type="button" class="number-input-btn" data-action="down">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                </button>
+              </div>
+            </div>
+            <span class="form-hint">0 表示无限制</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <h4 class="form-section-title">文件限制</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">最大文件数量</label>
+            <div class="number-input-wrapper">
+              <input type="number" class="form-input" id="ftp-config-max-files" value="0" min="0" placeholder="0 = 无限制" />
+              <div class="number-input-controls">
+                <button type="button" class="number-input-btn" data-action="up">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                </button>
+                <button type="button" class="number-input-btn" data-action="down">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                </button>
+              </div>
+            </div>
+            <span class="form-hint">0 表示无限制</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">最大文件大小 (MB)</label>
+            <div class="number-input-wrapper">
+              <input type="number" class="form-input" id="ftp-config-max-file-size" value="0" min="0" placeholder="0 = 无限制" />
+              <div class="number-input-controls">
+                <button type="button" class="number-input-btn" data-action="up">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                </button>
+                <button type="button" class="number-input-btn" data-action="down">
+                  <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                </button>
+              </div>
+            </div>
+            <span class="form-hint">0 表示无限制</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <h4 class="form-section-title">连接限制</h4>
+        <div class="form-group">
+          <label class="form-label">最大连接数</label>
+          <div class="number-input-wrapper">
+            <input type="number" class="form-input" id="ftp-config-max-connections" value="0" min="0" placeholder="0 = 无限制" />
+            <div class="number-input-controls">
+              <button type="button" class="number-input-btn" data-action="up">
+                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+              </button>
+              <button type="button" class="number-input-btn" data-action="down">
+                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          </div>
+          <span class="form-hint">0 表示无限制</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="ftp-config-cancel">取消</button>
+      <button class="btn btn-primary" id="ftp-config-confirm">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal" id="ftp-delete-modal">
+  <div class="modal-overlay"></div>
+  <div class="modal-container" style="width: 400px; max-width: 90vw;">
+    <div class="modal-header">
+      <h3>确认删除</h3>
+      <button class="modal-close" id="ftp-delete-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="ftp-delete-warning">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <p>确定要删除用户 <strong id="ftp-delete-username"></strong> 吗？</p>
+        <p class="ftp-delete-hint">此操作不可恢复</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="ftp-delete-cancel">取消</button>
+      <button class="btn btn-danger" id="ftp-delete-confirm">删除</button>
     </div>
   </div>
 </div>

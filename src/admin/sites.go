@@ -73,9 +73,13 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 	site.Enabled = req.Enabled
 	site.UpdatedAt = time.Now().Format(time.RFC3339)
 
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, "保存配置失败")
-		return
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.Sites.Sites = h.Config.Sites
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败")
+			return
+		}
 	}
 
 	// 重新加载站点
@@ -142,10 +146,13 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 保存配置
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, "保存配置失败")
-		return
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.Sites.Sites = h.Config.Sites
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败")
+			return
+		}
 	}
 
 	// 重新加载站点
@@ -220,9 +227,12 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 保存配置
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, "保存配置失败")
-		return
+	if h.ConfigManager != nil {
+		h.ConfigManager.Sites.Sites = h.Config.Sites
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败")
+			return
+		}
 	}
 
 	// 创建站点根目录
@@ -281,9 +291,12 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 	}
 
 	// 保存配置
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, "保存配置失败")
-		return
+	if h.ConfigManager != nil {
+		h.ConfigManager.Sites.Sites = h.Config.Sites
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败")
+			return
+		}
 	}
 
 	// 重新加载站点
@@ -319,9 +332,12 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 	}
 
 	// 保存配置
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, "保存配置失败")
-		return
+	if h.ConfigManager != nil {
+		h.ConfigManager.Sites.Sites = h.Config.Sites
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败")
+			return
+		}
 	}
 
 	// 重新加载站点

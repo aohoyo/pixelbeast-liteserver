@@ -2307,30 +2307,101 @@ export class FileManager {
         const tab = this.getActiveTab();
         if (!tab) return;
 
-        // 使用自定义输入对话框
-        const duration = await this.showInputDialog('外链分享', '分享有效期（小时）:', '24');
-        if (!duration) return;
+        // 显示分享设置对话框
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+        overlay.innerHTML = `
+            <div class="dialog-box share-dialog">
+                <div class="dialog-header">
+                    <span class="dialog-title">📤 外链分享</span>
+                </div>
+                <div class="dialog-body">
+                    <div class="share-file-info">
+                        <span class="share-file-icon">📄</span>
+                        <span class="share-file-name">${filename}</span>
+                    </div>
+                    <div class="share-form-group">
+                        <label>有效期</label>
+                        <select id="share-duration">
+                            <option value="1">1 小时</option>
+                            <option value="6">6 小时</option>
+                            <option value="12">12 小时</option>
+                            <option value="24" selected>1 天</option>
+                            <option value="72">3 天</option>
+                            <option value="168">7 天</option>
+                            <option value="720">30 天</option>
+                        </select>
+                    </div>
+                    <div class="share-form-group">
+                        <label>访问密码 <span class="share-hint">(留空则无需密码)</span></label>
+                        <input type="text" id="share-password" placeholder="可选，留空无密码保护">
+                    </div>
+                </div>
+                <div class="dialog-footer">
+                    <button class="dialog-btn dialog-btn-cancel" id="share-cancel-btn">取消</button>
+                    <button class="dialog-btn dialog-btn-confirm" id="share-create-btn">创建分享</button>
+                </div>
+            </div>
+        `;
 
-        try {
-            const response = await fetch(`${this.options.apiPath}/share`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    path: tab.path,
-                    name: filename,
-                    duration: parseInt(duration) || 24
-                })
-            });
-            const result = await response.json();
-            if (result?.code === 200) {
-                // 显示分享链接
-                this.showShareDialog(result.data);
-            } else {
-                this.options.toast?.error?.(result?.message || '分享失败');
+        document.body.appendChild(overlay);
+
+        const cancelBtn = overlay.querySelector('#share-cancel-btn');
+        const createBtn = overlay.querySelector('#share-create-btn');
+        const durationSelect = overlay.querySelector('#share-duration');
+        const passwordInput = overlay.querySelector('#share-password');
+
+        const close = () => overlay.remove();
+
+        const createShare = async () => {
+            const duration = parseInt(durationSelect.value) || 24;
+            const password = passwordInput.value.trim();
+
+            createBtn.disabled = true;
+            createBtn.textContent = '创建中...';
+
+            try {
+                const response = await fetch(`${this.options.apiPath}/share`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: tab.path,
+                        name: filename,
+                        duration: duration,
+                        password: password || undefined
+                    })
+                });
+                const result = await response.json();
+                if (result?.code === 200) {
+                    close();
+                    // 显示分享结果
+                    this.showShareDialog(result.data);
+                } else {
+                    this.options.toast?.error?.(result?.message || '分享失败');
+                    createBtn.disabled = false;
+                    createBtn.textContent = '创建分享';
+                }
+            } catch (error) {
+                this.options.toast?.error?.('分享失败: ' + error.message);
+                createBtn.disabled = false;
+                createBtn.textContent = '创建分享';
             }
-        } catch (error) {
-            this.options.toast?.error?.('分享失败: ' + error.message);
-        }
+        };
+
+        cancelBtn.addEventListener('click', close);
+        createBtn.addEventListener('click', createShare);
+
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') close();
+            if (e.key === 'Enter') createShare();
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+        });
+
+        // 聚焦密码输入框
+        setTimeout(() => passwordInput.focus(), 100);
     }
 
     /**
@@ -2349,12 +2420,16 @@ export class FileManager {
         overlay.innerHTML = `
             <div class="dialog-box share-result-dialog">
                 <div class="dialog-header">
-                    <span class="dialog-title">外链分享</span>
+                    <span class="dialog-title">✅ 分享链接已创建</span>
                 </div>
                 <div class="dialog-body">
                     <div class="share-result-info">
                         <label>文件名:</label>
                         <span>${data.fileName || '未知'}</span>
+                    </div>
+                    <div class="share-result-info">
+                        <label>文件大小:</label>
+                        <span>${this.formatSize(data.fileSize || 0)}</span>
                     </div>
                     <div class="share-result-info">
                         <label>过期时间:</label>

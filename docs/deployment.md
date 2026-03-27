@@ -65,7 +65,7 @@ GOOS=linux GOARCH=arm64 go build -o pixelbeast
 ```bash
 # 1. 上传文件
 scp pixelbeast user@server:/opt/pixelbeast/
-scp pixelbeast.json user@server:/opt/pixelbeast/
+scp -r config user@server:/opt/pixelbeast/
 
 # 2. 创建必要目录
 ssh user@server
@@ -85,7 +85,7 @@ After=network.target
 Type=simple
 User=www-data
 WorkingDirectory=/opt/pixelbeast
-ExecStart=/opt/pixelbeast/pixelbeast -config /opt/pixelbeast/pixelbeast.json
+ExecStart=/opt/pixelbeast/pixelbeast -config /opt/pixelbeast/config
 Restart=on-failure
 RestartSec=5
 
@@ -110,13 +110,13 @@ cd C:\pixelbeast
 
 REM 2. 复制文件
 copy pixelbeast.exe C:\pixelbeast\
-copy pixelbeast.json C:\pixelbeast\
+xcopy /E /I config C:\pixelbeast\config
 
 REM 3. 创建必要目录
 mkdir logs web ftp
 
 REM 4. 创建 Windows 服务（使用 NSSM）
-nssm install PixelBeast C:\pixelbeast\pixelbeast.exe -config C:\pixelbeast\pixelbeast.json
+nssm install PixelBeast C:\pixelbeast\pixelbeast.exe -config C:\pixelbeast\config
 nssm start PixelBeast
 ```
 
@@ -130,13 +130,13 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY pixelbeast .
-COPY pixelbeast.json .
+COPY config ./config
 
 RUN mkdir -p logs web ftp
 
 EXPOSE 8080 2121 9527
 
-CMD ["./pixelbeast", "-config", "pixelbeast.json"]
+CMD ["./pixelbeast", "-config", "./config"]
 ```
 
 构建和运行：
@@ -161,17 +161,34 @@ docker run -d \
 
 ### 配置文件位置
 
-- **开发**: `./pixelbeast.json`
-- **生产**: `/opt/pixelbeast/pixelbeast.json`
+- **开发**: `./config/` 目录
+- **生产**: `/opt/pixelbeast/config/`
+
+### 配置文件结构
+
+```
+config/
+├── server.json      # 服务配置
+├── sites.json       # 站点配置
+├── ftp.json         # FTP 配置
+└── secrets.key      # 加密密钥（自动生成）
+```
+
+### 启动命令
+
+```bash
+# 指定配置目录
+./pixelbeast -config ./config
+
+# 或使用绝对路径
+./pixelbeast -config /opt/pixelbeast/config
+```
 
 ### 环境变量
 
 ```bash
 # Go 代理（国内）
 export GOPROXY=https://goproxy.cn,direct
-
-# 配置文件路径
-./pixelbeast -config /path/to/config.json
 ```
 
 ## 日志管理
@@ -294,7 +311,7 @@ sudo journalctl -u pixelbeast -n 50
 ```bash
 # 备份配置和数据
 tar -czf pixelbeast-backup-$(date +%Y%m%d).tar.gz \
-  pixelbeast.json \
+  config/ \
   web/ \
   ftp/ \
   logs/

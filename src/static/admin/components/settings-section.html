@@ -346,27 +346,24 @@
 
   <!-- 目录设置 -->
   <div class="settings-content" id="settings-directory">
+    <!-- WEB 根目录 -->
+    <div class="form-group-inline">
+      <label class="form-label-inline">WEB根目录</label>
+      <div id="web-root-picker" class="settings-directory-picker"></div>
+      <span class="form-hint-text">HTTP 静态文件的存储目录</span>
+    </div>
+
     <!-- FTP 根目录 -->
     <div class="form-group-inline">
       <label class="form-label-inline">FTP根目录</label>
-      <input
-        type="text"
-        id="ftp-root-dir"
-        class="form-input-inline"
-        placeholder="./ftp"
-      />
+      <div id="ftp-root-picker" class="settings-directory-picker"></div>
       <span class="form-hint-text">FTP 服务的文件存储目录</span>
     </div>
 
     <!-- 备份目录 -->
     <div class="form-group-inline">
       <label class="form-label-inline">备份目录</label>
-      <input
-        type="text"
-        id="backup-dir"
-        class="form-input-inline"
-        placeholder="./backups"
-      />
+      <div id="backup-dir-picker" class="settings-directory-picker"></div>
       <span class="form-hint-text">配置和网站备份的存储位置</span>
     </div>
   </div>

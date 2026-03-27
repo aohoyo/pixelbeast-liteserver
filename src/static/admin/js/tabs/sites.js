@@ -35,7 +35,28 @@ class SitesTab extends BaseTab {
             pageSize: 20,
             emptyText: '暂无站点',
             emptyHint: '点击上方"添加网站"按钮创建',
-            onSelectionChange: ({ selectedCount }) => this.updateBatchActions(selectedCount),
+            batchActions: [
+                {
+                    key: 'enable',
+                    label: '启用',
+                    icon: '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
+                    type: 'success',
+                    handler: () => this.batchToggle(true)
+                },
+                {
+                    key: 'disable',
+                    label: '禁用',
+                    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>',
+                    handler: () => this.batchToggle(false)
+                },
+                {
+                    key: 'delete',
+                    label: '删除',
+                    icon: '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+                    type: 'danger',
+                    handler: () => this.batchDelete()
+                }
+            ],
             onPageChange: () => setTimeout(() => this.bindRowEvents(), 0)
         });
     }
@@ -156,10 +177,7 @@ class SitesTab extends BaseTab {
         this.$('#sites-type-filter')?.addEventListener('change', () => this.filterSites());
         this.$('#sites-status-filter')?.addEventListener('change', () => this.filterSites());
 
-        // 批量操作
-        this.$('#sites-batch-enable')?.addEventListener('click', () => this.batchToggle(true));
-        this.$('#sites-batch-disable')?.addEventListener('click', () => this.batchToggle(false));
-        this.$('#sites-batch-delete')?.addEventListener('click', () => this.batchDelete());
+        // 批量操作按钮事件已移至 batch-bar 组件内部处理
 
         // 弹窗
         this.$('#site-modal-cancel')?.addEventListener('click', () => this.hideEditor());
@@ -261,15 +279,6 @@ class SitesTab extends BaseTab {
     }
 
     // ========== 批量操作 ==========
-
-    updateBatchActions(count) {
-        const batchEl = this.$('#sites-batch-actions');
-        const countEl = this.$('#sites-selected-count');
-        if (batchEl && countEl) {
-            batchEl.style.display = count > 0 ? 'flex' : 'none';
-            countEl.textContent = count;
-        }
-    }
 
     async batchToggle(enabled) {
         const keys = this.dataTable?.getSelectedKeys() || [];

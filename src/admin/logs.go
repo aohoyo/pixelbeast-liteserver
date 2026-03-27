@@ -449,9 +449,13 @@ func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 		h.Config.Log.Level = cfg.Level
 	}
 
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		Error(w, 500, "保存配置失败: "+err.Error())
-		return
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.Server.Log = h.Config.Log
+		if err := h.ConfigManager.Save(); err != nil {
+			Error(w, 500, "保存配置失败: "+err.Error())
+			return
+		}
 	}
 
 	handlers.SetLogConfig(&h.Config.Log)

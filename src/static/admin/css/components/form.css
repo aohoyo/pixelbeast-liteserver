@@ -195,7 +195,7 @@
 /* ==================== 表单左右布局 ==================== */
 .form-group-inline {
     display: grid;
-    grid-template-columns: 100px 300px 1fr;
+    grid-template-columns: 100px 380px 1fr;
     align-items: center;
     gap: var(--space-md);
     padding: var(--space-sm) 0;
@@ -203,14 +203,14 @@
     transition: border-color var(--transition);
 }
 
-/* 确保第二列所有元素都占满 300px */
+/* 确保第二列所有元素都占满 */
 .form-group-inline > *:nth-child(2) {
     width: 100%;
 }
 
-/* Toggle 开关在第二列中左对齐即可，不需要拉伸 */
-.form-group-inline > .toggle:nth-child(2) {
-    width: auto;
+/* Toggle 开关不被拉伸 */
+.form-group-inline > label.toggle:nth-child(2) {
+    width: 48px;
 }
 
 .form-group-inline:hover {

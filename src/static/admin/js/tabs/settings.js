@@ -6,6 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { settingsValidator } from './settings-validator.js';
+import { DirectoryPicker } from '../components/directory-picker.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {
@@ -13,6 +14,7 @@ class SettingsTab extends BaseTab {
         this.config = null;
         this.hasChanges = false;
         this.currentTab = 'panel';
+        this.directoryPickers = {};
     }
 
     onInit() {
@@ -21,7 +23,68 @@ class SettingsTab extends BaseTab {
         this.initValidation();
     }
 
+    initDirectoryPickers() {
+        // 防止重复初始化
+        if (this.directoryPickersInitialized) {
+            return;
+        }
+        
+        console.log('[Settings] 初始化目录选择器...');
+        
+        // WEB 根目录选择器
+        const webRootContainer = this.$('#web-root-picker');
+        if (webRootContainer) {
+            webRootContainer.innerHTML = '';
+            this.directoryPickers.webRoot = new DirectoryPicker({
+                container: webRootContainer,
+                api: this.api,
+                apiPath: '/api/files',
+                placeholder: './web',
+                onChange: (path) => { this.hasChanges = true; }
+            });
+            console.log('[Settings] WEB 根目录选择器已创建', webRootContainer.innerHTML);
+        } else {
+            console.warn('[Settings] WEB 根目录容器未找到');
+        }
+
+        // FTP 根目录选择器
+        const ftpRootContainer = this.$('#ftp-root-picker');
+        if (ftpRootContainer) {
+            ftpRootContainer.innerHTML = '';
+            this.directoryPickers.ftpRoot = new DirectoryPicker({
+                container: ftpRootContainer,
+                api: this.api,
+                apiPath: '/api/files',
+                placeholder: './ftp',
+                onChange: (path) => { this.hasChanges = true; }
+            });
+            console.log('[Settings] FTP 根目录选择器已创建', ftpRootContainer.innerHTML);
+        } else {
+            console.warn('[Settings] FTP 根目录容器未找到');
+        }
+
+        // 备份目录选择器
+        const backupDirContainer = this.$('#backup-dir-picker');
+        if (backupDirContainer) {
+            backupDirContainer.innerHTML = '';
+            this.directoryPickers.backupDir = new DirectoryPicker({
+                container: backupDirContainer,
+                api: this.api,
+                apiPath: '/api/files',
+                placeholder: './backups',
+                onChange: (path) => { this.hasChanges = true; }
+            });
+            console.log('[Settings] 备份目录选择器已创建', backupDirContainer.innerHTML);
+        } else {
+            console.warn('[Settings] 备份目录容器未找到');
+        }
+        
+        this.directoryPickersInitialized = true;
+    }
+
     async onLoad() {
+        // 先初始化目录选择器（组件已加载到 DOM）
+        this.initDirectoryPickers();
         await this.loadConfig();
     }
 
@@ -81,6 +144,11 @@ class SettingsTab extends BaseTab {
         // 更新内容显示（ID 格式：settings-{tabName}）
         this.$$('.settings-content').forEach(c => c.classList.remove('active'));
         this.$(`#settings-${tabName}`)?.classList.add('active');
+        
+        // 切换到目录设置时，确保目录选择器已初始化
+        if (tabName === 'directory' && !this.directoryPickers.webRoot) {
+            this.initDirectoryPickers();
+        }
     }
 
     async loadConfig() {
@@ -95,22 +163,14 @@ class SettingsTab extends BaseTab {
     populateForm() {
         if (!this.config) return;
 
-        // HTTP
-        this.setInputValue('http-enabled', this.config.http?.enabled);
-        this.setInputValue('http-port', this.config.http?.port);
-        this.setInputValue('http-root', this.config.http?.root);
-
-        // FTP
-        this.setInputValue('ftp-enabled', this.config.ftp?.enabled);
-        this.setInputValue('ftp-port', this.config.ftp?.port);
-        this.setInputValue('ftp-root', this.config.ftp?.root);
-        this.setInputValue('ftp-root-dir', this.config.ftp?.root || './ftp');
-
         // Admin
         this.setInputValue('admin-username', this.config.admin?.username);
         this.setInputValue('admin-password', this.config.admin?.password);
         this.setInputValue('admin-port', this.config.admin?.port);
         this.setInputValue('admin-path', this.config.admin?.path);
+
+        // FTP
+        this.directoryPickers.ftpRoot?.setValue(this.config.ftp?.root || './ftp');
 
         // 日志设置
         const log = this.config.log || {};
@@ -128,7 +188,8 @@ class SettingsTab extends BaseTab {
         }
 
         // 目录设置
-        this.setInputValue('backup-dir', this.config.backup_dir || './backups');
+        this.directoryPickers.webRoot?.setValue(this.config.http?.root || './web');
+        this.directoryPickers.backupDir?.setValue(this.config.backup_dir || './backups');
 
         this.hasChanges = false;
     }
@@ -166,14 +227,14 @@ class SettingsTab extends BaseTab {
 
         return {
             http: {
-                enabled: this.getInputValue('http-enabled'),
-                port: parseInt(this.getInputValue('http-port')) || 8080,
-                root: this.getInputValue('http-root') || './web'
+                enabled: true,
+                port: 8080,
+                root: this.directoryPickers.webRoot?.getValue() || './web'
             },
             ftp: {
-                enabled: this.getInputValue('ftp-enabled'),
-                port: parseInt(this.getInputValue('ftp-port')) || 2121,
-                root: this.getInputValue('ftp-root-dir') || './ftp'
+                enabled: this.config?.ftp?.enabled || false,
+                port: this.config?.ftp?.port || 2121,
+                root: this.directoryPickers.ftpRoot?.getValue() || './ftp'
             },
             admin: {
                 username: this.getInputValue('admin-username') || 'admin',
@@ -189,7 +250,7 @@ class SettingsTab extends BaseTab {
                 level: this.getInputValue('log-level') || 'info',
                 levels: logLevels
             },
-            backup_dir: this.getInputValue('backup-dir') || './backups'
+            backup_dir: this.directoryPickers.backupDir?.getValue() || './backups'
         };
     }
 

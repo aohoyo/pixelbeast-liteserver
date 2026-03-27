@@ -13,18 +13,7 @@
         <!-- 工具栏 -->
         <div class="toolbar">
             <div class="toolbar-left">
-                <div class="toolbar-batch" id="sites-batch-actions" style="display: none">
-                    <span class="toolbar-batch-label">已选择 <strong id="sites-selected-count">0</strong> 项</span>
-                    <button class="btn btn-sm" id="sites-batch-enable">
-                        <i class="icon icon-check"></i> 启用
-                    </button>
-                    <button class="btn btn-sm" id="sites-batch-disable">
-                        <i class="icon icon-x"></i> 禁用
-                    </button>
-                    <button class="btn btn-sm btn-danger" id="sites-batch-delete">
-                        <i class="icon icon-trash"></i> 删除
-                    </button>
-                </div>
+                <!-- 批量操作已移至底部悬浮条 -->
             </div>
             <div class="toolbar-right">
                 <div class="toolbar-search">
@@ -56,6 +45,11 @@
 
         <!-- 数据表格 -->
         <div class="table-wrapper" id="sites-table-container"></div>
+        
+        <!-- 分页 -->
+        <div class="table-footer">
+            <div id="sites-pagination"></div>
+        </div>
     </div>
 </div>
 

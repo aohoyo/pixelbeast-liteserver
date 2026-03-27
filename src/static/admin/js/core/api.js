@@ -395,12 +395,10 @@ class API {
             const data = JSON.parse(text);
             return this._handleUnifiedResponse(data);
         } catch (e) {
-            // 如果是解析错误，可能是我们的统一格式错误
-            if (e.message.includes('统一') || e instanceof Error === false) {
-                throw e;
-            }
-            console.error('JSON parse error:', text);
-            return null;
+            // JSON 解析失败，可能是 404 等错误响应
+            // 返回错误信息而不是抛出异常
+            console.warn('JSON parse error:', text.substring(0, 100));
+            return { error: true, message: text, code: response.status || 500 };
         }
     }
 

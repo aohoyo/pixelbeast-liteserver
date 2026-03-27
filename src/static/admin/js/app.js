@@ -219,6 +219,12 @@ const tabTitles = {
  * @param {string} tabName - 标签页名称
  */
 function switchTab(tabName) {
+    // 关闭批量操作条
+    const batchBar = document.getElementById('dt-batch-bar');
+    const batchContainer = document.getElementById('dt-batch-bar-container');
+    if (batchBar) batchBar.classList.remove('show');
+    if (batchContainer) batchContainer.classList.remove('active');
+    
     // 更新按钮状态
     const buttons = document.querySelectorAll('.menu-item');
     buttons.forEach(btn => {

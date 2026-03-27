@@ -70,10 +70,24 @@ func (h *Handler) restartFTP(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "FTP服务重启成功")
 }
 
+func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	if err := h.ServerManager.ReloadSites(); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, "配置已重载")
+}
+
 // ==================== FTP 文件管理 ====================
 
 func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 	subPath := r.URL.Query().Get("path")
+	dirsOnly := r.URL.Query().Get("dirsOnly") == "true"
+
 	if strings.Contains(subPath, "..") {
 		BadRequest(w, "Invalid path")
 		return
@@ -93,6 +107,10 @@ func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 
 	files := make([]map[string]interface{}, 0)
 	for _, entry := range entries {
+		// 如果只需要目录，跳过文件
+		if dirsOnly && !entry.IsDir() {
+			continue
+		}
 		info, _ := entry.Info()
 		files = append(files, map[string]interface{}{
 			"name": entry.Name(), "is_dir": entry.IsDir(),
@@ -361,6 +379,29 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 
 // ==================== FTP 用户管理 ====================
 
+func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
+	users := make([]map[string]interface{}, 0)
+	for _, u := range h.Config.FTP.Users {
+		status := u.Status
+		if status == "" {
+			status = "enabled"
+		}
+		users = append(users, map[string]interface{}{
+			"username":   u.Username,
+			"password":   u.Password,
+			"rootPath":   u.RootPath,
+			"status":     status,
+			"quota":      u.Quota,
+			"expiryDays": u.ExpiryDays,
+			"remark":     u.Remark,
+		})
+	}
+	Success(w, map[string]interface{}{
+		"users": users,
+		"total": len(users),
+	})
+}
+
 func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -369,12 +410,19 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		RootPath string `json:"rootPath"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
 
+	if req.Username == "" {
+		BadRequest(w, "用户名不能为空")
+		return
+	}
+
+	// 检查用户是否已存在
 	for _, u := range h.Config.FTP.Users {
 		if u.Username == req.Username {
 			BadRequest(w, "用户已存在")
@@ -382,36 +430,183 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.Config.FTP.Users = append(h.Config.FTP.Users, config.FTPUser{Username: req.Username, Password: req.Password})
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, err.Error())
+	// 设置默认根目录
+	if req.RootPath == "" {
+		req.RootPath = filepath.Join(h.Config.FTP.Root, req.Username)
+	}
+
+	// 自动创建用户目录
+	if err := os.MkdirAll(req.RootPath, 0755); err != nil {
+		InternalServerError(w, "创建用户目录失败: "+err.Error())
 		return
 	}
-	SuccessMessage(w, "用户添加成功")
+
+	// 添加用户到配置
+	h.Config.FTP.Users = append(h.Config.FTP.Users, config.FTPUser{
+		Username: req.Username,
+		Password: req.Password,
+		RootPath: req.RootPath,
+	})
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		// 同步到 ConfigManager
+		h.ConfigManager.FTP.Users = h.Config.FTP.Users
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败: "+err.Error())
+			return
+		}
+	}
+
+	Success(w, map[string]interface{}{
+		"username": req.Username,
+		"rootPath": req.RootPath,
+	})
 }
 
 func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// 从 URL 或 body 获取用户名
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		var req struct {
+			Username string `json:"username"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			BadRequest(w, "Invalid JSON")
+			return
+		}
+		username = req.Username
+	}
+
+	if username == "" {
+		BadRequest(w, "用户名不能为空")
+		return
+	}
+
+	// 查找并删除用户
+	found := false
+	for i, u := range h.Config.FTP.Users {
+		if u.Username == username {
+			h.Config.FTP.Users = append(h.Config.FTP.Users[:i], h.Config.FTP.Users[i+1:]...)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		BadRequest(w, "用户不存在")
+		return
+	}
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.FTP.Users = h.Config.FTP.Users
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败: "+err.Error())
+			return
+		}
+	}
+
+	SuccessMessage(w, "用户已删除")
+}
+
+func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+
 	var req struct {
-		Index int `json:"index"`
+		Username string `json:"username"`
+		Enabled  bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
 
-	if req.Index < 0 || req.Index >= len(h.Config.FTP.Users) {
-		BadRequest(w, "Invalid user index")
+	// 查找用户
+	for i, u := range h.Config.FTP.Users {
+		if u.Username == req.Username {
+			// 更新状态（存储在用户对象的扩展字段中）
+			// 注意：当前 FTPUser 结构可能没有 status 字段，这里用备注字段暂存
+			h.Config.FTP.Users[i].Status = map[bool]string{true: "enabled", false: "disabled"}[req.Enabled]
+			break
+		}
+	}
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.FTP.Users = h.Config.FTP.Users
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败: "+err.Error())
+			return
+		}
+	}
+
+	SuccessMessage(w, "状态已更新")
+}
+
+func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
-	h.Config.FTP.Users = append(h.Config.FTP.Users[:req.Index], h.Config.FTP.Users[req.Index+1:]...)
-	if err := h.Config.Save(h.ConfigPath); err != nil {
-		InternalServerError(w, err.Error())
+	var req struct {
+		Action   string   `json:"action"`   // enable, disable, delete
+		Usernames []string `json:"usernames"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
 		return
 	}
-	SuccessMessage(w, "用户已删除")
+
+	switch req.Action {
+	case "delete":
+		// 批量删除
+		deleteSet := make(map[string]bool)
+		for _, u := range req.Usernames {
+			deleteSet[u] = true
+		}
+		newUsers := make([]config.FTPUser, 0)
+		for _, u := range h.Config.FTP.Users {
+			if !deleteSet[u.Username] {
+				newUsers = append(newUsers, u)
+			}
+		}
+		h.Config.FTP.Users = newUsers
+
+	case "enable", "disable":
+		// 批量启用/禁用
+		status := "enabled"
+		if req.Action == "disable" {
+			status = "disabled"
+		}
+		userSet := make(map[string]bool)
+		for _, u := range req.Usernames {
+			userSet[u] = true
+		}
+		for i, u := range h.Config.FTP.Users {
+			if userSet[u.Username] {
+				h.Config.FTP.Users[i].Status = status
+			}
+		}
+	}
+
+	// 使用 ConfigManager 保存
+	if h.ConfigManager != nil {
+		h.ConfigManager.FTP.Users = h.Config.FTP.Users
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败: "+err.Error())
+			return
+		}
+	}
+
+	SuccessMessage(w, "批量操作完成")
 }

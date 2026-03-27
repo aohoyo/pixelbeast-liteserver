@@ -16,6 +16,9 @@ import (
 type ServerManager struct {
 	mu sync.RWMutex
 
+	// 配置管理器
+	ConfigManager *config.ConfigManager
+
 	// 管理面板服务器（独立端口）
 	AdminServer  *http.Server
 	AdminHandler http.Handler
@@ -46,25 +49,29 @@ type ServerManager struct {
 }
 
 // NewServerManager 创建服务管理器
-func NewServerManager(cfg *config.Config, configPath string) *ServerManager {
+func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
 	sm := &ServerManager{
-		Config:      cfg,
-		ConfigPath:  configPath,
-		AdminPort:   cfg.Global.AdminPort,
-		FileManager: NewFileManager(),
-		SitesRouter: NewVirtualHostRouter(),
-		SSLManager:  NewSSLManager(getSSLDir(cfg)),
+		ConfigPath:    configPath,
+		ConfigManager: cm,
+		AdminPort:     cm.Server.AdminPort,
+		FileManager:   NewFileManager(),
+		SitesRouter:   NewVirtualHostRouter(),
+		SSLManager:    NewSSLManager("./ssl"),
+		Config: &config.Config{
+			Global: config.GlobalConfig{
+				AdminPort: cm.Server.AdminPort,
+				FTPDir:    cm.Server.FTPDir,
+				BackupDir: cm.Server.BackupDir,
+			},
+			Sites: cm.Sites.Sites,
+			FTP:   *cm.FTP,
+		},
 	}
 
 	// 初始化文件管理器书签
-	sm.FileManager.UpdateBookmarksFromConfig(cfg.Sites)
+	sm.FileManager.UpdateBookmarksFromConfig(cm.Sites.Sites)
 
 	return sm
-}
-
-// getSSLDir 获取 SSL 证书目录
-func getSSLDir(cfg *config.Config) string {
-	return "./ssl" // SSL 证书固定存储在程序运行目录下的 ssl 目录
 }
 
 // ==================== 管理面板服务器 ====================
@@ -216,19 +223,22 @@ func (m *ServerManager) ReloadSites() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 重新加载配置
-	cfg, err := config.Load(m.ConfigPath)
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+	// 使用 ConfigManager 重新加载
+	if m.ConfigManager != nil {
+		// 重新加载配置文件
+		newCM, err := config.NewConfigManager(m.ConfigPath)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		m.ConfigManager = newCM
+		m.Config.Sites = newCM.Sites.Sites
 	}
-
-	m.Config = cfg
 
 	// 重建虚拟主机路由
 	m.SitesRouter = NewVirtualHostRouter()
 
-	for i := range cfg.Sites {
-		site := &cfg.Sites[i]
+	for i := range m.Config.Sites {
+		site := &m.Config.Sites[i]
 		if site.Enabled {
 			if err := m.SitesRouter.AddHost(site); err != nil {
 				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
@@ -237,7 +247,7 @@ func (m *ServerManager) ReloadSites() error {
 	}
 
 	// 更新文件管理器书签
-	m.FileManager.UpdateBookmarksFromConfig(cfg.Sites)
+	m.FileManager.UpdateBookmarksFromConfig(m.Config.Sites)
 
 	log.Printf("[Sites] 站点配置已重新加载")
 	return nil
@@ -382,7 +392,12 @@ func (m *ServerManager) StartFTP() error {
 
 	m.FTPRunning = true
 	m.Config.FTP.Enabled = true
-	m.Config.Save(m.ConfigPath)
+
+	// 使用 ConfigManager 保存
+	if m.ConfigManager != nil {
+		m.ConfigManager.FTP.Enabled = true
+		m.ConfigManager.Save()
+	}
 
 	log.Printf("[FTP] 服务已启动")
 	return nil
@@ -403,7 +418,12 @@ func (m *ServerManager) StopFTP() error {
 
 	m.FTPRunning = false
 	m.Config.FTP.Enabled = false
-	m.Config.Save(m.ConfigPath)
+
+	// 使用 ConfigManager 保存
+	if m.ConfigManager != nil {
+		m.ConfigManager.FTP.Enabled = false
+		m.ConfigManager.Save()
+	}
 
 	log.Printf("[FTP] 服务已停止")
 	return nil
@@ -453,12 +473,18 @@ func (m *ServerManager) ReloadConfig() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cfg, err := config.Load(m.ConfigPath)
-	if err != nil {
-		return err
+	// 使用 ConfigManager 重新加载
+	if m.ConfigManager != nil {
+		newCM, err := config.NewConfigManager(m.ConfigPath)
+		if err != nil {
+			return err
+		}
+		m.ConfigManager = newCM
+		m.Config.Sites = newCM.Sites.Sites
+		m.Config.FTP = *newCM.FTP
+		m.Config.Global.AdminPort = newCM.Server.AdminPort
 	}
 
-	m.Config = cfg
 	return nil
 }
 

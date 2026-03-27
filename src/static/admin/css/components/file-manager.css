@@ -1178,6 +1178,64 @@
     font-family: monospace;
 }
 
+/* 分享设置对话框 */
+.share-dialog {
+    max-width: 400px;
+}
+
+.share-file-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-md);
+}
+
+.share-file-icon {
+    font-size: 2rem;
+}
+
+.share-file-name {
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.share-form-group {
+    margin-bottom: var(--space-md);
+}
+
+.share-form-group label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.share-form-group select,
+.share-form-group input {
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.share-form-group select:focus,
+.share-form-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.share-hint {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.8rem;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
     .editor-dialog {
