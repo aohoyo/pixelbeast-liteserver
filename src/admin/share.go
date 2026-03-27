@@ -556,6 +556,16 @@ const sharePageHTML = `<!DOCTYPE html>
         const hasPassword = {{.HasPassword}};
         const expiresAt = new Date('{{.ExpiresAtISO}}').getTime();
         
+        // 从URL参数自动填充提取码
+        const urlParams = new URLSearchParams(window.location.search);
+        const pwdParam = urlParams.get('pwd');
+        if (pwdParam && hasPassword) {
+            const pwdInput = document.getElementById('password');
+            if (pwdInput) {
+                pwdInput.value = pwdParam;
+            }
+        }
+        
         function updateRemaining() {
             const now = Date.now();
             const diff = expiresAt - now;

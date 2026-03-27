@@ -2345,9 +2345,12 @@ export class FileManager {
                     <div class="share-form-row">
                         <label>提取码</label>
                         <div class="share-password-wrap">
-                            <input type="text" id="share-password" value="${randomCode}" placeholder="提取码" maxlength="8">
+                            <input type="text" id="share-password" value="${randomCode}" placeholder="4位提取码" maxlength="4" style="text-transform: uppercase;">
                             <button class="share-gen-btn" id="share-gen-code" title="随机生成">🎲</button>
                         </div>
+                    </div>
+                    <div class="share-form-row">
+                        <label></label>
                         <label class="share-checkbox">
                             <input type="checkbox" id="share-auto-fill" checked>
                             <span>分享链接自动填充提取码</span>

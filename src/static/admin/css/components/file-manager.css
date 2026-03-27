@@ -1393,15 +1393,14 @@
 
 .share-form-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--space-md);
     margin-bottom: var(--space-md);
 }
 
-.share-form-row > label {
+.share-form-row > label:first-child {
     flex-shrink: 0;
     width: 60px;
-    padding-top: 8px;
     color: var(--text-secondary);
     font-size: 0.875rem;
 }
@@ -1442,12 +1441,16 @@
 
 .share-password-wrap input {
     flex: 1;
+    max-width: 120px;
     padding: 8px 12px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
     font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: center;
 }
 
 .share-password-wrap input:focus {
@@ -1469,19 +1472,25 @@
 }
 
 .share-checkbox {
-    display: flex;
+    display: flex !important;
     align-items: center;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
+    gap: var(--space-sm);
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     cursor: pointer;
+    user-select: none;
 }
 
 .share-checkbox input {
     width: 16px;
     height: 16px;
+    margin: 0;
     accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.share-checkbox span {
+    white-space: nowrap;
 }
 
 /* 分享结果对话框 */
