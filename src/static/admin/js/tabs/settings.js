@@ -78,9 +78,9 @@ class SettingsTab extends BaseTab {
         this.$$('.settings-tab').forEach(t => t.classList.remove('active'));
         this.$(`.settings-tab[data-tab="${tabName}"]`)?.classList.add('active');
 
-        // 更新内容显示
+        // 更新内容显示（ID 格式：settings-{tabName}）
         this.$$('.settings-content').forEach(c => c.classList.remove('active'));
-        this.$(`#${tabName}-settings`)?.classList.add('active');
+        this.$(`#settings-${tabName}`)?.classList.add('active');
     }
 
     async loadConfig() {
@@ -104,11 +104,31 @@ class SettingsTab extends BaseTab {
         this.setInputValue('ftp-enabled', this.config.ftp?.enabled);
         this.setInputValue('ftp-port', this.config.ftp?.port);
         this.setInputValue('ftp-root', this.config.ftp?.root);
+        this.setInputValue('ftp-root-dir', this.config.ftp?.root || './ftp');
 
         // Admin
         this.setInputValue('admin-username', this.config.admin?.username);
         this.setInputValue('admin-password', this.config.admin?.password);
         this.setInputValue('admin-port', this.config.admin?.port);
+        this.setInputValue('admin-path', this.config.admin?.path);
+
+        // 日志设置
+        const log = this.config.log || {};
+        this.setInputValue('log-retention-days', log.retention_days || 30);
+        this.setInputValue('log-max-size-mb', log.max_size_mb || 100);
+        this.setInputValue('log-compress-days', log.compress_days || 7);
+        this.setInputValue('log-cleanup-hour', log.cleanup_hour || 3);
+        this.setInputValue('log-level', log.level || 'info');
+        
+        // 分类日志级别
+        if (log.levels) {
+            this.setInputValue('log-level-http', log.levels.http || '');
+            this.setInputValue('log-level-ftp', log.levels.ftp || '');
+            this.setInputValue('log-level-panel', log.levels.panel || '');
+        }
+
+        // 目录设置
+        this.setInputValue('backup-dir', this.config.backup_dir || './backups');
 
         this.hasChanges = false;
     }
@@ -135,6 +155,15 @@ class SettingsTab extends BaseTab {
     }
 
     collectFormData() {
+        // 收集分类日志级别
+        const logLevels = {};
+        const httpLevel = this.getInputValue('log-level-http');
+        const ftpLevel = this.getInputValue('log-level-ftp');
+        const panelLevel = this.getInputValue('log-level-panel');
+        if (httpLevel) logLevels.http = httpLevel;
+        if (ftpLevel) logLevels.ftp = ftpLevel;
+        if (panelLevel) logLevels.panel = panelLevel;
+
         return {
             http: {
                 enabled: this.getInputValue('http-enabled'),
@@ -144,13 +173,23 @@ class SettingsTab extends BaseTab {
             ftp: {
                 enabled: this.getInputValue('ftp-enabled'),
                 port: parseInt(this.getInputValue('ftp-port')) || 2121,
-                root: this.getInputValue('ftp-root') || './ftp'
+                root: this.getInputValue('ftp-root-dir') || './ftp'
             },
             admin: {
                 username: this.getInputValue('admin-username') || 'admin',
-                password: this.getInputValue('admin-password') || 'admin123',
-                port: parseInt(this.getInputValue('admin-port')) || 9527
-            }
+                password: this.getInputValue('admin-password') || '',
+                port: parseInt(this.getInputValue('admin-port')) || 9527,
+                path: this.getInputValue('admin-path') || '/admin'
+            },
+            log: {
+                retention_days: parseInt(this.getInputValue('log-retention-days')) || 30,
+                max_size_mb: parseInt(this.getInputValue('log-max-size-mb')) || 100,
+                compress_days: parseInt(this.getInputValue('log-compress-days')) || 7,
+                cleanup_hour: parseInt(this.getInputValue('log-cleanup-hour')) || 3,
+                level: this.getInputValue('log-level') || 'info',
+                levels: logLevels
+            },
+            backup_dir: this.getInputValue('backup-dir') || './backups'
         };
     }
 

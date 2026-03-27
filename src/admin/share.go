@@ -176,7 +176,7 @@ func (h *Handler) shareFile(w http.ResponseWriter, r *http.Request) {
 	shareService.mu.Unlock()
 	shareService.save()
 
-	// 构建分享 URL（使用独立路径，不暴露 admin 路径）
+	// 构建分享 URL（不包含 adminPath，走公开路由）
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"

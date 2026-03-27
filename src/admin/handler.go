@@ -117,6 +117,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path = "/"
 	}
 
+	// 分享链接下载（公开访问，优先处理，绕过安全入口检查）
+	if strings.HasPrefix(path, "/s/") || strings.HasPrefix(path, "/share/") {
+		h.downloadSharedFile(w, r)
+		return
+	}
+
 	// 安全入口检查：只有匹配 adminPath 的请求才会被处理
 	// 其他请求返回 404，隐藏后台存在
 	adminPath := h.adminPath
@@ -134,29 +140,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 修改 r.URL.Path，让后续处理函数可以直接使用
 	r.URL.Path = actualPath
 
-	// 公开路由（不需要认证）
-	switch actualPath {
-	case "/login":
-		h.loginPage(w, r)
-		return
-	case "/api/login":
-		h.loginAPI(w, r)
-		return
-	case "/api/logout":
-		h.logoutAPI(w, r)
-		return
-	case "/favicon.svg", "/favicon.ico":
-		h.serveFavicon(w, r)
-		return
-	}
-
-	// 分享链接下载（不需要认证）- 使用 /s/ 短路径
-	if strings.HasPrefix(actualPath, "/s/") || strings.HasPrefix(actualPath, "/share/") {
-		h.downloadSharedFile(w, r)
-		return
-	}
-
-	// 静态资源（不需要认证）
+	// 静态资源（不需要认证，优先处理）
 	if strings.HasPrefix(actualPath, "/css/") {
 		h.serveCSS(w, r)
 		return
@@ -178,6 +162,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 记录面板访问日志（公开路由之后，认证路由之前）
+	startTime := time.Now()
+
+	// 公开路由（不需要认证）
+	switch actualPath {
+	case "/login":
+		h.loginPage(w, r)
+		return
+	case "/api/login":
+		h.loginAPI(w, r)
+		return
+	case "/api/logout":
+		h.logoutAPI(w, r)
+		return
+	case "/favicon.svg", "/favicon.ico":
+		h.serveFavicon(w, r)
+		return
+	}
+
 	// 认证检查
 	session := h.getSession(r)
 	if session == nil {
@@ -188,6 +191,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// 记录已认证用户的访问日志
+	remoteAddr := r.RemoteAddr
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		remoteAddr = remoteAddr[:idx]
+	}
+	
+	// 使用包装 ResponseWriter 来捕获状态码
+	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+	
+	// 处理请求（在 defer 中记录日志）
+	defer func() {
+		duration := time.Since(startTime)
+		// 所有已认证请求都记录日志
+		if strings.HasPrefix(actualPath, "/api/") {
+			handlers.LogPanelAPI(session.Username, r.Method, actualPath, remoteAddr, rw.statusCode, duration)
+		} else if actualPath == "/" || actualPath == "/index.html" {
+			// 首页访问
+			handlers.LogPanelAccess(session.Username, actualPath, remoteAddr)
+		}
+	}()
+
+	// 替换 w 为 rw
+	w = rw
 
 	// 已认证路由
 	switch actualPath {
@@ -616,4 +643,15 @@ func (h *Handler) logoutAPI(w http.ResponseWriter, r *http.Request) {
 	h.clearSession(w, r)
 	handlers.LogPanelAuth("登出", username, clientIP, true, "用户主动登出")
 	SuccessMessage(w, "已登出")
+}
+
+// responseWriter 包装 http.ResponseWriter 以捕获状态码
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }

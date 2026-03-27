@@ -53,7 +53,8 @@ func main() {
 		log.Printf("警告: 初始化日志失败: %v", err)
 	}
 
-	log.Printf("配置目录: %s", *configDir)
+	handlers.LogSystemInfo("像素兽 v%s 启动中...", version)
+	handlers.LogSystemInfo("配置目录: %s", *configDir)
 
 	// 创建服务管理器（临时用旧配置结构，后续重构）
 	tmpCfg := &config.Config{
@@ -68,7 +69,7 @@ func main() {
 	if ftpCfg.Port > 0 {
 		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm)
 		if err != nil {
-			log.Printf("警告: 创建FTP服务器失败: %v", err)
+			handlers.LogSystemWarn("创建FTP服务器失败: %v", err)
 		} else {
 			serverManager.SetFTPServer(ftpServer, ftpCfg)
 		}
@@ -91,22 +92,25 @@ func main() {
 
 	// 启动管理面板服务器
 	if err := serverManager.StartAdminPanel(); err != nil {
+		handlers.LogSystemError("启动管理面板失败: %v", err)
 		log.Fatalf("启动管理面板失败: %v", err)
 	}
 
 	// 启动网站服务器
 	if err := serverManager.StartSitesServer(); err != nil {
-		log.Printf("警告: 启动网站服务器失败: %v", err)
+		handlers.LogSystemWarn("启动网站服务器失败: %v", err)
 	}
 
 	// 启动 FTP 服务
 	if ftpCfg.Enabled {
 		if err := serverManager.StartFTP(); err != nil {
-			log.Printf("FTP服务器启动失败: %v", err)
+			handlers.LogSystemError("FTP服务器启动失败: %v", err)
 		} else {
-			log.Printf("FTP服务器启动在端口 %d", ftpCfg.Port)
+			handlers.LogSystemInfo("FTP服务器启动在端口 %d", ftpCfg.Port)
 		}
 	}
+
+	handlers.LogSystemInfo("像素兽启动完成")
 
 	// 优雅关闭
 	setupGracefulShutdown()
@@ -130,7 +134,7 @@ func setupGracefulShutdown() {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 
-		log.Println("正在关闭服务器...")
+		handlers.LogSystemInfo("正在关闭服务器...")
 
 		// 停止 FTP
 		if serverManager.IsFTPRunning() {
@@ -147,7 +151,8 @@ func setupGracefulShutdown() {
 			serverManager.StopAdminPanel()
 		}
 
-		log.Println("服务器已关闭")
+		handlers.LogSystemInfo("服务器已关闭")
+		handlers.Close()
 		os.Exit(0)
 	}()
 }

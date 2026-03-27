@@ -1505,8 +1505,7 @@ export class FileManager {
                         icon: ICONS.copyPath,
                         action: 'copyName',
                         onClick: () => {
-                            navigator.clipboard.writeText(selectedItems[0]);
-                            this.options.toast?.success('已复制文件名');
+                            this.copyToClipboard(selectedItems[0], '文件名');
                         }
                     },
                     {
@@ -1515,8 +1514,7 @@ export class FileManager {
                         action: 'copyPath',
                         onClick: () => {
                             const fullPath = this.joinPath(tab.path, selectedItems[0]);
-                            navigator.clipboard.writeText(fullPath);
-                            this.options.toast?.success('已复制路径');
+                            this.copyToClipboard(fullPath, '路径');
                         }
                     }
                 );
@@ -1623,12 +1621,17 @@ export class FileManager {
         const fileSize = data.size || 0;
         const fileModified = data.modified || new Date().toISOString();
         const fileType = data.type || 'text';
+        const lines = content.split('\n');
+        
+        // 判断是否需要代码高亮风格
+        const codeTypes = ['json', 'javascript', 'typescript', 'go', 'python', 'css', 'html', 'xml', 'yaml', 'shell', 'sql', 'java', 'c', 'cpp', 'rust', 'php', 'ruby', 'lua', 'conf', 'ini', 'env', 'sh', 'bash'];
+        const isCodeFile = codeTypes.includes(fileType);
         
         // 创建编辑器弹窗
         const overlay = document.createElement('div');
         overlay.className = 'editor-overlay';
         overlay.innerHTML = `
-            <div class="editor-dialog">
+            <div class="editor-dialog ${isCodeFile ? 'code-editor' : ''}">
                 <div class="editor-header">
                     <div class="editor-drag-area">
                         <div class="editor-title">
@@ -1637,7 +1640,7 @@ export class FileManager {
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
                             <span class="editor-filename">${this.escapeHtml(filename)}</span>
-                            <span class="editor-type">${fileType}</span>
+                            <span class="editor-type-badge">${fileType}</span>
                         </div>
                     </div>
                     <div class="editor-toolbar">
@@ -1674,12 +1677,16 @@ export class FileManager {
                     </div>
                 </div>
                 <div class="editor-body">
-                    <textarea class="editor-textarea" id="editor-content" spellcheck="false"></textarea>
+                    <div class="editor-container">
+                        <div class="editor-gutter" id="editor-gutter"></div>
+                        <textarea class="editor-textarea" id="editor-content" spellcheck="false" wrap="off"></textarea>
+                    </div>
                 </div>
                 <div class="editor-footer">
                     <span class="editor-info">大小: ${this.formatSize(fileSize)}</span>
                     <span class="editor-info">修改: ${new Date(fileModified).toLocaleString()}</span>
-                    <span class="editor-info">行数: ${content.split('\n').length}</span>
+                    <span class="editor-info">行数: ${lines.length}</span>
+                    <span class="editor-info cursor-pos" id="editor-cursor">行 1, 列 1</span>
                 </div>
             </div>
         `;
@@ -1689,24 +1696,71 @@ export class FileManager {
         // 缓存元素
         const dialog = overlay.querySelector('.editor-dialog');
         const textarea = overlay.querySelector('#editor-content');
+        const gutter = overlay.querySelector('#editor-gutter');
+        const cursorPos = overlay.querySelector('#editor-cursor');
         const saveBtn = overlay.querySelector('#editor-save');
         const closeBtn = overlay.querySelector('#editor-close');
         const maximizeBtn = overlay.querySelector('#editor-maximize');
         const formatBtn = overlay.querySelector('#editor-format');
 
-        // 使用 value 设置内容（安全，不会解析 HTML）
+        // 使用 value 设置内容
         textarea.value = content;
 
-        // 设置 textarea 样式基于文件类型
-        if (['json', 'javascript', 'typescript', 'go', 'python', 'css', 'html', 'xml', 'yaml', 'shell', 'sql'].includes(fileType)) {
-            textarea.style.fontFamily = "'Fira Code', 'JetBrains Mono', 'Consolas', monospace";
-        }
+        // 更新行号
+        const updateLineNumbers = () => {
+            const lineCount = textarea.value.split('\n').length;
+            let html = '';
+            for (let i = 1; i <= lineCount; i++) {
+                html += `<div class="editor-line-num">${i}</div>`;
+            }
+            gutter.innerHTML = html;
+        };
+        
+        // 同步滚动
+        const syncScroll = () => {
+            gutter.scrollTop = textarea.scrollTop;
+        };
+        
+        // 更新光标位置
+        const updateCursorPosition = () => {
+            const value = textarea.value;
+            const selectionStart = textarea.selectionStart;
+            const lines = value.substring(0, selectionStart).split('\n');
+            const line = lines.length;
+            const col = lines[lines.length - 1].length + 1;
+            cursorPos.textContent = `行 ${line}, 列 ${col}`;
+        };
+
+        // 初始化行号
+        updateLineNumbers();
+        
+        // 事件绑定
+        textarea.addEventListener('input', updateLineNumbers);
+        textarea.addEventListener('scroll', syncScroll);
+        textarea.addEventListener('click', updateCursorPosition);
+        textarea.addEventListener('keyup', updateCursorPosition);
+        
+        // Tab 键支持
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                textarea.value = textarea.value.substring(0, start) + '    ' + textarea.value.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + 4;
+                updateLineNumbers();
+            }
+        });
 
         // 保存快捷键
         const handleKeydown = (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
                 this.saveEditorContent(filename, textarea.value, overlay, tab);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+                e.preventDefault();
+                this.formatContent(textarea, fileType);
             }
             if (e.key === 'Escape') {
                 e.preventDefault();
@@ -1757,6 +1811,7 @@ export class FileManager {
         // 格式化按钮
         formatBtn.addEventListener('click', () => {
             this.formatContent(textarea, fileType);
+            updateLineNumbers();
         });
 
         // 拖动功能（居中显示）
@@ -1764,6 +1819,9 @@ export class FileManager {
 
         // 聚焦到编辑器
         textarea.focus();
+        
+        // 初始化光标位置
+        updateCursorPosition();
     }
 
     /**
@@ -2371,6 +2429,45 @@ export class FileManager {
         // 搜索实现...
     }
     
+    /**
+     * 复制文本到剪贴板（支持非 HTTPS 环境的备用方案）
+     */
+    async copyToClipboard(text, label = '内容') {
+        try {
+            // 优先使用现代 API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                this.options.toast?.success?.(`已复制${label}`);
+                return true;
+            }
+            
+            // 备用方案：使用 textarea + execCommand
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            if (success) {
+                this.options.toast?.success?.(`已复制${label}`);
+                return true;
+            } else {
+                this.options.toast?.error?.('复制失败');
+                return false;
+            }
+        } catch (err) {
+            console.error('复制失败:', err);
+            this.options.toast?.error?.('复制失败: ' + err.message);
+            return false;
+        }
+    }
+
     joinPath(...parts) { return parts.join('/').replace(/\/+/g, '/'); }
     
     showEmpty() { this.els.content.innerHTML = '<div class="fm-empty"><p>此文件夹为空</p></div>'; }

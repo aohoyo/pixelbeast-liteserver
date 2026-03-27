@@ -66,7 +66,8 @@
 .main-container {
     display: flex;
     margin-top: 60px;
-    min-height: calc(100vh - 60px);
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* ==================== 布局 - 左侧菜单 ==================== */
@@ -175,8 +176,7 @@
 .right-content {
     flex: 1;
     background: var(--bg);
-    height: calc(100vh - 60px);
-    width: calc(100% - 220px);
+    height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -189,6 +189,7 @@
     flex-direction: column;
     min-height: 0;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* ==================== 布局 - 主内容区 ==================== */

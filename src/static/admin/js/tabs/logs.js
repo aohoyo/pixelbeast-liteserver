@@ -1,7 +1,7 @@
 /**
- * 日志管理模块
- *
- * 支持日志查看、搜索、统计、下载
+ * 日志管理模块 v3
+ * 
+ * 分类：系统日志 / HTTP日志 / FTP日志 / 面板日志
  */
 
 import { BaseTab } from './BaseTab.js';
@@ -9,35 +9,40 @@ import { escapeHtml } from '../core/utils.js';
 
 // 图标
 const ICONS = {
+    system: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
     http: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-    folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
-    settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    ftp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+    panel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
     download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
     trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
 };
 
+// 分类配置
 const CATEGORIES = [
-    { id: 'http', label: 'HTTP', icon: ICONS.http },
-    { id: 'ftp', label: 'FTP', icon: ICONS.folder },
-    { id: 'panel', label: '面板', icon: ICONS.settings }
+    { id: 'system', label: '系统日志', icon: ICONS.system },
+    { id: 'http', label: 'HTTP日志', icon: ICONS.http },
+    { id: 'ftp', label: 'FTP日志', icon: ICONS.ftp },
+    { id: 'panel', label: '面板日志', icon: ICONS.panel }
 ];
 
-const TYPES = {
-    http: [{ id: 'access', label: '访问日志' }, { id: 'error', label: '错误日志' }],
-    ftp: [{ id: 'access', label: '访问日志' }, { id: 'error', label: '错误日志' }],
-    panel: [{ id: 'access', label: '访问日志' }, { id: 'api', label: 'API 日志' }, { id: 'auth', label: '认证日志' }]
+// 子类型配置
+const SUB_TYPES = {
+    system: [{ id: 'server', label: '服务日志' }],
+    http: [],      // 动态加载站点列表
+    ftp: [],       // 动态加载用户列表
+    panel: [{ id: 'server', label: '面板日志' }]
 };
 
 class LogsTab extends BaseTab {
     constructor(deps) {
         super(deps, 'logs');
-        this.category = 'http';
-        this.type = 'access';
+        this.category = 'system';
+        this.type = 'server';
         this.date = '';
-        this.autoRefresh = true;
-        this.refreshTimer = null;
         this.logFiles = [];
+        this.sites = [];
+        this.ftpUsers = [];
     }
 
     onInit() {
@@ -47,14 +52,13 @@ class LogsTab extends BaseTab {
     }
 
     async onLoad() {
-        await this.loadFiles();
+        await Promise.all([
+            this.loadFiles(),
+            this.loadSites(),
+            this.loadFTPUsers()
+        ]);
         await this.loadLogs();
         await this.loadStats();
-        if (this.autoRefresh) this.startAutoRefresh();
-    }
-
-    onDestroy() {
-        this.stopAutoRefresh();
     }
 
     // ========== UI ==========
@@ -85,20 +89,18 @@ class LogsTab extends BaseTab {
                     <input type="text" id="log-search" class="form-input-sm" placeholder="搜索关键词...">
                 </div>
                 <div class="logs-toolbar-right">
-                    <label class="checkbox-label"><input type="checkbox" id="log-auto-refresh" checked>自动刷新</label>
                     <button id="log-refresh" class="btn btn-sm btn-secondary">${ICONS.refresh} 刷新</button>
                     <button id="log-download" class="btn btn-sm btn-secondary">${ICONS.download} 下载</button>
                     <button id="log-clear" class="btn btn-sm btn-danger">${ICONS.trash} 清空</button>
                 </div>
             </div>
             <div class="logs-stats" id="logs-stats">
-                <div class="stat-card"><div class="stat-value" id="stat-count">-</div><div class="stat-label">今日请求</div></div>
+                <div class="stat-card"><div class="stat-value" id="stat-count">-</div><div class="stat-label">今日记录</div></div>
                 <div class="stat-card"><div class="stat-value stat-error" id="stat-errors">-</div><div class="stat-label">错误</div></div>
                 <div class="stat-card"><div class="stat-value stat-warning" id="stat-warnings">-</div><div class="stat-label">警告</div></div>
             </div>
             <div class="logs-viewer-container">
                 <div class="logs-viewer" id="log-viewer"><div class="logs-loading">加载中...</div></div>
-                <label class="checkbox-label auto-scroll-label"><input type="checkbox" id="log-auto-scroll" checked>自动滚动</label>
             </div>
             <div class="logs-pagination"><span id="log-count">共 0 条</span></div>
         `;
@@ -110,7 +112,30 @@ class LogsTab extends BaseTab {
         const container = this.$('#logs-subtabs');
         if (!container) return;
 
-        const types = TYPES[this.category] || [];
+        let types = SUB_TYPES[this.category] || [];
+        
+        // HTTP: 动态加载站点
+        if (this.category === 'http' && this.sites.length > 0) {
+            types = this.sites.map(s => ({ id: s.id, label: s.name }));
+            if (types.length === 0) {
+                types = [{ id: 'default', label: '默认站点' }];
+            }
+        }
+        
+        // FTP: 动态加载用户
+        if (this.category === 'ftp' && this.ftpUsers.length > 0) {
+            types = this.ftpUsers.map(u => ({ id: u.username, label: u.username }));
+            if (types.length === 0) {
+                types = [{ id: 'anonymous', label: '匿名用户' }];
+            }
+        }
+
+        if (types.length <= 1) {
+            container.innerHTML = '';
+            this.type = types[0]?.id || 'all';
+            return;
+        }
+
         container.innerHTML = types.map(t => `
             <button class="logs-subtab ${t.id === this.type ? 'active' : ''}" data-type="${t.id}">${t.label}</button>
         `).join('');
@@ -120,9 +145,15 @@ class LogsTab extends BaseTab {
                 this.type = btn.dataset.type;
                 container.querySelectorAll('.logs-subtab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                this.refresh();
+                this.loadLogs();
+                this.loadStats();
             });
         });
+
+        // 默认选中第一个
+        if (!types.find(t => t.id === this.type)) {
+            this.type = types[0].id;
+        }
     }
 
     bindEvents() {
@@ -132,9 +163,10 @@ class LogsTab extends BaseTab {
                 this.category = btn.dataset.category;
                 this.$$('.logs-tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                this.type = TYPES[this.category]?.[0]?.id || 'access';
+                this.type = SUB_TYPES[this.category]?.[0]?.id || 'all';
                 this.updateSubTabs();
-                this.refresh();
+                this.loadLogs();
+                this.loadStats();
             });
         });
 
@@ -148,14 +180,11 @@ class LogsTab extends BaseTab {
             searchTimer = setTimeout(() => this.loadLogs(), 300);
         });
 
-        // 自动刷新
-        this.$('#log-auto-refresh')?.addEventListener('change', (e) => {
-            this.autoRefresh = e.target.checked;
-            this.autoRefresh ? this.startAutoRefresh() : this.stopAutoRefresh();
-        });
-
         // 按钮
-        this.$('#log-refresh')?.addEventListener('click', () => this.loadLogs());
+        this.$('#log-refresh')?.addEventListener('click', () => {
+            this.loadLogs();
+            this.loadStats();
+        });
         this.$('#log-download')?.addEventListener('click', () => this.download());
         this.$('#log-clear')?.addEventListener('click', () => this.confirmClear());
     }
@@ -171,6 +200,23 @@ class LogsTab extends BaseTab {
         }
     }
 
+    async loadSites() {
+        try {
+            this.sites = await this.api.getJSON('/api/sites') || [];
+        } catch (error) {
+            this.sites = [];
+        }
+    }
+
+    async loadFTPUsers() {
+        try {
+            const data = await this.api.getJSON('/api/ftp/users') || [];
+            this.ftpUsers = data;
+        } catch (error) {
+            this.ftpUsers = [];
+        }
+    }
+
     updateDateOptions() {
         const select = this.$('#log-date');
         if (!select) return;
@@ -179,9 +225,11 @@ class LogsTab extends BaseTab {
         const today = new Date().toISOString().split('T')[0];
 
         this.logFiles.forEach(f => {
-            if (f.category === this.category && !f.compressed) {
-                const match = f.name.match(/(\d{4}-\d{2}-\d{2})/);
-                if (match && match[1] !== today) dates.add(match[1]);
+            if (f.category === this.category || this.category === 'system') {
+                if (!f.compressed) {
+                    const match = f.name.match(/(\d{4}-\d{2}-\d{2})/);
+                    if (match && match[1] !== today) dates.add(match[1]);
+                }
             }
         });
 
@@ -199,10 +247,19 @@ class LogsTab extends BaseTab {
         viewer.innerHTML = '<div class="logs-loading">加载中...</div>';
 
         try {
-            const params = new URLSearchParams({ category: this.category, type: this.type, search, level, limit: '100' });
+            const params = new URLSearchParams({ 
+                category: this.category, 
+                type: this.type, 
+                search, 
+                level, 
+                limit: '200' 
+            });
             if (this.date) params.set('date', this.date);
 
+            console.log('Loading logs:', this.category, this.type);  // 调试
             const data = await this.api.getJSON(`/api/logs/read?${params}`);
+            console.log('Logs data:', data);  // 调试
+            
             if (data?.entries) {
                 this.renderLogs(data.entries);
                 this.$('#log-count').textContent = `共 ${data.total} 条`;
@@ -210,13 +267,15 @@ class LogsTab extends BaseTab {
                 viewer.innerHTML = '<div class="logs-empty">暂无日志</div>';
             }
         } catch (error) {
+            console.error('Load logs error:', error);  // 调试
             viewer.innerHTML = `<div class="logs-error">加载失败: ${error.message}</div>`;
         }
     }
 
     async loadStats() {
         try {
-            const data = await this.api.getJSON(`/api/logs/stats?category=${this.category}`) || [];
+            const params = new URLSearchParams({ category: this.category, type: this.type });
+            const data = await this.api.getJSON(`/api/logs/stats?${params}`) || [];
             let total = 0, errors = 0, warnings = 0;
             data.forEach(s => { total += s.count; errors += s.errors; warnings += s.warnings; });
             this.setText('#stat-count', total);
@@ -243,9 +302,7 @@ class LogsTab extends BaseTab {
             </div>`;
         }).join('');
 
-        if (this.$('#log-auto-scroll')?.checked) {
-            viewer.scrollTop = viewer.scrollHeight;
-        }
+        viewer.scrollTop = viewer.scrollHeight;
     }
 
     // ========== 操作 ==========
@@ -253,38 +310,23 @@ class LogsTab extends BaseTab {
     download() {
         const params = new URLSearchParams({
             category: this.category,
-            file: this.date ? `${this.type}.${this.date}.log` : `${this.type}.log`
+            type: this.type,
+            date: this.date
         });
         window.open(`/api/logs/download?${params}`, '_blank');
     }
 
     confirmClear() {
-        const label = `${this.category.toUpperCase()} - ${this.type}`;
+        const label = CATEGORIES.find(c => c.id === this.category)?.label || this.category;
         this.dialog.confirm(`确定要清空【${label}】吗？此操作不可恢复。`, async () => {
             try {
                 await this.api.post(`/api/logs/clear?category=${this.category}&type=${this.type}`);
                 this.message.success('日志已清空');
-                await this.refresh();
+                await this.loadLogs();
             } catch (error) {
                 this.message.error('清空失败: ' + error.message);
             }
         });
-    }
-
-    // ========== 自动刷新 ==========
-
-    startAutoRefresh() {
-        this.stopAutoRefresh();
-        this.refreshTimer = setInterval(() => {
-            if (document.visibilityState === 'visible') this.loadLogs();
-        }, 5000);
-    }
-
-    stopAutoRefresh() {
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
-        }
     }
 }
 
