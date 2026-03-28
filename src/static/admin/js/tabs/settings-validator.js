@@ -114,6 +114,41 @@ export function validateAll() {
     return { valid: true, message: '' };
 }
 
+// 验证配置对象（用于保存前验证）
+export function validateConfig(config) {
+    const errors = [];
+    
+    // 验证面板端口
+    if (config.Global?.AdminPort) {
+        if (config.Global.AdminPort < 1 || config.Global.AdminPort > 65535) {
+            errors.push('面板端口必须在 1-65535 之间');
+        }
+    }
+    
+    // 验证管理员用户名
+    if (config.Admin?.Username !== undefined) {
+        if (!config.Admin.Username || config.Admin.Username.trim() === '') {
+            errors.push('管理员用户名不能为空');
+        }
+    }
+    
+    // 验证日志保留天数
+    if (config.Log?.RetentionDays !== undefined) {
+        if (config.Log.RetentionDays < 1 || config.Log.RetentionDays > 365) {
+            errors.push('日志保留天数必须在 1-365 之间');
+        }
+    }
+    
+    // 验证日志文件大小
+    if (config.Log?.MaxSizeMB !== undefined) {
+        if (config.Log.MaxSizeMB < 1 || config.Log.MaxSizeMB > 1000) {
+            errors.push('日志文件大小必须在 1-1000 MB 之间');
+        }
+    }
+    
+    return errors;
+}
+
 // 创建 debounce 函数
 function debounce(fn, delay) {
     let timer;
@@ -162,6 +197,7 @@ export const settingsValidator = {
     validatePort,
     validateDomain,
     validateAll,
+    validate: validateConfig,
     showFieldError,
     clearFieldError,
     initRealtimeValidation

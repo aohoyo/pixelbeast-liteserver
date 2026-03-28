@@ -10,13 +10,13 @@
     width: 100%;
 }
 
-.directory-picker-input .form-input {
+.directory-picker-input .form-input-inline {
     flex: 1;
     background: var(--bg);
     min-width: 0;
 }
 
-.directory-picker-input .form-input:hover {
+.directory-picker-input .form-input-inline:hover {
     border-color: var(--primary);
 }
 

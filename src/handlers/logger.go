@@ -636,40 +636,6 @@ func LogSystemError(format string, args ...interface{}) {
 	LogSystem(LogLevelError, format, args...)
 }
 
-// ============ 向后兼容 ============
-
-// LogAccess 记录访问日志（兼容旧代码）
-func LogAccess(format string, args ...interface{}) {
-	var msg string
-	if len(args) > 0 {
-		msg = fmt.Sprintf(format, args...)
-	} else {
-		msg = format
-	}
-
-	log.Print(msg)
-
-	if globalLogger != nil {
-		globalLogger.write(LogCategoryHTTP, "access", LogLevelInfo, msg)
-	}
-}
-
-// LogError 记录错误日志（兼容旧代码）
-func LogError(format string, args ...interface{}) {
-	var msg string
-	if len(args) > 0 {
-		msg = fmt.Sprintf(format, args...)
-	} else {
-		msg = format
-	}
-
-	log.Print("[ERROR] " + msg)
-
-	if globalLogger != nil {
-		globalLogger.write(LogCategoryHTTP, "error", LogLevelError, msg)
-	}
-}
-
 // GetLogFilePath 获取日志文件路径
 func GetLogFilePath(category, logType string) string {
 	if globalLogger == nil {

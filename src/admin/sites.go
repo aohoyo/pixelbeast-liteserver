@@ -64,7 +64,7 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	site := h.Config.GetSiteByID(req.ID)
+	site := h.ConfigManager.GetSiteByID(req.ID)
 	if site == nil {
 		NotFound(w, "站点不存在")
 		return
@@ -75,7 +75,6 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
-		h.ConfigManager.Sites.Sites = h.Config.Sites
 		if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, "保存配置失败")
 			return
@@ -117,7 +116,7 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 
 	var count int
 	for _, id := range req.IDs {
-		site := h.Config.GetSiteByID(id)
+		site := h.ConfigManager.GetSiteByID(id)
 		if site == nil {
 			continue
 		}
@@ -132,10 +131,10 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 			site.UpdatedAt = time.Now().Format(time.RFC3339)
 			count++
 		case "delete":
-			if len(h.Config.Sites) <= 1 {
+			if len(h.ConfigManager.Sites.Sites) <= 1 {
 				continue // 不允许删除最后一个站点
 			}
-			if h.Config.DeleteSite(id) {
+			if err := h.ConfigManager.DeleteSite(id); err == nil {
 				count++
 			}
 		}
@@ -148,7 +147,6 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
-		h.ConfigManager.Sites.Sites = h.Config.Sites
 		if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, "保存配置失败")
 			return
@@ -169,7 +167,7 @@ func (h *Handler) listSites(w http.ResponseWriter, r *http.Request) {
 	defer h.mu.RUnlock()
 
 	sites := make([]map[string]interface{}, 0)
-	for _, site := range h.Config.Sites {
+	for _, site := range h.ConfigManager.Sites.Sites {
 		sites = append(sites, siteToMap(site))
 	}
 
@@ -215,20 +213,19 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 	defer h.mu.Unlock()
 
 	// 检查 ID 是否已存在
-	if h.Config.GetSiteByID(site.ID) != nil {
+	if h.ConfigManager.GetSiteByID(site.ID) != nil {
 		BadRequest(w, "站点 ID 已存在")
 		return
 	}
 
 	// 添加站点
-	if err := h.Config.AddSite(site); err != nil {
+	if err := h.ConfigManager.AddSite(site); err != nil {
 		InternalServerError(w, "添加站点失败")
 		return
 	}
 
 	// 保存配置
 	if h.ConfigManager != nil {
-		h.ConfigManager.Sites.Sites = h.Config.Sites
 		if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, "保存配置失败")
 			return
@@ -253,7 +250,7 @@ func (h *Handler) getSite(w http.ResponseWriter, r *http.Request, id string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	site := h.Config.GetSiteByID(id)
+	site := h.ConfigManager.GetSiteByID(id)
 	if site == nil {
 		NotFound(w, "站点不存在")
 		return
@@ -279,24 +276,21 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 	defer h.mu.Unlock()
 
 	// 检查站点是否存在
-	if h.Config.GetSiteByID(id) == nil {
+	if h.ConfigManager.GetSiteByID(id) == nil {
 		NotFound(w, "站点不存在")
 		return
 	}
 
 	// 更新站点
-	if !h.Config.UpdateSite(id, site) {
-		InternalServerError(w, "更新站点失败")
+	if err := h.ConfigManager.UpdateSite(id, site); err != nil {
+		InternalServerError(w, "更新站点失败: "+err.Error())
 		return
 	}
 
 	// 保存配置
-	if h.ConfigManager != nil {
-		h.ConfigManager.Sites.Sites = h.Config.Sites
-		if err := h.ConfigManager.Save(); err != nil {
-			InternalServerError(w, "保存配置失败")
-			return
-		}
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, "保存配置失败")
+		return
 	}
 
 	// 重新加载站点
@@ -313,31 +307,28 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 	defer h.mu.Unlock()
 
 	// 检查站点是否存在
-	site := h.Config.GetSiteByID(id)
+	site := h.ConfigManager.GetSiteByID(id)
 	if site == nil {
 		NotFound(w, "站点不存在")
 		return
 	}
 
 	// 不允许删除最后一个站点
-	if len(h.Config.Sites) <= 1 {
+	if len(h.ConfigManager.Sites.Sites) <= 1 {
 		BadRequest(w, "不能删除最后一个站点")
 		return
 	}
 
 	// 删除站点
-	if !h.Config.DeleteSite(id) {
-		InternalServerError(w, "删除站点失败")
+	if err := h.ConfigManager.DeleteSite(id); err != nil {
+		InternalServerError(w, "删除站点失败: "+err.Error())
 		return
 	}
 
 	// 保存配置
-	if h.ConfigManager != nil {
-		h.ConfigManager.Sites.Sites = h.Config.Sites
-		if err := h.ConfigManager.Save(); err != nil {
-			InternalServerError(w, "保存配置失败")
-			return
-		}
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, "保存配置失败")
+		return
 	}
 
 	// 重新加载站点

@@ -1,410 +1,488 @@
-# 前端开发
+# 前端开发指南
 
-## 设计模式
+## 架构概述
 
-管理面板采用**组件化 + 模块化 JS** 架构：
+前端采用**原生技术栈**，无框架依赖：
 
-- 标签页组件存储为独立的 HTML 文件
-- 通过 `loader.js` 动态加载组件
-- 更易于维护和扩展
+- **HTML5** - 语义化结构
+- **CSS3** - CSS 变量系统
+- **JavaScript ES Modules** - 模块化
+
+### 核心原则
+
+1. **组件化** - UI 组件独立封装
+2. **模块化** - ES Modules 导入导出
+3. **事件驱动** - 模块间通过事件通信
+4. **依赖注入** - 避免硬编码依赖
+
+---
 
 ## 目录结构
 
 ```
 src/static/admin/
-├── index.html         # 主面板（容器）
-├── login.html         # 登录页
-├── components/        # 标签页组件
-│   ├── home-section.html
-│   ├── sites-section.html
-│   ├── ftp-section.html
-│   ├── files-section.html
-│   ├── logs-section.html
-│   ├── cert-section.html
-│   ├── settings-section.html
-│   └── modal.html
+├── index.html              # 主页面
+├── login.html              # 登录页
+│
 ├── css/
-│   ├── base.css       # CSS 变量、重置样式
-│   ├── main.css       # 主面板样式
-│   └── login.css      # 登录页样式
-└── js/
-    ├── app.js         # 应用入口
-    ├── login.js       # 登录逻辑
-    ├── core/          # 核心模块
-    │   ├── state.js   # 状态管理
-    │   ├── api.js     # API 封装
-    │   ├── events.js  # 事件系统
-    │   └── loader.js  # 组件加载器
-    ├── components/    # JS 组件
-    │   ├── toast.js   # Toast 提示（右下角）
-    │   ├── message.js # Message 消息（顶部居中）
-    │   ├── dialog.js  # 对话框
-    │   └── tooltip.js # 工具提示
-    └── tabs/          # 标签页逻辑
-        ├── home.js    # 首页（系统概览）
-        ├── sites.js   # 网站管理
-        ├── ftp.js     # FTP 文件管理
-        ├── files.js   # HTTP 文件管理
-        ├── logs.js    # 日志查看
-        ├── cert.js    # 证书管理
-        └── settings.js # 配置编辑
+│   ├── base.css            # CSS 变量、重置
+│   ├── layout.css          # 布局样式
+│   ├── main.css            # 页面样式
+│   └── components/         # 组件样式
+│       ├── button.css
+│       ├── card.css
+│       ├── data-table.css
+│       └── ...
+│
+├── js/
+│   ├── app.js              # 应用入口
+│   ├── login.js            # 登录逻辑
+│   │
+│   ├── core/               # 核心模块
+│   │   ├── api.js          # API 封装
+│   │   ├── state.js        # 状态管理
+│   │   ├── events.js       # 事件系统
+│   │   ├── utils.js        # 工具函数
+│   │   ├── cache.js        # 缓存管理
+│   │   └── loader.js       # 组件加载
+│   │
+│   ├── components/         # UI 组件
+│   │   ├── toast.js        # 消息提示
+│   │   ├── dialog.js       # 对话框
+│   │   ├── data-table.js   # 数据表格
+│   │   ├── skeleton.js     # 骨架屏
+│   │   ├── tooltip.js      # 提示框
+│   │   ├── file-manager.js # 文件管理器
+│   │   └── ...
+│   │
+│   └── tabs/               # 标签页模块
+│       ├── BaseTab.js      # 基类 ⭐
+│       ├── home.js         # 首页
+│       ├── sites.js        # 站点管理
+│       ├── ftp.js          # FTP 管理
+│       ├── files.js        # 文件管理
+│       ├── logs.js         # 日志查看
+│       ├── settings.js     # 系统设置
+│       └── cert.js         # 证书管理
+│
+└── components/             # HTML 模板
+    ├── home-section.html
+    ├── sites-section.html
+    └── ...
 ```
 
-## 核心模块
+---
 
-### state.js - 状态管理器
+## BaseTab 基类
 
-```javascript
-import StateManager from './core/state.js';
+所有标签页必须继承 `BaseTab`：
 
-const state = new StateManager();
-
-// 设置值
-state.set('key', value);
-
-// 获取值
-const value = state.get('key');
-
-// 订阅变化
-state.subscribe('key', (newValue, oldValue) => {
-    console.log(`${key}: ${oldValue} -> ${newValue}`);
-});
-
-// 批量更新
-state.batch({
-    'key1': value1,
-    'key2': value2
-});
-```
-
-### api.js - API 封装
+### 生命周期
 
 ```javascript
-import { createAPI } from './core/api.js';
+import { BaseTab } from './BaseTab.js';
 
-const api = createAPI(state);
-
-// GET 请求
-const response = await api.get('/api/status');
-const data = await api.parseJSON(response);
-
-// POST 请求
-const response = await api.post('/api/config/save', config);
-
-// 文件上传
-await api.uploadFile('/api/files/upload', file, { path: '/' });
-
-// 获取 CSRF Token
-const token = api.getCSRFToken();
-```
-
-### events.js - 事件系统
-
-```javascript
-import { globalEvents } from './core/events.js';
-
-// 监听事件
-globalEvents.on('tab:switch:home', (data) => {
-    console.log('切换到首页', data);
-});
-
-// 通配符匹配
-globalEvents.match('tab:switch:*', (event, data) => {
-    console.log(`切换标签: ${event}`, data);
-});
-
-// 触发事件
-globalEvents.emit('status:loaded', { memory: 100 });
-globalEvents.emit('tab:switch:home');
-```
-
-## 标签页开发
-
-### 标签页模板
-
-```javascript
-// src/static/admin/js/tabs/mytab.js
-
-import { globalEvents } from '../core/events.js';
-
-/**
- * 初始化标签页
- * @param {Object} dependencies - 依赖注入 { state, api, toast, message, dialog, events }
- */
-export function initMyTab({ state, api, toast, message, dialog, events }) {
-    console.log('🔧 初始化我的标签页...');
-
-    // 监听标签页切换
-    events.match('tab:switch:mytab', () => {
-        loadData();
-    });
-
-    // 初始加载
-    loadData();
-
-    /**
-     * 加载数据
-     */
-    async function loadData() {
-        try {
-            const data = await api.getJSON('/api/mydata');
-            updateUI(data);
-        } catch (error) {
-            toast.error('加载失败: ' + error.message);
-        }
+class XxxTab extends BaseTab {
+    constructor(deps) {
+        super(deps, 'xxx');  // 传入依赖和标签页名称
     }
 
-    /**
-     * 保存数据
-     */
-    async function saveData() {
-        try {
-            await api.post('/api/mydata', data);
-            message.success('保存成功');
-        } catch (error) {
-            message.error('保存失败: ' + error.message);
-        }
+    // 初始化（只执行一次）
+    onInit() {
+        this.bindEvents();
+        this.initComponents();
     }
 
-    /**
-     * 更新 UI
-     */
-    function updateUI(data) {
-        // 更新 DOM
+    // 加载数据（首次激活）
+    async onLoad() {
+        const data = await this.api.getJSON('/api/xxx');
+        this.render(data);
+    }
+
+    // 刷新数据（再次激活）
+    async onRefresh() {
+        await this.onLoad();
+    }
+
+    // 销毁（可选）
+    onDestroy() {
+        // 清理资源
+    }
+
+    // 错误处理（可选覆盖）
+    onError(error, context) {
+        console.error(`[${this.name}] ${context}:`, error);
+        this.toast?.error(`${context}: ${error.message}`);
     }
 }
-```
 
-### 添加新标签页步骤
-
-1. **在 `index.html` 中添加 HTML 结构**：
-
-```html
-<section id="mytab" class="tab-content">
-    <div class="card">
-        <div class="card-header">
-            <h3>我的标签页</h3>
-        </div>
-        <div class="card-body">
-            <!-- 内容 -->
-        </div>
-    </div>
-</section>
-```
-
-2. **在导航栏添加按钮**：
-
-```html
-<button class="nav-item" data-tab="mytab">
-    <span class="nav-icon">🔧</span>
-    <span class="nav-label">我的标签</span>
-</button>
-```
-
-3. **创建标签页 JS 文件**：
-
-```javascript
-// src/static/admin/js/tabs/mytab.js
-export function initMyTab({ state, api, toast }) {
-    // 实现
-}
-```
-
-4. **在 `app.js` 中注册**：
-
-```javascript
-import { initMyTab } from './tabs/mytab.js';
-
-// 在 initTabModules() 中调用
-initMyTab({ state, api, toast, message, dialog, events: globalEvents });
-```
-
-## UI 组件
-
-### Toast 提示
-
-```javascript
-import toast from './ui/toast.js';
-
-// 成功提示
-toast.success('操作成功');
-
-// 错误提示
-toast.error('操作失败');
-
-// 信息提示
-toast.info('提示信息');
-
-// 警告提示
-toast.warning('警告信息');
-```
-
-### Message 消息提示
-
-参考 Element UI Message 组件设计，顶部居中显示的消息提示。
-
-```javascript
-import message from './components/message.js';
-
-// 基础用法
-message.success('操作成功');
-message.error('操作失败');
-message.warning('警告信息');
-message.info('提示信息');
-
-// 配置对象
-message({
-    message: '这是一条消息',
-    type: 'success',        // success | warning | info | error
-    duration: 3000,         // 持续时间，0 表示不自动关闭
-    showClose: true,        // 显示关闭按钮
-    onClose: () => {}       // 关闭回调
+// 导出单例
+export default new XxxTab({
+    api,
+    state,
+    toast,
+    message,
+    dialog,
+    events
 });
-
-// 关闭所有消息
-message.closeAll();
 ```
 
-### Message vs Toast 使用规范
+### 工具方法
 
-根据场景选择合适的组件：
+```javascript
+// DOM 操作
+this.$('#element')           // querySelector
+this.$$('.elements')         // querySelectorAll
 
-| 场景 | 组件 | 原因 |
-|------|------|------|
-| **创建/编辑/删除** | Message | 重要操作，需要用户确认结果 |
-| **保存设置成功/失败** | Message | 重要操作反馈，醒目 |
-| **文件上传完成** | Message | 用户等待的操作结果 |
-| **表单验证失败** | Message | 错误提示需要醒目 |
-| **批量操作结果** | Message | 重要操作，需要明确反馈 |
-| **复制成功** | Message | 用户需要确认操作成功 |
-| **状态开关切换** | Toast | 快速反馈，用户已预期结果 |
-| **开始下载** | Toast | 后台操作提示 |
-| **加载失败** | Toast | 网络错误，不需要太醒目 |
-| **功能开发中** | Toast | 临时提示 |
+// 内容设置
+this.setText('#el', value)   // 设置文本
+this.setHTML('#el', html)    // 设置 HTML
 
-**注意**：随机密码生成不需要通知，用户可以从输入框直接看到结果。
-
-**位置差异**：
-- **Message**: 顶部居中，从上往下淡入，更醒目
-- **Toast**: 右下角显示，不打断用户操作
-
-## CSS 变量
-
-在 `base.css` 中定义的全局变量：
-
-```css
-:root {
-    /* 颜色 */
-    --color-primary: #4a90d9;
-    --color-success: #52c41a;
-    --color-warning: #faad14;
-    --color-danger: #f5222d;
-    --color-text: #333;
-    --color-text-secondary: #666;
-    --color-bg: #f5f5f5;
-    --color-border: #e8e8e8;
-
-    /* 间距 */
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 16px;
-    --spacing-lg: 24px;
-    --spacing-xl: 32px;
-
-    /* 圆角 */
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-
-    /* 阴影 */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.15);
-}
+// 加载状态
+this.showLoading(container)  // 显示加载
+this.showEmpty(container)    // 显示空状态
 ```
-
-## 开发规范
-
-### 命名约定
-
-- **文件名**: 小写，连字符分隔 (`my-tab.js`)
-- **函数名**: 驼峰命名 (`initMyTab`)
-- **变量名**: 驼峰命名 (`currentPath`)
-- **常量名**: 大写下划线 (`MAX_SIZE`)
 
 ### 依赖注入
 
-所有标签页初始化函数接收统一的依赖对象：
+```javascript
+const deps = {
+    api,        // API 实例
+    state,      // 状态管理
+    toast,      // 消息提示
+    message,    // 消息封装
+    dialog,     // 对话框
+    events      // 事件系统
+};
+```
+
+---
+
+## 状态管理
+
+### 访问状态
 
 ```javascript
-export function initXxxTab({ state, api, toast, message, dialog, events }) {
-    // 使用注入的依赖，不要全局导入
+// 获取配置
+const config = state.get('config');
+
+// 获取系统状态
+const status = state.get('status');
+
+// 获取其他数据
+const data = state.get('xxx');
+```
+
+### 配置结构
+
+```javascript
+state.get('config') = {
+    admin: { username, port, path },
+    http: { port },
+    ftp: { enabled, port, root, users },
+    log: { retention_days, level },
+    backup_dir: './backups'
 }
 ```
 
-### 事件驱动
-
-使用事件系统进行模块间通信：
+### 状态结构
 
 ```javascript
-// 发布事件
-globalEvents.emit('data:updated', newData);
+state.get('status') = {
+    os: 'linux',
+    arch: 'amd64',
+    memory_mb: 50,
+    goroutines: 15,
+    uptime: 3600000,
+    server_start_time: '2026-03-29T00:00:00Z',
+    services: {
+        http: { running: true, port: 8080 },
+        ftp: { running: false, port: 2121 }
+    }
+}
+```
 
-// 订阅事件
-globalEvents.on('data:updated', (data) => {
-    // 处理更新
+---
+
+## API 封装
+
+### 基本用法
+
+```javascript
+// GET 请求
+const data = await api.getJSON('/api/xxx');
+
+// POST 请求
+await api.post('/api/xxx', { key: 'value' });
+
+// PUT 请求
+await api.put('/api/xxx/id', { key: 'value' });
+
+// DELETE 请求
+await api.delete('/api/xxx/id');
+```
+
+### 缓存控制
+
+```javascript
+// 带缓存（10秒）
+const data = await api.getJSON('/api/xxx', { cache: true });
+
+// 清除缓存
+api.clearCache('/api/xxx');
+
+// 清除所有缓存
+api.clearAllCache();
+```
+
+---
+
+## 事件系统
+
+### 触发事件
+
+```javascript
+// 触发事件
+events.emit('event:name', data);
+
+// 触发标签页切换
+events.emit('tab:switch', 'home');
+events.emit('tab:switch:home');
+```
+
+### 监听事件
+
+```javascript
+// 监听事件
+events.on('event:name', (data) => {
+    console.log(data);
+});
+
+// 匹配模式
+events.match('tab:switch:xxx', () => {
+    // 只匹配 'tab:switch:xxx'
 });
 ```
 
-### 错误处理
-
-统一使用 try-catch，根据场景选择 toast 或 message：
+### 常用事件
 
 ```javascript
-// 加载数据（使用 toast，不阻断用户）
-async function loadData() {
-    try {
-        const data = await api.getJSON('/api/data');
-        // 处理数据
-    } catch (error) {
-        console.error('加载失败:', error);
-        toast.error('加载失败: ' + error.message);
-    }
+// 配置加载完成
+events.on('config:loaded', (config) => { });
+
+// 状态更新
+events.on('status:updated', (status) => { });
+
+// 标签页切换
+events.on('tab:switch', (tabName) => { });
+events.match('tab:switch:home', () => { });
+
+// 数据刷新
+events.emit('refresh:home');
+```
+
+---
+
+## 工具函数
+
+```javascript
+import { 
+    escapeHtml, 
+    formatSize, 
+    formatUptime, 
+    formatDate,
+    debounce,
+    throttle,
+    copyToClipboard,
+    generateId,
+    deepClone,
+    isEmpty,
+    get
+} from '../core/utils.js';
+
+// HTML 转义
+escapeHtml('<script>')  // '&lt;script&gt;'
+
+// 格式化文件大小
+formatSize(1024)        // '1 KB'
+formatSize(1048576)     // '1 MB'
+
+// 格式化运行时间
+formatUptime(3600000)   // '1时0分'
+
+// 格式化日期
+formatDate(new Date(), 'datetime')  // '2026-03-29 12:00'
+
+// 防抖
+const debouncedFn = debounce(fn, 300);
+
+// 节流
+const throttledFn = throttle(fn, 100);
+
+// 复制到剪贴板
+await copyToClipboard('text');
+
+// 生成唯一 ID
+generateId('item')  // 'item_1712345678_abc123'
+
+// 安全获取嵌套属性
+get(obj, 'a.b.c', defaultValue)
+```
+
+---
+
+## CSS 规范
+
+### CSS 变量系统
+
+```css
+/* 颜色 */
+--primary: #f97316;
+--primary-light: #fb923c;
+--primary-alpha: rgba(249, 115, 22, 0.15);
+
+--success: #22c55e;
+--danger: #ef4444;
+--warning: #fbbf24;
+--info: #3b82f6;
+
+/* 背景 */
+--bg: #0c0a09;
+--bg-elevated: #1c1917;
+--bg-hover: #272524;
+--card-bg: #292524;
+
+/* 文字 */
+--text: #fafaf9;
+--text-secondary: #d6d3d1;
+--text-muted: #78716c;
+
+/* 边框 */
+--border: #44403c;
+--border-light: #57534e;
+
+/* 间距 */
+--space-xs: 4px;
+--space-sm: 8px;
+--space-md: 16px;
+--space-lg: 24px;
+--space-xl: 32px;
+
+/* 圆角 */
+--radius-sm: 4px;
+--radius: 8px;
+--radius-lg: 12px;
+--radius-full: 9999px;
+
+/* 过渡 */
+--transition: 250ms ease;
+```
+
+### 使用规范
+
+```css
+/* ✅ 正确：使用 CSS 变量 */
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
 }
 
-// 保存数据（使用 message，重要操作）
-async function saveData() {
-    try {
-        await api.post('/api/data', data);
-        message.success('保存成功');
-    } catch (error) {
-        console.error('保存失败:', error);
-        message.error('保存失败: ' + error.message);
-    }
-}
+/* ❌ 错误：硬编码 */
+.card {
+    background: #292524;
+    border: 1px solid #44403c;
 }
 ```
 
-## 调试技巧
+---
 
-### 查看状态
+## 组件示例
+
+### Toast 消息
 
 ```javascript
-// 在浏览器控制台
-console.log(window.state.get('currentTab'));
+// 成功消息
+toast.success('操作成功');
+
+// 错误消息
+toast.error('操作失败');
+
+// 警告消息
+toast.warning('请注意');
+
+// 信息消息
+toast.info('提示信息');
 ```
 
-### 查看事件
+### Dialog 对话框
 
 ```javascript
-// 监听所有事件
-globalEvents.match('*', (event, data) => {
-    console.log(`[Event] ${event}:`, data);
+// 确认对话框
+dialog.confirm('确定删除吗？', () => {
+    // 确认回调
+});
+
+// 提示对话框
+dialog.alert('提示', '内容');
+
+// 自定义对话框
+dialog.show({
+    title: '标题',
+    content: '<p>内容</p>',
+    buttons: [
+        { text: '取消', action: () => {} },
+        { text: '确定', type: 'primary', action: () => {} }
+    ]
 });
 ```
 
-### 查看 CSRF Token
+### DataTable 数据表格
 
 ```javascript
-console.log(window.csrfToken);
+const table = new DataTable({
+    container: '#table-container',
+    columns: [
+        { title: '名称', dataIndex: 'name' },
+        { title: '状态', dataIndex: 'status', render: (val) => val ? '✅' : '❌' },
+        { title: '操作', dataIndex: 'id', render: (id) => `<button onclick="edit('${id}')">编辑</button>` }
+    ],
+    selectable: true,
+    batchActions: [
+        { key: 'enable', label: '启用', type: 'success', handler: (ids) => {} },
+        { key: 'delete', label: '删除', type: 'danger', handler: (ids) => {} }
+    ]
+});
+
+// 设置数据
+table.setData(items);
 ```
+
+---
+
+## 开发调试
+
+### 浏览器控制台
+
+```javascript
+// 查看状态
+state.get('config')
+state.get('status')
+
+// 查看 API 缓存
+api._cache
+
+// 触发事件
+events.emit('refresh:home')
+
+// 调用 Tab 方法
+window.homeTab.refresh()
+```
+
+### 常见问题
+
+1. **组件加载失败** - 检查路径是否正确
+2. **事件未触发** - 检查事件名称拼写
+3. **状态未更新** - 检查 state.set() 是否调用
+4. **API 返回 401** - 检查登录状态

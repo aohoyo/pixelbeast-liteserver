@@ -40,8 +40,8 @@ export class DirectoryPicker {
         this.container.innerHTML = `
             <div class="directory-picker">
                 <div class="directory-picker-input">
-                    <input type="text" class="form-input" id="${this.uid}-value" value="${this.escapeHtml(displayValue)}" placeholder="${displayPlaceholder}" />
-                    <button type="button" class="btn directory-picker-btn" id="${this.uid}-browse-btn" title="浏览目录">
+                    <input type="text" class="form-input-inline" id="${this.uid}-value" value="${this.escapeHtml(displayValue)}" placeholder="${displayPlaceholder}" />
+                    <button type="button" class="btn btn-secondary directory-picker-btn" id="${this.uid}-browse-btn" title="浏览目录">
                         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                         </svg>

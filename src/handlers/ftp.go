@@ -278,28 +278,35 @@ func (c *FTPClient) handleUSER(username string) {
 
 // handlePASS 处理PASS命令
 func (c *FTPClient) handlePASS(password string) {
-	// 使用验证器验证（支持加密密码）
-	if c.server.validator != nil {
-		if c.server.validator.ValidateFTPUser(c.username, password) {
-			c.loggedIn = true
-			c.sendMessage("230 Login successful")
-			LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
-			return
-		}
-	} else {
-		// 兼容旧模式：明文密码比较
-		for _, user := range c.server.Config.Users {
-			if user.Username == c.username && user.Password == password {
-				c.loggedIn = true
-				c.sendMessage("230 Login successful")
-				LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
-				return
-			}
+	// 使用验证器验证（加密密码）
+	if c.server.validator == nil {
+		c.sendMessage("500 Server configuration error")
+		LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "验证器未配置")
+		c.username = ""
+		return
+	}
+
+	if !c.server.validator.ValidateFTPUser(c.username, password) {
+		c.sendMessage("530 Login incorrect")
+		LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "密码错误")
+		c.username = ""
+		return
+	}
+
+	// 查找用户配置以获取其根目录
+	for _, user := range c.server.Config.Users {
+		if user.Username == c.username && user.Status == "enabled" {
+			c.rootDir = user.RootPath
+			c.cwd = "/"
+			// 确保用户目录存在
+			os.MkdirAll(c.rootDir, 0755)
+			break
 		}
 	}
-	c.sendMessage("530 Login incorrect")
-	LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "密码错误")
-	c.username = ""
+
+	c.loggedIn = true
+	c.sendMessage("230 Login successful, welcome " + c.username)
+	LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
 }
 
 // handleCWD 处理CWD命令

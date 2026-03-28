@@ -1,84 +1,157 @@
 # 部署指南
 
-## 开发环境
+## 系统要求
 
-### 前置要求
+- **操作系统**: Linux / macOS / Windows
+- **Go 版本**: 1.21+
+- **内存**: 最低 64MB
+- **磁盘**: 最低 100MB
 
-- Go 1.21+
-- Node.js 14+ (用于 npm 脚本)
-- Git
+---
 
-### 启动开发模式
+## 编译
 
-```bash
-# 克隆仓库
-git clone <repository-url>
-cd pixelbeast-liteserver
-
-# 启动开发模式（热重载）
-npm run dev
-
-# 访问管理面板
-open http://localhost:9527/admin
-```
-
-### 开发脚本
+### 本地编译
 
 ```bash
-npm run dev          # 开发模式（热重载）
-npm run dev:go       # 仅 Go 热重载
-npm run build        # 构建当前平台
-npm run build:linux  # 构建 Linux x64
-npm run build:windows # 构建 Windows x64
-npm run build:arm    # 构建 ARM64
-npm run clean        # 清理构建文件
-```
+# 进入项目目录
+cd /home/wwlhlf/project/pixelbeast-liteserver
 
-## 生产构建
-
-### 编译
-
-```bash
-# 当前平台
+# 编译
 go build -o pixelbeast
 
-# 指定平台
-GOOS=linux GOARCH=amd64 go build -o pixelbeast
-GOOS=windows GOARCH=amd64 go build -o pixelbeast.exe
-GOOS=linux GOARCH=arm64 go build -o pixelbeast
-```
-
-### 验证构建
-
-```bash
-# 检查版本
+# 查看版本
 ./pixelbeast -version
-
-# 测试运行
-./pixelbeast -config pixelbeast.json
 ```
 
-## 生产部署
-
-### Linux 部署
+### 交叉编译
 
 ```bash
-# 1. 上传文件
-scp pixelbeast user@server:/opt/pixelbeast/
-scp -r config user@server:/opt/pixelbeast/
+# Linux AMD64
+GOOS=linux GOARCH=amd64 go build -o pixelbeast-linux
 
-# 2. 创建必要目录
-ssh user@server
-cd /opt/pixelbeast
-mkdir -p logs web ftp
+# Linux ARM64
+GOOS=linux GOARCH=arm64 go build -o pixelbeast-arm64
 
-# 3. 设置权限
-chmod +x pixelbeast
+# Windows
+GOOS=windows GOARCH=amd64 go build -o pixelbeast.exe
 
-# 4. 创建 systemd 服务
-sudo tee /etc/systemd/system/pixelbeast.service << EOF
+# macOS
+GOOS=darwin GOARCH=amd64 go build -o pixelbeast-mac
+```
+
+---
+
+## 配置
+
+### 配置目录
+
+```bash
+mkdir -p config
+```
+
+### 初始化配置
+
+首次运行会自动创建默认配置：
+
+```bash
+./pixelbeast -config ./config
+```
+
+生成的文件：
+- `config/server.json` - 服务配置
+- `config/sites.json` - 站点配置
+- `config/ftp.json` - FTP 配置
+- `config/secrets.key` - 加密密钥
+
+### 配置文件说明
+
+#### server.json
+
+```json
+{
+    "http_port": 8080,
+    "admin_port": 9527,
+    "admin_username": "admin",
+    "admin_password": "加密后的密码",
+    "admin_path": "/admin",
+    "log": {
+        "retention_days": 30,
+        "max_size_mb": 100,
+        "compress_days": 7,
+        "cleanup_hour": 3,
+        "level": "info"
+    },
+    "ftp_dir": "./ftp",
+    "backup_dir": "./backups"
+}
+```
+
+#### sites.json
+
+```json
+{
+    "sites": [
+        {
+            "id": "site-1",
+            "name": "我的网站",
+            "enabled": true,
+            "type": "static",
+            "port": 8080,
+            "domain": ["example.com"],
+            "root": "./www",
+            "index_files": ["index.html"],
+            "auto_index": true
+        }
+    ]
+}
+```
+
+#### ftp.json
+
+```json
+{
+    "enabled": false,
+    "port": 2121,
+    "root": "./ftp",
+    "users": []
+}
+```
+
+---
+
+## 运行
+
+### 直接运行
+
+```bash
+./pixelbeast -config ./config
+```
+
+### 后台运行
+
+```bash
+# nohup
+nohup ./pixelbeast -config ./config > pixelbeast.log 2>&1 &
+
+# screen
+screen -S pixelbeast
+./pixelbeast -config ./config
+# Ctrl+A+D 分离
+
+# tmux
+tmux new -s pixelbeast
+./pixelbeast -config ./config
+# Ctrl+B+D 分离
+```
+
+### Systemd 服务
+
+创建服务文件 `/etc/systemd/system/pixelbeast.service`：
+
+```ini
 [Unit]
-Description=PixelBeast LiteServer
+Description=PixelBeast Server
 After=network.target
 
 [Service]
@@ -86,243 +159,233 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/pixelbeast
 ExecStart=/opt/pixelbeast/pixelbeast -config /opt/pixelbeast/config
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
-
-# 5. 启动服务
-sudo systemctl enable pixelbeast
-sudo systemctl start pixelbeast
-
-# 6. 查看状态
-sudo systemctl status pixelbeast
 ```
 
-### Windows 部署
-
-```batch
-REM 1. 创建目录
-mkdir C:\pixelbeast
-cd C:\pixelbeast
-
-REM 2. 复制文件
-copy pixelbeast.exe C:\pixelbeast\
-xcopy /E /I config C:\pixelbeast\config
-
-REM 3. 创建必要目录
-mkdir logs web ftp
-
-REM 4. 创建 Windows 服务（使用 NSSM）
-nssm install PixelBeast C:\pixelbeast\pixelbeast.exe -config C:\pixelbeast\config
-nssm start PixelBeast
-```
-
-### Docker 部署
-
-```dockerfile
-FROM alpine:latest
-
-RUN apk add --no-cache ca-certificates
-
-WORKDIR /app
-
-COPY pixelbeast .
-COPY config ./config
-
-RUN mkdir -p logs web ftp
-
-EXPOSE 8080 2121 9527
-
-CMD ["./pixelbeast", "-config", "./config"]
-```
-
-构建和运行：
+启动服务：
 
 ```bash
-# 构建镜像
-docker build -t pixelbeast:latest .
+# 重载配置
+systemctl daemon-reload
 
-# 运行容器
-docker run -d \
-  --name pixelbeast \
-  -p 8080:8080 \
-  -p 2121:2121 \
-  -p 9527:9527 \
-  -v $(pwd)/web:/app/web \
-  -v $(pwd)/ftp:/app/ftp \
-  -v $(pwd)/logs:/app/logs \
-  pixelbeast:latest
+# 启动
+systemctl start pixelbeast
+
+# 开机自启
+systemctl enable pixelbeast
+
+# 查看状态
+systemctl status pixelbeast
 ```
 
-## 配置管理
+---
 
-### 配置文件位置
+## 访问
 
-- **开发**: `./config/` 目录
-- **生产**: `/opt/pixelbeast/config/`
-
-### 配置文件结构
+### 管理面板
 
 ```
-config/
-├── server.json      # 服务配置
-├── sites.json       # 站点配置
-├── ftp.json         # FTP 配置
-└── secrets.key      # 加密密钥（自动生成）
+http://nas.banayou.com:9527/admin
 ```
 
-### 启动命令
+默认账号：
+- 用户名: `admin`
+- 密码: `admin123`
 
-```bash
-# 指定配置目录
-./pixelbeast -config ./config
-
-# 或使用绝对路径
-./pixelbeast -config /opt/pixelbeast/config
-```
-
-### 环境变量
-
-```bash
-# Go 代理（国内）
-export GOPROXY=https://goproxy.cn,direct
-```
-
-## 日志管理
-
-### 日志位置
+### 网站服务
 
 ```
-logs/
-├── http/
-│   ├── access.log
-│   └── error.log
-├── ftp/
-│   ├── access.log
-│   └── error.log
-└── panel/
-    ├── access.log
-    ├── api.log
-    └── auth.log
+http://nas.banayou.com:8080
 ```
 
-### 日志轮转
+### FTP 服务
 
-使用 logrotate：
-
-```bash
-# /etc/logrotate.d/pixelbeast
-/opt/pixelbeast/logs/*/*.log {
-    daily
-    rotate 7
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0640 www-data www-data
-    sharedscripts
-    postrotate
-        systemctl reload pixelbeast >/dev/null 2>&1 || true
-    endscript
-}
+```
+ftp://nas.banayou.com:2121
 ```
 
-## 性能优化
+---
 
-### Go 编译优化
+## 安全配置
 
-```bash
-# 减小二进制大小
-go build -ldflags="-s -w" -o pixelbeast
+### 修改管理员密码
 
-# 使用 upx 压缩（可选）
-upx --best --lzma pixelbeast
-```
+1. 登录管理面板
+2. 进入「系统设置」
+3. 修改管理员密码
 
-### 运行时优化
+### 修改安全入口
 
 ```json
+// config/server.json
 {
-  "http": {
-    "readTimeout": 30,
-    "writeTimeout": 30,
-    "maxConnections": 1000
-  },
-  "ftp": {
-    "maxConnections": 50,
-    "timeout": 300
-  }
+    "admin_path": "/my-admin-portal"
 }
 ```
 
-## 监控
+访问地址变为：`http://nas.banayou.com:9527/my-admin-portal`
 
-### 健康检查
-
-```bash
-# 检查服务状态
-curl http://localhost:9527/admin/api/status
-
-# 检查进程
-ps aux | grep pixelbeast
-```
-
-### 日志监控
+### 防火墙配置
 
 ```bash
-# 实时查看日志
-tail -f logs/panel/api.log
-
-# 查看错误日志
-tail -f logs/http/error.log
+# 开放端口
+ufw allow 9527/tcp  # 管理面板
+ufw allow 8080/tcp  # HTTP 服务
+ufw allow 2121/tcp  # FTP 服务（如启用）
 ```
 
-## 故障排除
+### SSL 配置
 
-### 常见问题
-
-**端口被占用**
-```bash
-# 查看端口占用
-sudo lsof -i :8080
-
-# 修改配置文件中的端口
+```json
+// config/sites.json
+{
+    "sites": [{
+        "ssl": {
+            "enabled": true,
+            "auto_https": true,
+            "email": "admin@example.com"
+        }
+    }]
+}
 ```
 
-**权限问题**
-```bash
-# 确保运行用户有权限访问目录
-chown -R www-data:www-data /opt/pixelbeast
-```
-
-**服务启动失败**
-```bash
-# 查看详细日志
-sudo journalctl -u pixelbeast -n 50
-```
+---
 
 ## 备份与恢复
 
 ### 备份
 
 ```bash
-# 备份配置和数据
-tar -czf pixelbeast-backup-$(date +%Y%m%d).tar.gz \
-  config/ \
-  web/ \
-  ftp/ \
-  logs/
+# 备份配置
+tar -czvf pixelbeast-config.tar.gz config/
+
+# 备份数据
+tar -czvf pixelbeast-data.tar.gz www/ ftp/ logs/
 ```
 
 ### 恢复
 
 ```bash
-# 解压备份
-tar -xzf pixelbeast-backup-20240324.tar.gz
+# 解压配置
+tar -xzvf pixelbeast-config.tar.gz
 
-# 重启服务
-sudo systemctl restart pixelbeast
+# 解压数据
+tar -xzvf pixelbeast-data.tar.gz
+```
+
+---
+
+## 监控与日志
+
+### 日志位置
+
+```
+logs/
+├── server.log      # 服务日志
+├── access.log      # 访问日志
+└── error.log       # 错误日志
+```
+
+### 日志配置
+
+```json
+{
+    "log": {
+        "retention_days": 30,
+        "max_size_mb": 100,
+        "compress_days": 7,
+        "level": "info"
+    }
+}
+```
+
+### 监控
+
+管理面板首页提供：
+- CPU 使用率
+- 内存使用量
+- 协程数量
+- 运行时间
+- 服务状态
+
+---
+
+## 故障排查
+
+### 端口被占用
+
+```bash
+# 查看端口占用
+netstat -tlnp | grep 9527
+
+# 修改端口
+# config/server.json
+{
+    "admin_port": 9528
+}
+```
+
+### 配置加载失败
+
+```bash
+# 检查配置文件
+cat config/server.json
+
+# 检查权限
+ls -la config/
+
+# 检查密钥
+ls -la config/secrets.key
+```
+
+### 密码验证失败
+
+```bash
+# 删除密钥（会重置所有密码）
+rm config/secrets.key
+
+# 重新启动，会生成新密钥和默认密码
+./pixelbeast -config ./config
+```
+
+### 内存占用过高
+
+```bash
+# 查看内存
+ps aux | grep pixelbeast
+
+# 调整日志级别
+# config/server.json
+{
+    "log": {
+        "level": "error"
+    }
+}
+```
+
+---
+
+## 更新
+
+### 更新步骤
+
+```bash
+# 1. 备份配置
+cp -r config config.bak
+
+# 2. 停止服务
+systemctl stop pixelbeast
+
+# 3. 替换二进制
+cp pixelbeast-new /opt/pixelbeast/pixelbeast
+
+# 4. 启动服务
+systemctl start pixelbeast
+
+# 5. 检查状态
+systemctl status pixelbeast
 ```

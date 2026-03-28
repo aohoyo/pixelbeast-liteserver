@@ -42,30 +42,16 @@ type ServerManager struct {
 
 	// 文件管理
 	FileManager *FileManager
-
-	// 配置
-	Config     *config.Config
-	ConfigPath string
 }
 
 // NewServerManager 创建服务管理器
 func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
 	sm := &ServerManager{
-		ConfigPath:    configPath,
 		ConfigManager: cm,
 		AdminPort:     cm.Server.AdminPort,
 		FileManager:   NewFileManager(),
 		SitesRouter:   NewVirtualHostRouter(),
 		SSLManager:    NewSSLManager("./ssl"),
-		Config: &config.Config{
-			Global: config.GlobalConfig{
-				AdminPort: cm.Server.AdminPort,
-				FTPDir:    cm.Server.FTPDir,
-				BackupDir: cm.Server.BackupDir,
-			},
-			Sites: cm.Sites.Sites,
-			FTP:   *cm.FTP,
-		},
 	}
 
 	// 初始化文件管理器书签
@@ -226,19 +212,19 @@ func (m *ServerManager) ReloadSites() error {
 	// 使用 ConfigManager 重新加载
 	if m.ConfigManager != nil {
 		// 重新加载配置文件
-		newCM, err := config.NewConfigManager(m.ConfigPath)
+		newCM, err := config.NewConfigManager(m.ConfigManager.Server.BackupDir)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
 		m.ConfigManager = newCM
-		m.Config.Sites = newCM.Sites.Sites
+		m.ConfigManager.Sites = newCM.Sites
 	}
 
 	// 重建虚拟主机路由
 	m.SitesRouter = NewVirtualHostRouter()
 
-	for i := range m.Config.Sites {
-		site := &m.Config.Sites[i]
+	for i := range m.ConfigManager.Sites.Sites {
+		site := &m.ConfigManager.Sites.Sites[i]
 		if site.Enabled {
 			if err := m.SitesRouter.AddHost(site); err != nil {
 				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
@@ -247,7 +233,7 @@ func (m *ServerManager) ReloadSites() error {
 	}
 
 	// 更新文件管理器书签
-	m.FileManager.UpdateBookmarksFromConfig(m.Config.Sites)
+	m.FileManager.UpdateBookmarksFromConfig(m.ConfigManager.Sites.Sites)
 
 	log.Printf("[Sites] 站点配置已重新加载")
 	return nil
@@ -263,8 +249,8 @@ func (m *ServerManager) StartSitesServer() error {
 	}
 
 	// 初始化虚拟主机路由器
-	for i := range m.Config.Sites {
-		site := &m.Config.Sites[i]
+	for i := range m.ConfigManager.Sites.Sites {
+		site := &m.ConfigManager.Sites.Sites[i]
 		if site.Enabled {
 			if err := m.SitesRouter.AddHost(site); err != nil {
 				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
@@ -274,7 +260,7 @@ func (m *ServerManager) StartSitesServer() error {
 
 	// 检查是否有站点需要 HTTPS
 	hasHTTPS := false
-	for _, site := range m.Config.Sites {
+	for _, site := range m.ConfigManager.Sites.Sites {
 		if site.SSL != nil && site.SSL.Enabled {
 			hasHTTPS = true
 			break
@@ -288,7 +274,7 @@ func (m *ServerManager) StartSitesServer() error {
 
 	// 获取共享端口（大多数站点使用的端口）
 	sharedPort := 8080
-	for _, site := range m.Config.Sites {
+	for _, site := range m.ConfigManager.Sites.Sites {
 		if site.Enabled && site.Port > 0 && site.Port != sharedPort {
 			// 如果有独立端口的站点，需要特殊处理
 			// 暂时简化：只启动共享端口的服务器
@@ -391,7 +377,7 @@ func (m *ServerManager) StartFTP() error {
 	}
 
 	m.FTPRunning = true
-	m.Config.FTP.Enabled = true
+	m.ConfigManager.FTP.Enabled = true
 
 	// 使用 ConfigManager 保存
 	if m.ConfigManager != nil {
@@ -417,7 +403,7 @@ func (m *ServerManager) StopFTP() error {
 	}
 
 	m.FTPRunning = false
-	m.Config.FTP.Enabled = false
+	m.ConfigManager.FTP.Enabled = false
 
 	// 使用 ConfigManager 保存
 	if m.ConfigManager != nil {
@@ -475,14 +461,11 @@ func (m *ServerManager) ReloadConfig() error {
 
 	// 使用 ConfigManager 重新加载
 	if m.ConfigManager != nil {
-		newCM, err := config.NewConfigManager(m.ConfigPath)
+		newCM, err := config.NewConfigManager(m.ConfigManager.Server.BackupDir)
 		if err != nil {
 			return err
 		}
 		m.ConfigManager = newCM
-		m.Config.Sites = newCM.Sites.Sites
-		m.Config.FTP = *newCM.FTP
-		m.Config.Global.AdminPort = newCM.Server.AdminPort
 	}
 
 	return nil
@@ -497,7 +480,7 @@ func (m *ServerManager) GetStatus() map[string]interface{} {
 
 	// 获取站点信息
 	sites := make([]map[string]interface{}, 0)
-	for _, site := range m.Config.Sites {
+	for _, site := range m.ConfigManager.Sites.Sites {
 		sites = append(sites, map[string]interface{}{
 			"id":      site.ID,
 			"name":    site.Name,
@@ -515,7 +498,7 @@ func (m *ServerManager) GetStatus() map[string]interface{} {
 		},
 		"sites": map[string]interface{}{
 			"running": m.sitesRunning,
-			"count":   len(m.Config.Sites),
+			"count":   len(m.ConfigManager.Sites.Sites),
 			"items":   sites,
 		},
 		"ftp": map[string]interface{}{

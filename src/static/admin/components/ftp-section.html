@@ -320,7 +320,13 @@
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
         <p>确定要删除用户 <strong id="ftp-delete-username"></strong> 吗？</p>
-        <p class="ftp-delete-hint">此操作不可恢复</p>
+        <div class="ftp-delete-option">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ftp-delete-files" checked>
+            <span>同时删除用户所有文件</span>
+          </label>
+          <p class="option-hint">勾选后将永久删除用户目录及其所有文件</p>
+        </div>
       </div>
     </div>
     <div class="modal-footer">

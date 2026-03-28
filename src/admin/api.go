@@ -39,8 +39,8 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	// 获取服务器状态
 	adminRunning := false
 	sitesRunning := false
-	ftpRunning := h.Config.FTP.Enabled
-	adminPort := h.Config.Global.AdminPort
+	ftpRunning := h.ConfigManager.FTP.Enabled
+	adminPort := h.ConfigManager.Server.AdminPort
 
 	if h.ServerManager != nil {
 		adminRunning = h.ServerManager.IsAdminRunning()
@@ -50,7 +50,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 
 	// 构建站点列表
 	sites := make([]map[string]interface{}, 0)
-	for _, site := range h.Config.Sites {
+	for _, site := range h.ConfigManager.Sites.Sites {
 		sites = append(sites, map[string]interface{}{
 			"id":      site.ID,
 			"name":    site.Name,
@@ -76,18 +76,18 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"go_version":        runtime.Version(),
 		"os":                runtime.GOOS,
 		"arch":              runtime.GOARCH,
-		"server_start_time": startTime.UnixMilli(), // 返回启动时间戳（新方案）
-		"uptime":            time.Since(startTime).Milliseconds(), // 保留兼容旧代码
+		"server_start_time": startTime.UnixMilli(),
+		"uptime":            time.Since(startTime).Milliseconds(),
 		"admin_running":     adminRunning,
 		"admin_port":        adminPort,
 		"sites_running":     sitesRunning,
-		"sites_count":       len(h.Config.Sites),
+		"sites_count":       len(h.ConfigManager.Sites.Sites),
 		"sites":             sites,
 		"ftp_running":       ftpRunning,
-		"ftp_port":          h.Config.FTP.Port,
-		"ftp_root":          h.Config.FTP.Root,
-		"ftp_dir":           h.Config.Global.FTPDir,
-		"backup_dir":        h.Config.Global.BackupDir,
+		"ftp_port":          h.ConfigManager.FTP.Port,
+		"ftp_root":          h.ConfigManager.FTP.Root,
+		"ftp_dir":           h.ConfigManager.Server.FTPDir,
+		"backup_dir":        h.ConfigManager.Server.BackupDir,
 	}
 
 	// 如果有 CSRF token，添加到响应中
@@ -121,6 +121,12 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	cpuHistory = append(cpuHistory, cpuPercent)
 	if len(cpuHistory) > 5 {
 		cpuHistory = cpuHistory[len(cpuHistory)-5:]
+	}
+
+	// 获取 FTP 服务状态
+	ftpRunning := h.ConfigManager.FTP.Enabled
+	if h.ServerManager != nil {
+		ftpRunning = h.ServerManager.IsFTPRunning()
 	}
 
 	// 获取真实的内存信息
@@ -215,6 +221,10 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 
 		// 运行时间
 		"server_start_time": startTime.UnixMilli(),
+
+		// FTP 状态
+		"ftp_running": ftpRunning,
+		"ftp_port":    h.ConfigManager.FTP.Port,
 
 		// 保留原有字段
 		"memory_mb":  memoryMB,
@@ -384,7 +394,36 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 // ==================== 配置 ====================
 
 func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
-	Success(w, h.Config)
+	// 构建前端期望的格式
+	cfg := map[string]interface{}{
+		"admin": map[string]interface{}{
+			"username": h.ConfigManager.Server.AdminUsername,
+			"password": "", // 不返回密码
+			"port":     h.ConfigManager.Server.AdminPort,
+			"path":     h.ConfigManager.Server.AdminPath,
+		},
+		"http": map[string]interface{}{
+			"port": h.ConfigManager.Server.HTTPPort,
+			"root": "./web", // TODO: 后续可添加独立的 WebRoot 配置字段
+		},
+		"ftp": map[string]interface{}{
+			"enabled": h.ConfigManager.FTP.Enabled,
+			"port":    h.ConfigManager.FTP.Port,
+			"root":    h.ConfigManager.FTP.Root,
+			"users":   h.ConfigManager.FTP.Users,
+		},
+		"sites": h.ConfigManager.Sites.Sites,
+		"log": map[string]interface{}{
+			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
+			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
+			"compress_days":  h.ConfigManager.Server.Log.CompressDays,
+			"cleanup_hour":   h.ConfigManager.Server.Log.CleanupHour,
+			"level":          h.ConfigManager.Server.Log.Level,
+			"levels":         h.ConfigManager.Server.Log.Levels,
+		},
+		"backup_dir": h.ConfigManager.Server.BackupDir,
+	}
+	Success(w, cfg)
 }
 
 func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
@@ -394,31 +433,116 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		handlers.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
-	var newConfig config.Config
-	if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
-		BadRequest(w, "Invalid JSON")
+
+	// 使用 map 接收前端数据
+	var data map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		BadRequest(w, "Invalid JSON: "+err.Error())
 		handlers.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
 
-	// 更新内存中的配置
-	h.Config = &newConfig
-
-	// 使用 ConfigManager 保存
-	if h.ConfigManager != nil {
-		// 同步到 ConfigManager
-		h.ConfigManager.Server.AdminPort = newConfig.Global.AdminPort
-		h.ConfigManager.Server.FTPDir = newConfig.Global.FTPDir
-		h.ConfigManager.Server.BackupDir = newConfig.Global.BackupDir
-		h.ConfigManager.Sites.Sites = newConfig.Sites
-		h.ConfigManager.FTP = &newConfig.FTP
-		h.ConfigManager.Server.Log = newConfig.Log
-
-		if err := h.ConfigManager.Save(); err != nil {
-			InternalServerError(w, err.Error())
-			handlers.LogPanelConfigChange(username, "保存配置", false)
-			return
+	// 解析 admin 配置
+	if admin, ok := data["admin"].(map[string]interface{}); ok {
+		if v, ok := admin["username"].(string); ok {
+			h.ConfigManager.Server.AdminUsername = v
 		}
+		if v, ok := admin["port"].(float64); ok {
+			h.ConfigManager.Server.AdminPort = int(v)
+		}
+		if v, ok := admin["path"].(string); ok {
+			h.ConfigManager.Server.AdminPath = v
+		}
+		if v, ok := admin["password"].(string); ok && v != "" {
+			h.ConfigManager.SetAdminPassword(v)
+		}
+	}
+
+	// 解析 http 配置
+	if http, ok := data["http"].(map[string]interface{}); ok {
+		if v, ok := http["port"].(float64); ok {
+			h.ConfigManager.Server.HTTPPort = int(v)
+		}
+	}
+
+	// 解析 ftp 配置
+	if ftp, ok := data["ftp"].(map[string]interface{}); ok {
+		if v, ok := ftp["enabled"].(bool); ok {
+			h.ConfigManager.FTP.Enabled = v
+		}
+		if v, ok := ftp["port"].(float64); ok {
+			h.ConfigManager.FTP.Port = int(v)
+		}
+		if v, ok := ftp["root"].(string); ok {
+			h.ConfigManager.FTP.Root = v
+		}
+	}
+
+	// 解析 sites 配置
+	if sites, ok := data["sites"].([]interface{}); ok {
+		siteConfigs := make([]config.SiteConfig, 0, len(sites))
+		for _, s := range sites {
+			if siteMap, ok := s.(map[string]interface{}); ok {
+				siteConfig := config.SiteConfig{}
+				if v, ok := siteMap["id"].(string); ok {
+					siteConfig.ID = v
+				}
+				if v, ok := siteMap["name"].(string); ok {
+					siteConfig.Name = v
+				}
+				if v, ok := siteMap["enabled"].(bool); ok {
+					siteConfig.Enabled = v
+				}
+				if v, ok := siteMap["port"].(float64); ok {
+					siteConfig.Port = int(v)
+				}
+				if v, ok := siteMap["root"].(string); ok {
+					siteConfig.Root = v
+				}
+				siteConfigs = append(siteConfigs, siteConfig)
+			}
+		}
+		h.ConfigManager.Sites.Sites = siteConfigs
+	}
+
+	// 解析 log 配置
+	if log, ok := data["log"].(map[string]interface{}); ok {
+		if v, ok := log["retention_days"].(float64); ok {
+			h.ConfigManager.Server.Log.RetentionDays = int(v)
+		}
+		if v, ok := log["max_size_mb"].(float64); ok {
+			h.ConfigManager.Server.Log.MaxSizeMB = int(v)
+		}
+		if v, ok := log["compress_days"].(float64); ok {
+			h.ConfigManager.Server.Log.CompressDays = int(v)
+		}
+		if v, ok := log["cleanup_hour"].(float64); ok {
+			h.ConfigManager.Server.Log.CleanupHour = int(v)
+		}
+		if v, ok := log["level"].(string); ok {
+			h.ConfigManager.Server.Log.Level = v
+		}
+		if v, ok := log["levels"].(map[string]interface{}); ok {
+			levels := make(map[string]string)
+			for k, val := range v {
+				if s, ok := val.(string); ok {
+					levels[k] = s
+				}
+			}
+			h.ConfigManager.Server.Log.Levels = levels
+		}
+	}
+
+	// 解析 backup_dir
+	if v, ok := data["backup_dir"].(string); ok {
+		h.ConfigManager.Server.BackupDir = v
+	}
+
+	// 保存配置
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, err.Error())
+		handlers.LogPanelConfigChange(username, "保存配置", false)
+		return
 	}
 
 	handlers.LogPanelConfigChange(username, "保存配置", true)
@@ -433,39 +557,56 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 恢复默认配置
-	defaultConfig := &config.Config{
-		Global: config.GlobalConfig{
-			AdminPort: 9527,
-			FTPDir:    "./ftp",
-			BackupDir: "./backups",
+	defaultConfig := map[string]interface{}{
+		"admin": map[string]interface{}{
+			"username": "admin",
+			"password": "",
+			"port":     9527,
+			"path":     "/admin",
 		},
-		Admin: config.AdminConfig{
-			Username: "admin",
-			Path:     "/admin",
+		"http": map[string]interface{}{
+			"port": 8080,
+			"root": "./web",
 		},
-		FTP: config.FTPConfig{
-			Port:    2121,
-			Enabled: false,
-			Root:    "./ftp",
+		"ftp": map[string]interface{}{
+			"enabled": false,
+			"port":    2121,
+			"root":    "./ftp",
+			"users":   []config.FTPUser{},
 		},
-		HTTP: config.HTTPConfig{
-			Port: 8080,
-			Root: "./web",
+		"sites": []config.SiteConfig{},
+		"log": map[string]interface{}{
+			"retention_days": 30,
+			"max_size_mb":    100,
+			"compress_days":  7,
+			"cleanup_hour":   3,
+			"level":          "info",
+			"levels":         map[string]string{},
 		},
+		"backup_dir": "./backups",
 	}
 
-	// 更新内存中的配置
-	h.Config = defaultConfig
-
-	// 使用 ConfigManager 保存
+	// 重置 ConfigManager
 	if h.ConfigManager != nil {
+		h.ConfigManager.Server.AdminUsername = "admin"
 		h.ConfigManager.Server.AdminPort = 9527
-		h.ConfigManager.Server.FTPDir = "./ftp"
+		h.ConfigManager.Server.AdminPath = "/admin"
+		h.ConfigManager.SetAdminPassword("admin123")
+		h.ConfigManager.Server.HTTPPort = 8080
 		h.ConfigManager.Server.BackupDir = "./backups"
-		h.ConfigManager.Sites.Sites = []config.SiteConfig{}
-		h.ConfigManager.FTP.Port = 2121
 		h.ConfigManager.FTP.Enabled = false
+		h.ConfigManager.FTP.Port = 2121
 		h.ConfigManager.FTP.Root = "./ftp"
+		h.ConfigManager.FTP.Users = []config.FTPUser{}
+		h.ConfigManager.Sites.Sites = []config.SiteConfig{}
+		h.ConfigManager.Server.Log = config.LogConfig{
+			RetentionDays: 30,
+			MaxSizeMB:     100,
+			CompressDays:  7,
+			CleanupHour:   3,
+			Level:         "info",
+			Levels:        map[string]string{},
+		}
 
 		if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, err.Error())
@@ -475,7 +616,7 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handlers.LogPanelConfigChange(username, "重置配置", true)
-	SuccessMessage(w, "配置已恢复默认")
+	Success(w, defaultConfig)
 }
 
 // ==================== 日志 ====================
@@ -488,21 +629,10 @@ func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
 		lines = 100
 	}
 
-	// 兼容旧的单层参数
-	if category == "" {
-		if logType == "access" {
-			category = "http"
-		} else if logType == "error" {
-			category = "http"
-		} else if logType == "server" {
-			category = "http"
-		} else {
-			category = "http"
-			logType = "access"
-		}
-	}
-	if logType == "" {
-		logType = "access"
+	// 必须提供 category 和 type
+	if category == "" || logType == "" {
+		BadRequest(w, "category and type are required")
+		return
 	}
 
 	// 安全检查：防止路径遍历
@@ -535,21 +665,10 @@ func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	logType := r.URL.Query().Get("type")
 
-	// 兼容旧的单层参数
-	if category == "" {
-		if logType == "access" {
-			category = "http"
-		} else if logType == "error" {
-			category = "http"
-		} else if logType == "server" {
-			category = "http"
-		} else {
-			category = "http"
-			logType = "access"
-		}
-	}
-	if logType == "" {
-		logType = "access"
+	// 必须提供 category 和 type
+	if category == "" || logType == "" {
+		BadRequest(w, "category and type are required")
+		return
 	}
 
 	// 安全检查：防止路径遍历

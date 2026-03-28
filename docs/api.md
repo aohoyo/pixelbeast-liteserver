@@ -1,344 +1,427 @@
 # API 文档
 
-## 基础信息
+## 概述
 
-- **Base URL**: `/admin/api`
-- **认证方式**: Session Cookie + CSRF Token
-- **响应格式**: JSON
+所有 API 返回统一格式：
 
-## 响应格式规范
-
-### 统一响应结构
-
-```go
-type Response struct {
-    Code    int         `json:"code"`     // 响应码
-    Message string      `json:"message"`  // 提示信息
-    Data    interface{} `json:"data"`     // 数据内容（可选）
-}
-```
-
-### 响应码定义
-
-| Code | HTTP Status | 说明 |
-|------|-------------|------|
-| 200  | 200        | 成功 |
-| 400  | 400        | 请求参数错误 |
-| 401  | 401        | 未认证 |
-| 403  | 403        | 禁止访问 |
-| 404  | 404        | 资源不存在 |
-| 405  | 405        | 方法不允许 |
-| 429  | 429        | 请求过多 |
-| 500  | 500        | 内部错误 |
-
-### 响应示例
-
-**成功响应（带数据）**
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "memory_mb": 12.5,
-    "goroutines": 45
-  }
+    "code": 200,
+    "message": "success",
+    "data": { }
 }
 ```
 
-**成功响应（仅消息）**
+错误响应：
+
 ```json
 {
-  "code": 200,
-  "message": "操作成功"
+    "code": 400,
+    "message": "错误信息",
+    "data": null
 }
 ```
 
-**错误响应**
+---
+
+## 认证
+
+### 登录
+
+```
+POST /api/login
+```
+
+请求：
 ```json
 {
-  "code": 400,
-  "message": "参数错误"
-}
-```
-
-## API 端点
-
-### 认证相关
-
-无需认证，无需 CSRF Token。
-
-#### 登录
-```http
-POST /admin/api/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "admin123"
-}
-```
-
-#### 登出
-```http
-POST /admin/api/logout
-```
-
-### 状态监控
-
-#### 获取服务器状态
-```http
-GET /admin/api/status
-```
-
-**响应数据**：
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "memory_mb": 12.5,
-    "goroutines": 45,
-    "uptime": 3600000,
-    "os": "linux",
-    "arch": "amd64",
-    "http_running": true,
-    "http_port": 8080,
-    "http_root": "./web",
-    "ftp_running": true,
-    "ftp_port": 2121,
-    "ftp_root": "./ftp",
-    "sites": []
-  }
-}
-```
-
-### 配置管理
-
-#### 获取配置
-```http
-GET /admin/api/config
-```
-
-#### 保存配置
-```http
-POST /admin/api/config/save
-Content-Type: application/json
-
-{
-  "http": {
-    "enabled": true,
-    "port": 8080,
-    "root": "./web",
-    "domain": ""
-  },
-  "ftp": {
-    "enabled": true,
-    "port": 2121,
-    "root": "./ftp",
-    "users": [...]
-  },
-  "admin": {
-    "enabled": true,
-    "path": "/admin",
     "username": "admin",
     "password": "admin123"
-  }
 }
 ```
 
-### 文件管理
-
-#### 列出文件
-```http
-GET /admin/api/files?path=/path/to/dir
-```
-
-#### 上传文件
-```http
-POST /admin/api/files/upload
-Content-Type: multipart/form-data
-
-file: <binary>
-path: /target/path
-```
-
-#### 删除文件
-```http
-POST /admin/api/files/delete
-Content-Type: application/json
-
+响应：
+```json
 {
-  "path": "/path/to/file"
-}
-```
-
-#### 创建目录
-```http
-POST /admin/api/files/mkdir
-Content-Type: application/json
-
-{
-  "path": "/new/dir"
-}
-```
-
-### FTP 服务管理
-
-#### 启动 FTP
-```http
-POST /admin/api/service/ftp/start
-```
-
-#### 停止 FTP
-```http
-POST /admin/api/service/ftp/stop
-```
-
-#### 重启 FTP
-```http
-POST /admin/api/service/ftp/restart
-```
-
-### FTP 文件管理
-
-#### 列出文件
-```http
-GET /admin/api/ftp/files?path=/path/to/dir
-```
-
-#### 上传文件
-```http
-POST /admin/api/ftp/files/upload
-Content-Type: multipart/form-data
-
-file: <binary>
-path: /target/path
-```
-
-#### 删除文件
-```http
-POST /admin/api/ftp/files/delete
-Content-Type: application/json
-
-{
-  "path": "/path/to/file"
-}
-```
-
-#### 创建目录
-```http
-POST /admin/api/ftp/files/mkdir
-Content-Type: application/json
-
-{
-  "path": "/new/dir"
-}
-```
-
-### 日志管理
-
-#### 读取日志
-```http
-GET /admin/api/logs?category=http|ftp|panel&type=access|error|api|auth&lines=100
-```
-
-**参数说明**：
-- `category`: 日志分类
-  - `http` - HTTP 服务日志
-  - `ftp` - FTP 服务日志
-  - `panel` - 管理面板日志
-- `type`: 日志类型
-  - `http/ftp`: `access` (访问日志), `error` (错误日志)
-  - `panel`: `access` (访问日志), `api` (API调用), `auth` (认证日志)
-- `lines`: 返回行数
-
-#### 清空日志
-```http
-POST /admin/api/logs/clear?category=http|ftp|panel&type=access|error|api|auth
-```
-
-## 前端调用示例
-
-### 使用 api.js
-
-```javascript
-// 推荐：使用 api.parseJSON() 自动处理统一格式
-const response = await api.get('/api/status');
-const data = await api.parseJSON(response);
-// code=200 时自动返回 data 字段内容
-// code!=200 时自动抛出异常
-
-// 一步完成
-const data = await api.getJSON('/api/status');
-
-// POST 请求
-const response = await api.post('/api/service/ftp/start');
-const data = await api.parseJSON(response);
-if (data.message) {
-    toast.success(data.message);
-}
-
-// 错误处理
-try {
-    const data = await api.getJSON('/api/status');
-} catch (error) {
-    toast.error(error.message); // 自动从响应中提取 message
-}
-```
-
-### 使用 XMLHttpRequest（文件上传）
-
-```javascript
-const xhr = new XMLHttpRequest();
-xhr.upload.addEventListener('progress', (e) => {
-    if (e.lengthComputable) {
-        const percent = Math.round((e.loaded / e.total) * 100);
-        console.log(`上传进度: ${percent}%`);
+    "code": 200,
+    "message": "登录成功",
+    "data": {
+        "token": "xxx"
     }
-});
-xhr.addEventListener('load', () => {
-    if (xhr.status === 200) {
-        console.log('上传成功');
+}
+```
+
+### 登出
+
+```
+POST /api/logout
+```
+
+---
+
+## 系统状态
+
+### 获取系统状态
+
+```
+GET /api/system/status
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "os": "linux",
+        "arch": "amd64",
+        "memory_mb": 50,
+        "goroutines": 15,
+        "uptime": 3600000,
+        "server_start_time": "2026-03-29T00:00:00Z",
+        "services": {
+            "http": { "running": true, "port": 8080 },
+            "ftp": { "running": false, "port": 2121 }
+        }
     }
-});
-xhr.open('POST', '/api/files/upload');
-xhr.setRequestHeader('X-CSRF-Token', csrfToken);
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
-formData.append('path', currentPath);
-xhr.send(formData);
+}
 ```
 
-## 后端实现示例
+### 获取配置
 
-### 成功响应
-
-```go
-// 导入 admin 包
-import "pixelbeast/src/admin"
-
-// 带数据
-admin.Success(w, data)
-
-// 仅消息
-admin.SuccessMessage(w, "操作成功")
-
-// 数据 + 消息
-admin.SuccessWithData(w, data, "操作成功")
+```
+GET /api/config
 ```
 
-### 错误响应
-
-```go
-// 通用错误
-admin.Error(w, http.StatusBadRequest, "参数错误")
-
-// 快捷方法
-admin.BadRequest(w, "参数错误")           // 400
-admin.Unauthorized(w, "未登录")            // 401
-admin.Forbidden(w, "禁止访问")             // 403
-admin.NotFound(w, "资源不存在")            // 404
-admin.MethodNotAllowed(w, "方法不允许")    // 405
-admin.TooManyRequests(w, "请求过多")       // 429
-admin.InternalServerError(w, "内部错误")   // 500
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "admin": { "username": "admin", "port": 9527, "path": "/admin" },
+        "http": { "port": 8080 },
+        "ftp": { "enabled": false, "port": 2121, "root": "./ftp" },
+        "log": { "retention_days": 30, "level": "info" }
+    }
+}
 ```
+
+### 保存配置
+
+```
+POST /api/config
+```
+
+请求：
+```json
+{
+    "admin": { "username": "admin", "port": 9527 },
+    "http": { "port": 8080 },
+    "ftp": { "enabled": true, "port": 2121 }
+}
+```
+
+---
+
+## 站点管理
+
+### 获取站点列表
+
+```
+GET /api/sites
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "sites": [
+            {
+                "id": "site-1",
+                "name": "我的网站",
+                "enabled": true,
+                "type": "static",
+                "port": 8080,
+                "domain": ["example.com"],
+                "root": "./www"
+            }
+        ]
+    }
+}
+```
+
+### 创建站点
+
+```
+POST /api/sites
+```
+
+请求：
+```json
+{
+    "name": "新站点",
+    "type": "static",
+    "port": 8081,
+    "domain": ["new.example.com"],
+    "root": "./new-site"
+}
+```
+
+### 更新站点
+
+```
+PUT /api/sites/{id}
+```
+
+### 删除站点
+
+```
+DELETE /api/sites/{id}
+```
+
+---
+
+## FTP 管理
+
+### 获取 FTP 配置
+
+```
+GET /api/ftp
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "enabled": true,
+        "port": 2121,
+        "root": "./ftp",
+        "users": [
+            {
+                "username": "user1",
+                "root_path": "/user1",
+                "status": "enabled",
+                "quota": 1024,
+                "used_space": 512,
+                "expiry_date": "2026-12-31"
+            }
+        ]
+    }
+}
+```
+
+### 保存 FTP 配置
+
+```
+POST /api/ftp
+```
+
+### 启动/停止 FTP 服务
+
+```
+POST /api/ftp/start
+POST /api/ftp/stop
+```
+
+### 添加 FTP 用户
+
+```
+POST /api/ftp/users
+```
+
+请求：
+```json
+{
+    "username": "newuser",
+    "password": "password123",
+    "root_path": "/newuser",
+    "status": "enabled",
+    "quota": 512
+}
+```
+
+### 更新 FTP 用户
+
+```
+PUT /api/ftp/users/{username}
+```
+
+### 删除 FTP 用户
+
+```
+DELETE /api/ftp/users/{username}
+```
+
+---
+
+## 文件管理
+
+### 获取目录列表
+
+```
+GET /api/files/list?path=/
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "path": "/",
+        "items": [
+            {
+                "name": "folder",
+                "type": "dir",
+                "size": 0,
+                "mod_time": "2026-03-29T00:00:00Z"
+            },
+            {
+                "name": "file.txt",
+                "type": "file",
+                "size": 1024,
+                "mod_time": "2026-03-29T00:00:00Z"
+            }
+        ]
+    }
+}
+```
+
+### 创建目录
+
+```
+POST /api/files/mkdir
+```
+
+请求：
+```json
+{
+    "path": "/new-folder"
+}
+```
+
+### 删除文件/目录
+
+```
+DELETE /api/files?path=/file.txt
+```
+
+### 重命名
+
+```
+POST /api/files/rename
+```
+
+请求：
+```json
+{
+    "old_path": "/old-name",
+    "new_path": "/new-name"
+}
+```
+
+### 上传文件
+
+```
+POST /api/files/upload
+Content-Type: multipart/form-data
+```
+
+### 下载文件
+
+```
+GET /api/files/download?path=/file.txt
+```
+
+---
+
+## 日志
+
+### 获取日志列表
+
+```
+GET /api/logs
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "files": [
+            {
+                "name": "server.log",
+                "size": 10240,
+                "mod_time": "2026-03-29T00:00:00Z"
+            }
+        ]
+    }
+}
+```
+
+### 读取日志内容
+
+```
+GET /api/logs/{filename}?lines=100
+```
+
+### 清理日志
+
+```
+POST /api/logs/cleanup
+```
+
+---
+
+## 分享
+
+### 创建分享链接
+
+```
+POST /api/share
+```
+
+请求：
+```json
+{
+    "path": "/shared-file.txt",
+    "expire_hours": 24,
+    "password": "optional-password"
+}
+```
+
+响应：
+```json
+{
+    "code": 200,
+    "data": {
+        "token": "abc123",
+        "url": "/s/abc123"
+    }
+}
+```
+
+### 获取分享列表
+
+```
+GET /api/share
+```
+
+### 删除分享
+
+```
+DELETE /api/share/{token}
+```
+
+---
+
+## 错误码
+
+| Code | 说明 |
+|------|------|
+| 200 | 成功 |
+| 400 | 请求错误 |
+| 401 | 未授权 |
+| 403 | 禁止访问 |
+| 404 | 资源不存在 |
+| 500 | 服务器错误 |

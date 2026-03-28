@@ -3,7 +3,6 @@ package admin
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -53,9 +52,7 @@ type PasswordValidator interface {
 
 // Handler 管理面板处理器
 type Handler struct {
-	Config           *config.Config
-	ConfigPath       string
-	ConfigManager    *config.ConfigManager // 新配置管理器
+	ConfigManager    *config.ConfigManager // 配置管理器
 	ServerManager    *handlers.ServerManager
 	passwordValidator PasswordValidator // 密码验证器（支持加密密码）
 	adminPath        string              // 安全入口路径
@@ -75,25 +72,12 @@ func New(cm *config.ConfigManager, configPath string) *Handler {
 	}
 
 	h := &Handler{
-		ConfigPath:        configPath,
 		adminPath:         adminPath,
 		sessions:          make(map[string]*Session),
 		loginAttempts:     make(map[string]*LoginAttempt),
 		csrfTokens:        make(map[string]*CSRFToken),
 		passwordValidator: cm,
-		Config: &config.Config{
-			Global: config.GlobalConfig{
-				AdminPort: cm.Server.AdminPort,
-				FTPDir:    cm.Server.FTPDir,
-				BackupDir: cm.Server.BackupDir,
-			},
-			Admin: config.AdminConfig{
-				Username: cm.Server.AdminUsername,
-				Path:     cm.Server.AdminPath,
-			},
-			FTP:   *cm.FTP,
-			Sites: cm.Sites.Sites,
-		},
+		ConfigManager:     cm,
 	}
 
 	// 初始化分享服务
@@ -633,12 +617,9 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 	// 验证密码
 	valid := false
 	if h.passwordValidator != nil {
-		// 使用验证器（支持加密密码）
 		valid = h.passwordValidator.ValidateAdmin(username, password)
 	} else {
-		// 兼容旧模式：明文密码比较
-		valid = subtle.ConstantTimeCompare([]byte(username), []byte(h.Config.Admin.Username)) == 1 &&
-			subtle.ConstantTimeCompare([]byte(password), []byte(h.Config.Admin.Password)) == 1
+		valid = h.ConfigManager.ValidateAdmin(username, password)
 	}
 	
 	if !valid {
@@ -647,7 +628,6 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 		h.mu.RLock()
 		remaining := MaxLoginAttempts - h.loginAttempts[clientIP].Count
 		h.mu.RUnlock()
-		// 统一格式，在 data 中返回 remaining
 		respondJSON(w, http.StatusUnauthorized, Response{
 			Code:    http.StatusUnauthorized,
 			Message: "用户名或密码错误",

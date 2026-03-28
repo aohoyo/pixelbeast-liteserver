@@ -261,34 +261,43 @@ function switchTab(tabName) {
 /**
  * 加载初始数据
  */
-function loadInitialData() {
-    // 初始加载系统状态数据
-    api.get('/api/system/status')
-        .then(async response => {
-            if (response && response.ok) {
-                const data = await api.parseJSON(response);
-                if (data) {
-                    // 初始化系统信息（只执行一次）
-                    state.initSystem({
-                        os: data.os,
-                        arch: data.arch,
-                        hostname: data.hostname
-                    });
+async function loadInitialData() {
+    try {
+        // 1. 加载系统状态
+        const statusResponse = await api.get('/api/system/status');
+        if (statusResponse && statusResponse.ok) {
+            const data = await api.parseJSON(statusResponse);
+            if (data) {
+                // 初始化系统信息（只执行一次）
+                state.initSystem({
+                    os: data.os,
+                    arch: data.arch,
+                    hostname: data.hostname
+                });
 
-                    state.batch({
-                        'services': {
-                            http: { running: true, port: data.http_port },
-                            ftp: { running: data.ftp_running, port: data.ftp_port }
-                        }
-                    });
+                state.batch({
+                    'services': {
+                        http: { running: true, port: data.http_port },
+                        ftp: { running: data.ftp_running, port: data.ftp_port }
+                    }
+                });
 
-                    globalEvents.emit('status:loaded', data);
-                }
+                globalEvents.emit('status:loaded', data);
             }
-        })
-        .catch(error => {
-            console.error('加载初始数据失败:', error);
-        });
+        }
+
+        // 2. 加载全局配置（统一来源）
+        const configResponse = await api.get('/api/config');
+        if (configResponse && configResponse.ok) {
+            const config = await api.parseJSON(configResponse);
+            if (config) {
+                state.set('config', config);
+                globalEvents.emit('config:loaded', config);
+            }
+        }
+    } catch (error) {
+        console.error('加载初始数据失败:', error);
+    }
 }
 
 /**

@@ -1,101 +1,72 @@
 # 项目概述
 
-**像素兽 轻量服务器** (PixelBeast LiteServer) 是一个用 Go 编写的超轻量级跨平台 Web+FTP 服务器。设计理念是"小而强悍，无所不能"。
+## 像素兽 (PixelBeast)
 
-## 核心特性
+**小而强悍，无所不能** - 轻量级多站点服务器
 
-- **内存占用**：8-15MB RAM
-- **单文件部署**：依赖极少，下载即用
-- **跨平台**：Windows、Linux、ARM64 从单一代码库构建
-- **功能集成**：HTTP + FTP + Web 管理界面
-- **配置加密**：敏感信息 AES-256-GCM 加密存储
+### 项目定位
 
-## 版本信息
+像素兽是一个面向个人开发者和小型团队的轻量级服务器解决方案，专注于：
 
-- 当前版本：v3.0.0
-- 许可证：MIT
+- **简单易用** - 单文件部署，无需复杂配置
+- **功能完整** - HTTP + FTP + SSL + Web 管理
+- **安全可靠** - 配置加密、安全入口
+- **高性能** - 内存占用 < 15MB，快速响应
 
-## 默认配置
+### 核心功能
 
-### 端口
+#### 1. 多站点管理
 
-| 服务 | 默认端口 |
-|------|----------|
-| 管理面板 | 9527 |
-| HTTP | 8080 |
-| FTP | 2121 |
+- 静态文件服务
+- 反向代理
+- 多域名绑定
+- 独立端口配置
 
-### 默认凭据
+#### 2. FTP 服务
 
-| 服务 | 用户名 | 密码 |
-|------|--------|------|
-| 管理面板 | `admin` | `admin123` |
+- 多用户管理
+- 容量限制
+- 有效期控制
+- 状态管理
 
-> **注意**：密码在配置文件中加密存储
+#### 3. SSL 证书
 
-### 配置文件结构
+- Let's Encrypt 自动证书
+- 自定义证书上传
+- 自动 HTTPS
 
-```
-config/
-├── server.json      # 服务配置（端口、日志、admin账号）
-├── sites.json       # 站点配置
-├── ftp.json         # FTP配置（用户密码加密）
-└── secrets.key      # 加密密钥（自动生成）
-```
+#### 4. Web 管理面板
 
-**server.json 示例**：
-```json
-{
-  "http_port": 8080,
-  "admin_port": 9527,
-  "admin_username": "admin",
-  "admin_password": "加密后的密码",
-  "admin_path": "/admin",
-  "log": {
-    "retention_days": 30,
-    "max_size_mb": 100,
-    "level": "info"
-  }
-}
-```
+- 系统监控仪表盘
+- 站点配置管理
+- FTP 用户管理
+- 文件管理器
+- 日志查看
 
-## 技术栈
+### 技术特点
 
-| 层级 | 技术 |
+| 特点 | 说明 |
 |------|------|
-| 后端语言 | Go |
-| HTTP 服务 | 内置 `net/http` |
-| FTP 服务 | 自实现服务器 |
-| 静态资源 | Go `embed` 包 |
-| 配置管理 | JSON 文件 + AES 加密 |
-| 前端 | 原生 HTML/CSS/JavaScript |
+| 单文件部署 | 静态资源嵌入二进制 |
+| 配置加密 | AES-256-GCM 加密敏感信息 |
+| 最小依赖 | 优先使用标准库 |
+| 模块化设计 | 清晰的代码分层 |
 
-## 项目结构
+### 适用场景
 
-```
-pixelbeast-liteserver/
-├── main.go                 # 程序入口
-├── embed.go                # 静态资源嵌入
-├── go.mod                  # Go 模块依赖
-├── CLAUDE.md               # Claude AI 助手指南
-├── config/                 # 配置文件目录
-│   ├── server.json         # 服务配置
-│   ├── sites.json          # 站点配置
-│   ├── ftp.json            # FTP 配置
-│   └── secrets.key         # 加密密钥
-├── docs/                   # 项目文档
-├── src/                    # 源码目录
-│   ├── handlers/           # 协议层 (HTTP/FTP)
-│   ├── admin/              # 管理面板后端
-│   ├── config/             # 配置管理
-│   ├── crypto/             # 加密模块
-│   └── static/admin/       # Web 管理界面（嵌入）
-├── web/                    # HTTP 运行时根目录
-├── ftp/                    # FTP 运行时根目录
-└── logs/                   # 日志文件目录
-```
+- 个人博客/网站托管
+- 开发测试环境
+- 小型团队内部服务
+- 静态资源服务器
+- 文件共享服务
 
-## 快速开始
+### 版本历史
+
+- **v3.0** - 配置系统重构、前端组件化
+- **v2.0** - 多站点支持、FTP 服务
+- **v1.0** - HTTP 静态服务、Web 管理面板
+
+### 快速开始
 
 ```bash
 # 编译
@@ -105,17 +76,12 @@ go build -o pixelbeast
 ./pixelbeast -config ./config
 
 # 访问管理面板
-# http://localhost:9527/admin
+# http://nas.banayou.com:9527/admin
 # 默认账号: admin / admin123
 ```
 
-## 文档索引
+### 项目信息
 
-| 文档 | 说明 |
-|------|------|
-| [architecture.md](architecture.md) | 架构设计 |
-| [api.md](api.md) | API 文档 |
-| [frontend.md](frontend.md) | 前端开发指南 |
-| [coding-standards.md](coding-standards.md) | 代码规范 |
-| [deployment.md](deployment.md) | 部署指南 |
-| [CHANGELOG.md](CHANGELOG.md) | 更新日志 |
+- **语言**: Go 1.21+
+- **GitHub**: https://github.com/aohoyo/litefeather
+- **开发者**: 王伟

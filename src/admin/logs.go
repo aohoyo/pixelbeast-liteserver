@@ -415,7 +415,7 @@ func (h *Handler) handleLogsClear(w http.ResponseWriter, r *http.Request) {
 // handleLogsConfig 获取/更新日志配置
 func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		Success(w, h.Config.Log)
+		Success(w, h.ConfigManager.Server.Log)
 		return
 	}
 
@@ -437,27 +437,23 @@ func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if cfg.RetentionDays > 0 {
-		h.Config.Log.RetentionDays = cfg.RetentionDays
+		h.ConfigManager.Server.Log.RetentionDays = cfg.RetentionDays
 	}
 	if cfg.MaxSizeMB > 0 {
-		h.Config.Log.MaxSizeMB = cfg.MaxSizeMB
+		h.ConfigManager.Server.Log.MaxSizeMB = cfg.MaxSizeMB
 	}
 	if cfg.CompressDays > 0 {
-		h.Config.Log.CompressDays = cfg.CompressDays
+		h.ConfigManager.Server.Log.CompressDays = cfg.CompressDays
 	}
 	if cfg.Level != "" {
-		h.Config.Log.Level = cfg.Level
+		h.ConfigManager.Server.Log.Level = cfg.Level
 	}
 
-	// 使用 ConfigManager 保存
-	if h.ConfigManager != nil {
-		h.ConfigManager.Server.Log = h.Config.Log
-		if err := h.ConfigManager.Save(); err != nil {
-			Error(w, 500, "保存配置失败: "+err.Error())
-			return
-		}
+	if err := h.ConfigManager.Save(); err != nil {
+		Error(w, 500, "保存配置失败: "+err.Error())
+		return
 	}
 
-	handlers.SetLogConfig(&h.Config.Log)
-	Success(w, h.Config.Log)
+	handlers.SetLogConfig(&h.ConfigManager.Server.Log)
+	Success(w, h.ConfigManager.Server.Log)
 }

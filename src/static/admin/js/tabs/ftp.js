@@ -294,9 +294,18 @@ class FtpTab extends BaseTab {
 
     async checkServiceStatus() {
         try {
-            const result = await this.api.getJSON('/api/system/status');
-            const ftpRunning = result?.services?.ftp?.running || false;
+            // 从统一配置获取 FTP 信息
+            const config = this.state?.get?.('config');
+            const ftpRunning = config?.ftp?.enabled ?? false;
+            const ftpPort = config?.ftp?.port || 2121;
+            
             this.updateServiceStatus(ftpRunning);
+            
+            // 更新端口输入框
+            const portInput = this.$('#ftp-port-input');
+            if (portInput) {
+                portInput.value = ftpPort;
+            }
         } catch (error) {
             console.error('获取服务状态失败:', error);
         }
@@ -407,10 +416,11 @@ class FtpTab extends BaseTab {
         if (!this.deleteTargetUsername) return;
         
         const username = this.deleteTargetUsername;
+        const deleteFiles = this.$('#ftp-delete-files')?.checked ?? true;
         this.hideDeleteConfirm();
         
         try {
-            await this.api.post('/api/ftp/users/delete', { username });
+            await this.api.post('/api/ftp/users/delete', { username, deleteFiles });
             this.message.success('用户已删除');
             // 清除缓存后刷新
             this.api.clearCache('/api/ftp/users');
@@ -580,7 +590,12 @@ class FtpTab extends BaseTab {
         const port = parseInt(this.$('#ftp-port-input')?.value) || 2121;
         
         try {
-            await this.api.post('/api/ftp/port', { port });
+            // 统一通过 /api/config 保存
+            const config = await this.api.getJSON('/api/config') || {};
+            config.ftp = config.ftp || {};
+            config.ftp.port = port;
+            
+            await this.api.post('/api/config', config);
             this.message.success('FTP 端口已更新，重启服务生效');
             this.hidePortModal();
         } catch (error) {

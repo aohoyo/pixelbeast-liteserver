@@ -234,3 +234,44 @@
     font-size: 0.8rem;
     margin: var(--space-xs) 0 0;
 }
+/* ==================== 保存按钮状态 ==================== */
+.settings-actions .btn-primary.has-changes {
+    animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+    }
+}
+
+/* 提示未保存 */
+.settings-unsaved {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    animation: slide-in 0.3s ease;
+}
+
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

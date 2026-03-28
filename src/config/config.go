@@ -98,6 +98,16 @@ type FTPConfig struct {
 	Users   []FTPUser `json:"users"`
 }
 
+// LogConfig 日志配置
+type LogConfig struct {
+	RetentionDays int               `json:"retention_days"`
+	MaxSizeMB     int               `json:"max_size_mb"`
+	CompressDays  int               `json:"compress_days"`
+	CleanupHour   int               `json:"cleanup_hour"`
+	Level         string            `json:"level"`
+	Levels        map[string]string `json:"levels,omitempty"`
+}
+
 // FTPUser FTP 用户
 type FTPUser struct {
 	Username  string `json:"username"`
@@ -329,6 +339,11 @@ func (cm *ConfigManager) GetAdminPassword() (string, error) {
 	return crypto.DecryptString(cm.Server.AdminPassword, cm.key)
 }
 
+// GetKey 获取加密密钥（用于密码加密）
+func (cm *ConfigManager) GetKey() []byte {
+	return cm.key
+}
+
 // ValidateAdmin 验证管理员账号密码
 func (cm *ConfigManager) ValidateAdmin(username, password string) bool {
 	cm.mu.RLock()
@@ -398,6 +413,11 @@ func (cm *ConfigManager) ValidateFTPUser(username, password string) bool {
 	}
 
 	return false
+}
+
+// EncryptPassword 加密密码
+func (cm *ConfigManager) EncryptPassword(password string) (string, error) {
+	return crypto.EncryptString(password, cm.key)
 }
 
 // ========== 站点管理 ==========
