@@ -103,8 +103,6 @@ export class FileManager {
                     <!-- 地址栏 - 面包屑导航 -->
                     <div class="fm-address-bar" id="fm-breadcrumb">
                         <span class="fm-breadcrumb-root" data-path="/">${ICONS.folder}</span>
-                        <span class="fm-breadcrumb-sep">/</span>
-                        <span class="fm-breadcrumb-item" data-path="/home">home</span>
                         <!-- 由 JS 动态生成 -->
                     </div>
                     
@@ -586,8 +584,8 @@ export class FileManager {
     updateBreadcrumb(path) {
         if (!this.els.breadcrumb) return;
         
-        // 标准化路径
-        path = path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+        // 标准化路径（统一使用正斜杠）
+        path = path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/';
         
         // 如果是相对路径，转换为完整路径显示
         let displayPath = path;
@@ -598,10 +596,10 @@ export class FileManager {
         }
         
         // 标准化显示路径
-        displayPath = displayPath.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+        displayPath = displayPath.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/';
         
-        // 分割路径
-        const parts = displayPath.split('/').filter(p => p);
+        // 分割路径（排除 Windows 驱动器开头的特殊情况）
+        let parts = displayPath.split('/').filter(p => p);
         
         // 构建面包屑 HTML
         let html = `<span class="fm-breadcrumb-root" data-path="/">${ICONS.folder}</span>`;
@@ -653,6 +651,9 @@ export class FileManager {
         } else if (fullPath.startsWith('./') && this.programDir) {
             fullPath = this.programDir + fullPath.substring(1);
         }
+        
+        // 标准化路径显示
+        fullPath = fullPath.replace(/\\/g, '/').replace(/\/+/g, '/');
         
         this.els.path.value = fullPath;
         this.els.path.focus();

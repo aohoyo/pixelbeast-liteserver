@@ -71,9 +71,15 @@ class FilesTab extends BaseTab {
     onInit() {
         console.log('初始化文件管理...');
         
-        // 获取系统信息
-        this.systemInfo = this.state.get('system') || { os: 'linux', isWindows: false, isLinux: true };
-        console.log('系统信息:', this.systemInfo);
+        // 获取系统信息，确保正确获取
+        this.systemInfo = this.state?.get?.('system');
+        if (!this.systemInfo) {
+            // 如果还没有系统信息，使用默认值
+            this.systemInfo = { os: 'linux', isWindows: false, isLinux: true, isMac: false };
+            console.warn('[Files] 系统信息未初始化，使用默认值:', this.systemInfo);
+        } else {
+            console.log('[Files] 系统信息:', this.systemInfo);
+        }
 
         // 渲染快捷目录
         this.renderQuickNav();

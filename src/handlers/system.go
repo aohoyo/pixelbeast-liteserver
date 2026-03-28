@@ -1,3 +1,5 @@
+//go:build !windows
+
 package handlers
 
 import (
@@ -15,7 +17,7 @@ func GetProcessMemory() uint64 {
 	return getProcessMemoryFallback()
 }
 
-// getProcessMemoryOS 平台特定实现（Windows 在 mem_windows.go）
+// getProcessMemoryOS 平台特定实现
 func getProcessMemoryOS() uint64 {
 	if runtime.GOOS == "linux" {
 		return getProcessMemoryLinux()
