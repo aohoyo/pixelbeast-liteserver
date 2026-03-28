@@ -1,313 +1,279 @@
 /**
- * 设置模块
+ * 设置模块 - 重构版
  *
  * 负责系统设置的加载、编辑、保存
  */
 
 import { BaseTab } from './BaseTab.js';
-import { settingsValidator } from './settings-validator.js';
 import { DirectoryPicker } from '../components/directory-picker.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {
         super(deps, 'settings');
         this.config = null;
+        this.originalConfig = null;
         this.hasChanges = false;
-        this.currentTab = 'panel';
+        this.currentTab = 'basic';
         this.directoryPickers = {};
     }
 
     onInit() {
-        console.log('初始化设置面板...');
+        console.log('[Settings] 初始化设置面板...');
         this.bindEvents();
-        this.initValidation();
+        this.initDirectoryPickers();
     }
 
+    /**
+     * 绑定事件
+     */
+    bindEvents() {
+        // 标签页切换
+        this.$$('.settings-tabs .tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tab = e.currentTarget.dataset.tab;
+                this.switchTab(tab);
+            });
+        });
+
+        // 保存按钮
+        this.$('#btn-save')?.addEventListener('click', () => this.save());
+
+        // 重置按钮
+        this.$('#btn-reset')?.addEventListener('click', () => this.reset());
+
+        // 密码切换显示
+        this.$('.password-toggle')?.addEventListener('click', (e) => {
+            const input = this.$('#admin-password');
+            const eyeOn = e.currentTarget.querySelector('.icon-eye');
+            const eyeOff = e.currentTarget.querySelector('.icon-eye-off');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                eyeOn.style.display = 'none';
+                eyeOff.style.display = 'block';
+            } else {
+                input.type = 'password';
+                eyeOn.style.display = 'block';
+                eyeOff.style.display = 'none';
+            }
+        });
+
+        // 监听配置变化
+        const inputs = this.$$('.settings-content input, .settings-content select');
+        inputs.forEach(input => {
+            input.addEventListener('change', () => {
+                this.hasChanges = true;
+            });
+        });
+    }
+
+    /**
+     * 初始化目录选择器
+     */
     initDirectoryPickers() {
-        // 防止重复初始化
-        if (this.directoryPickersInitialized) {
-            return;
-        }
-        
-        console.log('[Settings] 初始化目录选择器...');
-        
-        // WEB 根目录选择器
+        // WEB 根目录
         const webRootContainer = this.$('#web-root-picker');
         if (webRootContainer) {
-            webRootContainer.innerHTML = '';
             this.directoryPickers.webRoot = new DirectoryPicker({
                 container: webRootContainer,
                 api: this.api,
                 apiPath: '/api/files',
                 placeholder: './web',
-                onChange: (path) => { this.hasChanges = true; }
+                onChange: () => { this.hasChanges = true; }
             });
-            console.log('[Settings] WEB 根目录选择器已创建', webRootContainer.innerHTML);
-        } else {
-            console.warn('[Settings] WEB 根目录容器未找到');
         }
 
-        // FTP 根目录选择器
-        const ftpRootContainer = this.$('#ftp-root-picker');
-        if (ftpRootContainer) {
-            ftpRootContainer.innerHTML = '';
-            this.directoryPickers.ftpRoot = new DirectoryPicker({
-                container: ftpRootContainer,
-                api: this.api,
-                apiPath: '/api/files',
-                placeholder: './ftp',
-                onChange: (path) => { this.hasChanges = true; }
-            });
-            console.log('[Settings] FTP 根目录选择器已创建', ftpRootContainer.innerHTML);
-        } else {
-            console.warn('[Settings] FTP 根目录容器未找到');
-        }
-
-        // 备份目录选择器
+        // 备份目录
         const backupDirContainer = this.$('#backup-dir-picker');
         if (backupDirContainer) {
-            backupDirContainer.innerHTML = '';
-            this.directoryPickers.backupDir = new DirectoryPicker({
+            this.directoryPickers.backup = new DirectoryPicker({
                 container: backupDirContainer,
                 api: this.api,
                 apiPath: '/api/files',
                 placeholder: './backups',
-                onChange: (path) => { this.hasChanges = true; }
+                onChange: () => { this.hasChanges = true; }
             });
-            console.log('[Settings] 备份目录选择器已创建', backupDirContainer.innerHTML);
-        } else {
-            console.warn('[Settings] 备份目录容器未找到');
         }
-        
-        this.directoryPickersInitialized = true;
     }
 
-    async onLoad() {
-        // 先初始化目录选择器（组件已加载到 DOM）
-        this.initDirectoryPickers();
-        await this.loadConfig();
-    }
-
-    bindEvents() {
-        // Tab 切换
-        this.$$('.settings-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                this.switchTab(tab.dataset.tab);
-            });
-        });
-
-        // 保存
-        this.$('#save-settings')?.addEventListener('click', () => this.save());
-
-        // 恢复默认
-        this.$('#reset-settings')?.addEventListener('click', () => {
-            this.dialog.confirm('确定要恢复默认设置吗？', () => this.reset());
-        });
-
-        // 密码显示/隐藏
-        this.$('#toggle-password')?.addEventListener('click', () => {
-            const input = this.$('#admin-password');
-            if (input) {
-                input.type = input.type === 'password' ? 'text' : 'password';
-            }
-        });
-
-        // 生成密码
-        this.$('#generate-password')?.addEventListener('click', () => {
-            this.$('#admin-password').value = this.generatePassword();
-        });
-
-        // 表单变化追踪
-        this.$$('.settings-form input, .settings-form select').forEach(input => {
-            input.addEventListener('change', () => { this.hasChanges = true; });
-        });
-
-        // 端口输入数字控制
-        this.$$('.port-input').forEach(input => {
-            input.addEventListener('input', (e) => {
-                e.target.value = e.target.value.replace(/\D/g, '');
-            });
-        });
-    }
-
-    initValidation() {
-        settingsValidator.initRealtimeValidation();
-    }
-
+    /**
+     * 切换标签页
+     */
     switchTab(tabName) {
         this.currentTab = tabName;
 
-        // 更新 Tab 样式
-        this.$$('.settings-tab').forEach(t => t.classList.remove('active'));
-        this.$(`.settings-tab[data-tab="${tabName}"]`)?.classList.add('active');
+        // 更新按钮状态
+        this.$$('.settings-tabs .tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
 
-        // 更新内容显示（ID 格式：settings-{tabName}）
-        this.$$('.settings-content').forEach(c => c.classList.remove('active'));
-        this.$(`#settings-${tabName}`)?.classList.add('active');
-        
-        // 切换到目录设置时，确保目录选择器已初始化
-        if (tabName === 'directory' && !this.directoryPickers.webRoot) {
-            this.initDirectoryPickers();
-        }
+        // 更新内容区
+        this.$$('.tab-pane').forEach(pane => {
+            pane.classList.toggle('active', pane.id === `tab-${tabName}`);
+        });
     }
 
-    async loadConfig() {
+    /**
+     * 加载配置
+     */
+    async onLoad() {
         try {
-            this.config = await this.api.getJSON('/api/config');
-            this.populateForm();
+            const response = await this.api.getJSON('/api/config');
+            this.config = response.data;
+            this.originalConfig = JSON.parse(JSON.stringify(this.config));
+            this.render();
+            console.log('[Settings] 配置加载成功', this.config);
         } catch (error) {
-            this.toast.error('加载配置失败: ' + error.message);
+            console.error('[Settings] 加载配置失败:', error);
+            this.toast.error('加载配置失败：' + error.message);
         }
     }
 
-    populateForm() {
+    /**
+     * 渲染配置到表单
+     */
+    render() {
         if (!this.config) return;
 
-        // Admin
-        this.setInputValue('admin-username', this.config.admin?.username);
-        this.setInputValue('admin-password', this.config.admin?.password);
-        this.setInputValue('admin-port', this.config.admin?.port);
-        this.setInputValue('admin-path', this.config.admin?.path);
+        const { admin, http, log, backup_dir } = this.config;
 
-        // FTP
-        this.directoryPickers.ftpRoot?.setValue(this.config.ftp?.root || './ftp');
+        // 基础设置
+        this.setText('#server-name', 'PixelBeast Server');
+        this.setText('#timezone', 'Asia/Shanghai');
 
-        // 日志设置
-        const log = this.config.log || {};
-        this.setInputValue('log-retention-days', log.retention_days || 30);
-        this.setInputValue('log-max-size-mb', log.max_size_mb || 100);
-        this.setInputValue('log-compress-days', log.compress_days || 7);
-        this.setInputValue('log-cleanup-hour', log.cleanup_hour || 3);
-        this.setInputValue('log-level', log.level || 'info');
-        
-        // 分类日志级别
-        if (log.levels) {
-            this.setInputValue('log-level-http', log.levels.http || '');
-            this.setInputValue('log-level-ftp', log.levels.ftp || '');
-            this.setInputValue('log-level-panel', log.levels.panel || '');
+        // HTTP 服务
+        this.setText('#http-port', http?.port || 8080);
+        this.setText('#index-files', http?.index_files?.join(', ') || 'index.html, index.htm');
+        this.$('#auto-index').checked = http?.auto_index ?? true;
+
+        // 更新目录选择器
+        if (this.directoryPickers.webRoot && http?.root) {
+            this.directoryPickers.webRoot.setValue(http.root);
         }
 
-        // 目录设置
-        this.directoryPickers.webRoot?.setValue(this.config.http?.root || './web');
-        this.directoryPickers.backupDir?.setValue(this.config.backup_dir || './backups');
+        // 管理面板
+        this.setText('#admin-port', admin?.port || 9527);
+        this.setText('#admin-path', admin?.path || '/admin');
+        this.setText('#admin-username', admin?.username || 'admin');
+        this.setText('#admin-password', '');
+
+        // 日志配置
+        this.setText('#log-level', log?.level || 'info');
+        this.setText('#log-retention', log?.retention_days || 30);
+        this.setText('#log-max-size', log?.max_size_mb || 100);
+        this.setText('#log-compress', log?.compress_days || 7);
+        this.setText('#log-cleanup-hour', log?.cleanup_hour || 3);
+
+        // 备份设置
+        this.setText('#backup-dir', backup_dir || './backups');
+        if (this.directoryPickers.backup && backup_dir) {
+            this.directoryPickers.backup.setValue(backup_dir);
+        }
+        this.$('#auto-backup').checked = true;
 
         this.hasChanges = false;
     }
 
-    setInputValue(id, value) {
-        const el = this.$(`#${id}`);
-        if (!el) return;
+    /**
+     * 从表单收集配置
+     */
+    collectConfig() {
+        const config = JSON.parse(JSON.stringify(this.originalConfig));
 
-        if (el.type === 'checkbox') {
-            el.checked = !!value;
-        } else {
-            el.value = value ?? '';
+        // HTTP 服务
+        config.http.port = parseInt(this.$('#http-port').value) || 8080;
+        config.http.root = this.directoryPickers.webRoot?.getValue() || './web';
+        config.http.index_files = (this.$('#index-files').value || 'index.html')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+        config.http.auto_index = this.$('#auto-index').checked;
+
+        // 管理面板
+        config.admin.port = parseInt(this.$('#admin-port').value) || 9527;
+        config.admin.path = this.$('#admin-path').value || '/admin';
+        config.admin.username = this.$('#admin-username').value || 'admin';
+
+        const adminPassword = this.$('#admin-password').value;
+        if (adminPassword && adminPassword.trim()) {
+            config.admin.password = adminPassword;
         }
+
+        // 日志配置
+        config.log.level = this.$('#log-level').value || 'info';
+        config.log.retention_days = parseInt(this.$('#log-retention').value) || 30;
+        config.log.max_size_mb = parseInt(this.$('#log-max-size').value) || 100;
+        config.log.compress_days = parseInt(this.$('#log-compress').value) || 7;
+        config.log.cleanup_hour = parseInt(this.$('#log-cleanup-hour').value) || 3;
+
+        // 备份设置
+        config.backup_dir = this.directoryPickers.backup?.getValue() || './backups';
+
+        return config;
     }
 
-    getInputValue(id) {
-        const el = this.$(`#${id}`);
-        if (!el) return null;
-
-        if (el.type === 'checkbox') {
-            return el.checked;
-        }
-        return el.value;
-    }
-
-    collectFormData() {
-        // 收集分类日志级别
-        const logLevels = {};
-        const httpLevel = this.getInputValue('log-level-http');
-        const ftpLevel = this.getInputValue('log-level-ftp');
-        const panelLevel = this.getInputValue('log-level-panel');
-        if (httpLevel) logLevels.http = httpLevel;
-        if (ftpLevel) logLevels.ftp = ftpLevel;
-        if (panelLevel) logLevels.panel = panelLevel;
-
-        return {
-            http: {
-                enabled: true,
-                port: 8080,
-                root: this.directoryPickers.webRoot?.getValue() || './web'
-            },
-            ftp: {
-                enabled: this.config?.ftp?.enabled || false,
-                port: this.config?.ftp?.port || 2121,
-                root: this.directoryPickers.ftpRoot?.getValue() || './ftp'
-            },
-            admin: {
-                username: this.getInputValue('admin-username') || 'admin',
-                password: this.getInputValue('admin-password') || '',
-                port: parseInt(this.getInputValue('admin-port')) || 9527,
-                path: this.getInputValue('admin-path') || '/admin'
-            },
-            log: {
-                retention_days: parseInt(this.getInputValue('log-retention-days')) || 30,
-                max_size_mb: parseInt(this.getInputValue('log-max-size-mb')) || 100,
-                compress_days: parseInt(this.getInputValue('log-compress-days')) || 7,
-                cleanup_hour: parseInt(this.getInputValue('log-cleanup-hour')) || 3,
-                level: this.getInputValue('log-level') || 'info',
-                levels: logLevels
-            },
-            backup_dir: this.directoryPickers.backupDir?.getValue() || './backups'
-        };
-    }
-
+    /**
+     * 保存配置
+     */
     async save() {
-        const data = this.collectFormData();
-
-        // 验证
-        const errors = settingsValidator.validate(data);
-        if (errors.length > 0) {
-            this.toast.error(errors[0]);
+        if (!this.hasChanges && !this.$('#admin-password').value) {
+            this.toast.info('没有需要保存的更改');
             return;
         }
 
         try {
-            await this.api.post('/api/config', data);
-            this.toast.success('设置已保存');
+            const config = this.collectConfig();
+            await this.api.post('/api/config', config);
+            
+            this.originalConfig = JSON.parse(JSON.stringify(config));
             this.hasChanges = false;
-            await this.loadConfig();
+            
+            this.toast.success('配置保存成功');
+            console.log('[Settings] 配置保存成功', config);
+
+            // 触发配置更新事件
+            this.events.emit('config:updated', config);
         } catch (error) {
-            this.toast.error('保存失败: ' + error.message);
+            console.error('[Settings] 保存配置失败:', error);
+            this.toast.error('保存失败：' + error.message);
         }
     }
 
-    async reset() {
-        try {
-            await this.api.post('/api/config/reset');
-            this.toast.success('已恢复默认设置');
-            await this.loadConfig();
-        } catch (error) {
-            this.toast.error('重置失败: ' + error.message);
-        }
+    /**
+     * 重置配置
+     */
+    reset() {
+        this.dialog.confirm('确定要重置所有配置吗？未保存的更改将丢失。', () => {
+            this.render();
+            this.toast.success('配置已重置');
+        });
     }
 
-    generatePassword(length = 16) {
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-        let password = '';
-        for (let i = 0; i < length; i++) {
-            password += charset.charAt(Math.floor(Math.random() * charset.length));
-        }
-        return password;
+    /**
+     * 刷新
+     */
+    async onRefresh() {
+        await this.onLoad();
     }
 
-    // 提示未保存
+    /**
+     * 销毁
+     */
     onDestroy() {
-        if (this.hasChanges) {
-            // 可以提示用户保存
-        }
+        // 清理目录选择器
+        Object.values(this.directoryPickers).forEach(picker => {
+            if (picker.destroy) picker.destroy();
+        });
+        this.directoryPickers = {};
     }
 }
 
-// 单例
-let instance = null;
-
-export function initSettingsTab(deps) {
-    if (!instance) {
-        instance = new SettingsTab(deps);
-        instance.init();
-    }
-    return instance;
-}
+// 导出单例
+export default new SettingsTab({
+    api: window.api,
+    state: window.state,
+    toast: window.toast,
+    message: window.message,
+    dialog: window.dialog,
+    events: window.events
+});
