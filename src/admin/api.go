@@ -142,19 +142,34 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		memBuffCacheMB = float64(memInfo.Buffers+memInfo.Cached) / 1024 / 1024
 	}
 
-	// 获取真实的硬盘信息
-	diskInfo, _ := disk.Usage("/")
+	// 获取真实的硬盘信息（获取项目所在盘符/目录）
+	programDir, _ := os.Getwd()
+	diskPath := "/"
+	
+	// Windows 下获取项目所在盘符
+	if runtime.GOOS == "windows" {
+		// Windows 下使用项目目录作为磁盘路径
+		// disk.Usage 会自动识别盘符
+		diskPath = programDir
+	} else {
+		// Linux/macOS 下获取项目所在挂载点
+		diskPath = programDir
+	}
+	
+	diskInfo, _ := disk.Usage(diskPath)
 	diskPercent := 0.0
 	diskUsedGB := 0.0
 	diskTotalGB := 0.0
 	diskFreeGB := 0.0
 	diskFs := ""
+	diskMount := diskPath
 	if diskInfo != nil {
 		diskPercent = diskInfo.UsedPercent
 		diskUsedGB = float64(diskInfo.Used) / 1024 / 1024 / 1024
 		diskTotalGB = float64(diskInfo.Total) / 1024 / 1024 / 1024
 		diskFreeGB = float64(diskInfo.Free) / 1024 / 1024 / 1024
 		diskFs = diskInfo.Fstype
+		diskMount = diskInfo.Path
 	}
 
 	// 获取真实的负载信息
@@ -189,7 +204,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"disk_used_gb":    diskUsedGB,
 		"disk_total_gb":   diskTotalGB,
 		"disk_free_gb":    diskFreeGB,
-		"disk_mount":      "/",
+		"disk_mount":      diskMount,
 		"disk_filesystem": diskFs,
 		"disk_type":       getDiskType(),
 
