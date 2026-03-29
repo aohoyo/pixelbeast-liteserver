@@ -44,7 +44,7 @@ if ! command -v air &> /dev/null; then
 fi
 
 # 确保 logs 目录存在
-mkdir -p logs
+mkdir -p log
 
 echo "  ✅ 热重载: air"
 echo "  ✅ 前端热更新: src/static/admin/"
@@ -62,13 +62,18 @@ AIR_PID=$!
 sleep 3
 
 # 显示访问地址
+ADMIN_PORT=$(grep -o '"admin_port":[[:space:]]*[0-9]*' config/server.json 2>/dev/null | grep -o '[0-9]*$')
+HTTP_PORT=$(grep -o '"http_port":[[:space:]]*[0-9]*' config/server.json 2>/dev/null | grep -o '[0-9]*$')
+ADMIN_PORT=${ADMIN_PORT:-9527}
+HTTP_PORT=${HTTP_PORT:-3080}
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🌐 访问地址"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  管理面板: http://localhost:9527/admin"
-echo "  默认网站: http://localhost:8080"
+echo "  管理面板: http://localhost:${ADMIN_PORT}/admin"
+echo "  默认网站: http://localhost:${HTTP_PORT}"
 echo ""
 echo "  默认凭据: admin / admin123"
 echo ""

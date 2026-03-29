@@ -11,8 +11,20 @@
         <nav class="fm-quick-nav" id="fm-quick-nav">
             <!-- 由 JS 动态生成 -->
         </nav>
+
+        <!-- 分享管理入口 -->
+        <div class="fm-sidebar-footer">
+            <div class="fm-quick-divider"></div>
+            <button class="fm-quick-item fm-share-entry" id="fm-share-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                <span class="fm-quick-name">我的分享</span>
+            </button>
+        </div>
     </aside>
-    
+
     <!-- 文件管理器主体 -->
     <div class="fm-main">
         <div id="file-manager-container" class="fm-container"></div>
@@ -60,6 +72,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
+    overflow-y: auto;
 }
 
 .fm-quick-item {
@@ -115,6 +129,163 @@
     letter-spacing: 0.5px;
 }
 
+/* 侧边栏底部 */
+.fm-sidebar-footer {
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+.fm-share-entry {
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
+    font-family: inherit;
+}
+
+/* 分享弹窗 */
+.fm-share-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.fm-share-dialog {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    width: 480px;
+    max-width: 90vw;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.fm-share-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border);
+}
+
+.fm-share-dialog-title {
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.fm-share-dialog-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+}
+
+.fm-share-dialog-close:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+}
+
+.fm-share-dialog-close svg {
+    width: 18px;
+    height: 18px;
+}
+
+.fm-share-dialog-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-md) var(--space-lg);
+}
+
+.fm-share-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: var(--space-xl) 0;
+    font-size: 0.85rem;
+}
+
+.fm-share-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.fm-share-item:last-child {
+    border-bottom: none;
+}
+
+.fm-share-item-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.fm-share-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.fm-share-item-name {
+    font-size: 0.875rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-share-item-meta {
+    display: flex;
+    gap: var(--space-md);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.fm-share-item-actions {
+    display: flex;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+}
+
+.fm-share-action {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    transition: all var(--transition-fast);
+}
+
+.fm-share-action:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+}
+
+.fm-share-action.delete:hover {
+    color: var(--danger);
+}
+
+.fm-share-action svg {
+    width: 16px;
+    height: 16px;
+}
+
 /* 主区域 */
 .fm-main {
     flex: 1;
@@ -128,7 +299,8 @@
 
 .fm-container {
     position: relative;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
 }

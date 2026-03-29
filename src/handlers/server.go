@@ -54,6 +54,8 @@ func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManage
 		SSLManager:    NewSSLManager("./ssl"),
 	}
 
+	sm.SitesRouter.SetSharedPort(cm.Server.HTTPPort)
+
 	// 初始化文件管理器书签
 	sm.FileManager.UpdateBookmarksFromConfig(cm.Sites.Sites)
 
@@ -222,6 +224,7 @@ func (m *ServerManager) ReloadSites() error {
 
 	// 重建虚拟主机路由
 	m.SitesRouter = NewVirtualHostRouter()
+	m.SitesRouter.SetSharedPort(m.ConfigManager.Server.HTTPPort)
 
 	for i := range m.ConfigManager.Sites.Sites {
 		site := &m.ConfigManager.Sites.Sites[i]
@@ -273,7 +276,7 @@ func (m *ServerManager) StartSitesServer() error {
 	}
 
 	// 获取共享端口（大多数站点使用的端口）
-	sharedPort := 8080
+	sharedPort := m.ConfigManager.Server.HTTPPort
 	for _, site := range m.ConfigManager.Sites.Sites {
 		if site.Enabled && site.Port > 0 && site.Port != sharedPort {
 			// 如果有独立端口的站点，需要特殊处理

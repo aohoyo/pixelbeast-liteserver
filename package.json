@@ -11,7 +11,7 @@
     "build:arm": "GOOS=linux GOARCH=arm64 go build -o pixelbeast",
     "run": "./pixelbeast",
     "clean": "rm -f pixelbeast pixelbeast.exe && rm -rf tmp",
-    "logs:clear": "rm -rf logs/*"
+    "logs:clear": "rm -rf log/*"
   },
   "keywords": [
     "ftp",

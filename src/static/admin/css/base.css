@@ -80,7 +80,8 @@
 body {
     font-family: var(--font-sans);
     background: linear-gradient(135deg, #0c0a09 0%, #1c1917 50%, #171715 100%);
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     color: var(--text);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;

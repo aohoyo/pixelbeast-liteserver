@@ -556,11 +556,32 @@ export class FileManager {
     goUp() {
         const tab = this.getActiveTab();
         if (!tab) return;
-        
-        // 获取父目录
+
         const currentPath = tab.path;
-        const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/';
-        
+
+        // 虚拟路径 "此电脑" 没有上级
+        if (currentPath === '此电脑') return;
+
+        // 统一用正斜杠处理
+        const normalized = currentPath.replace(/\\/g, '/').replace(/\/+$/, '');
+        const parts = normalized.split('/').filter(Boolean);
+
+        // Windows 盘符根目录（如 C:）或 Linux 根（/）→ 回到 "此电脑" 或禁用
+        if (parts.length === 0 || (parts.length === 1 && /^[A-Za-z]:$/.test(parts[0]))) {
+            // 盘符根 → 无上级（不自动跳转此电脑，保持根目录）
+            return;
+        }
+
+        const parentParts = parts.slice(0, -1);
+        let parentPath;
+        if (parentParts.length === 0) {
+            parentPath = '/';
+        } else if (parentParts.length === 1 && /^[A-Za-z]:$/.test(parentParts[0])) {
+            parentPath = parentParts[0] + '/';
+        } else {
+            parentPath = (currentPath.startsWith('/') ? '/' : '') + parentParts.join('/');
+        }
+
         if (parentPath !== currentPath) {
             this.navigate(parentPath);
         }
@@ -571,10 +592,16 @@ export class FileManager {
         if (this.els.back) this.els.back.disabled = !tab || tab.historyIndex <= 0;
         if (this.els.forward) this.els.forward.disabled = !tab || tab.historyIndex >= tab.history.length - 1;
         
-        // 向上按钮：根目录时禁用
+        // 向上按钮：根目录或盘符根时禁用
         if (this.els.up) {
             const currentPath = tab?.path || '';
-            this.els.up.disabled = currentPath === '/' || currentPath === '';
+            const normalized = currentPath.replace(/\\/g, '/').replace(/\/+$/, '');
+            const parts = normalized.split('/').filter(Boolean);
+            // 无路径、/ 根、盘符根(C:/) 或 此电脑 → 禁用
+            this.els.up.disabled = !currentPath
+                || currentPath === '/'
+                || currentPath === '此电脑'
+                || (parts.length === 1 && /^[A-Za-z]:$/.test(parts[0]));
         }
         
         // 更新面包屑

@@ -89,7 +89,7 @@ pixelbeast-liteserver/
 │   ├── frontend.md         # 前端开发指南
 │   └── coding-standards.md # 代码规范
 │
-└── logs/                   # 日志目录
+└── log/                   # 日志目录
 ```
 
 ---

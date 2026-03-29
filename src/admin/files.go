@@ -141,6 +141,88 @@ func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getQuickDirs 返回系统快捷目录
+func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
+	type quickDir struct {
+		Path      string `json:"path,omitempty"`
+		Name      string `json:"name,omitempty"`
+		Icon      string `json:"icon,omitempty"`
+		Section   string `json:"section,omitempty"`
+		IsDefault bool   `json:"isDefault,omitempty"`
+	}
+
+	dirs := make([]quickDir, 0)
+
+	// 项目目录
+	programDir, _ := os.Getwd()
+	dirs = append(dirs, quickDir{
+		Path: ".", Name: "项目目录", Icon: "folder", IsDefault: true,
+	})
+
+	if runtime.GOOS == "windows" {
+		// 此电脑
+		dirs = append(dirs, quickDir{Section: "系统目录"})
+		dirs = append(dirs, quickDir{Path: "此电脑", Name: "此电脑", Icon: "computer"})
+
+		// 用户目录
+		homeDir, _ := os.UserHomeDir()
+		if homeDir != "" {
+			dirs = append(dirs, quickDir{Section: "用户目录"})
+			userDirs := []struct{ sub, name, icon string }{
+				{"Desktop", "桌面", "desktop"},
+				{"Documents", "文档", "file-text"},
+				{"Downloads", "下载", "download"},
+				{"Pictures", "图片", "image"},
+				{"Music", "音乐", "music"},
+				{"Videos", "视频", "video"},
+			}
+			for _, ud := range userDirs {
+				fullPath := filepath.Join(homeDir, ud.sub)
+				if _, err := os.Stat(fullPath); err == nil {
+					dirs = append(dirs, quickDir{Path: filepath.ToSlash(fullPath), Name: ud.name, Icon: ud.icon})
+				}
+			}
+		}
+
+		// 动态检测盘符
+		drives := []string{}
+		for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+			drivePath := string(drive) + ":/"
+			if _, err := os.Stat(drivePath); err == nil {
+				drives = append(drives, string(drive)+":/")
+			}
+		}
+		if len(drives) > 0 {
+			dirs = append(dirs, quickDir{Section: "磁盘"})
+			for _, d := range drives {
+				name := strings.ToUpper(string(d[0])) + " 盘"
+				dirs = append(dirs, quickDir{Path: d, Name: name, Icon: "hard-drive"})
+			}
+		}
+	} else if runtime.GOOS == "darwin" {
+		dirs = append(dirs, quickDir{Section: "系统目录"})
+		dirs = append(dirs, quickDir{Path: "/", Name: "根目录", Icon: "server"})
+		dirs = append(dirs, quickDir{Path: "/Users", Name: "Users", Icon: "users"})
+		dirs = append(dirs, quickDir{Path: "/Applications", Name: "Applications", Icon: "package"})
+		dirs = append(dirs, quickDir{Path: "/Library", Name: "Library", Icon: "folder"})
+		dirs = append(dirs, quickDir{Path: "/tmp", Name: "tmp", Icon: "trash"})
+	} else {
+		// Linux
+		dirs = append(dirs, quickDir{Section: "系统目录"})
+		dirs = append(dirs, quickDir{Path: "/", Name: "根目录", Icon: "server"})
+		dirs = append(dirs, quickDir{Path: "/home", Name: "home", Icon: "home"})
+		dirs = append(dirs, quickDir{Path: "/var", Name: "var", Icon: "database"})
+		dirs = append(dirs, quickDir{Path: "/etc", Name: "etc", Icon: "settings"})
+		dirs = append(dirs, quickDir{Path: "/tmp", Name: "tmp", Icon: "trash"})
+		dirs = append(dirs, quickDir{Path: "/usr", Name: "usr", Icon: "package"})
+	}
+
+	Success(w, map[string]interface{}{
+		"dirs":        dirs,
+		"program_dir": filepath.Clean(filepath.ToSlash(programDir)),
+	})
+}
+
 func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")

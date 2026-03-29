@@ -133,9 +133,23 @@
                     <span class="form-hint-text">留空表示不修改密码</span>
                 </div>
             </div>
+            <div class="settings-section">
+                <h3 class="section-title">面板域名</h3>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">绑定域名</label>
+                    <input type="text" class="form-input-inline" id="admin-bind-domain" placeholder="留空表示允许所有域名访问">
+                    <span class="form-hint-text">绑定后只能通过此域名访问面板，留空则不限制</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">面板 SSL</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="admin-ssl-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="form-hint-text">启用后使用 HTTPS 访问面板（即将支持）</span>
+                </div>
+            </div>
         </div>
-
-        <!-- HTTP 服务 -->
         <div class="tab-pane" id="tab-http">
             <div class="settings-section">
                 <h3 class="section-title">HTTP 配置</h3>

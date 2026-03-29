@@ -46,6 +46,9 @@ ftp/
 # HTTP 网站目录
 web/
 
+# 备份目录
+backups/
+
 # 本地配置（可选：如果包含敏感信息）
 # pixelbeast.json
 config/

@@ -131,7 +131,7 @@ class SettingsTab extends BaseTab {
         this.setValue('#timezone', 'Asia/Shanghai');
 
         // HTTP 服务
-        this.setValue('#http-port', http?.port || 8080);
+        this.setValue('#http-port', http?.port || 3080);
         this.setValue('#http-root', http?.root || './web');
 
         // 管理面板
@@ -139,6 +139,8 @@ class SettingsTab extends BaseTab {
         this.setValue('#admin-path', admin?.path || '/admin');
         this.setValue('#admin-username', admin?.username || 'admin');
         this.setValue('#admin-password', '');
+        this.setValue('#admin-bind-domain', admin?.bind_domain || '');
+        this.setChecked('#admin-ssl-enabled', admin?.ssl_enabled ?? false);
 
         // 日志配置
         this.setValue('#log-level', log?.level || 'info');
@@ -164,7 +166,7 @@ class SettingsTab extends BaseTab {
         const config = JSON.parse(JSON.stringify(this.originalConfig));
 
         // HTTP
-        config.http.port = this.getInt('#http-port', 8080);
+        config.http.port = this.getInt('#http-port', 3080);
         config.http.root = this.getValue('#http-root') || './web';
 
         // Admin
@@ -175,6 +177,10 @@ class SettingsTab extends BaseTab {
         if (pwd && pwd.trim()) {
             config.admin.password = pwd;
         }
+
+        // 域名绑定 & SSL
+        config.admin.bind_domain = this.getValue('#admin-bind-domain') || '';
+        config.admin.ssl_enabled = this.isChecked('#admin-ssl-enabled');
 
         // Log
         config.log.level = this.getValue('#log-level') || 'info';
@@ -213,10 +219,19 @@ class SettingsTab extends BaseTab {
         }
     }
 
-    reset() {
-        this.dialog?.confirm('确定要重置所有配置吗？未保存的更改将丢失。', () => {
-            this.render();
-            this.toast?.success('配置已重置');
+    async reset() {
+        this.dialog?.confirm('确定要重置所有配置吗？未保存的更改将丢失。', async () => {
+            try {
+                const data = await this.api.postJSON('/api/config/reset');
+                this.config = data;
+                this.originalConfig = JSON.parse(JSON.stringify(this.config));
+                this.render();
+                this.toast?.success('配置已重置');
+                this.events.emit('config:updated', this.config);
+            } catch (error) {
+                console.error('[Settings] 重置失败:', error);
+                this.toast?.error('重置失败：' + error.message);
+            }
         });
     }
 
@@ -232,7 +247,10 @@ class SettingsTab extends BaseTab {
     }
 
     startClock() {
-        this.syncTime();
+        // 只启动时钟更新，不自动同步 NTP
+        this._serverTime = Date.now();
+        this._serverTimeFetched = Date.now();
+        this.updateClockDisplay();
         this._clockTimer = setInterval(() => {
             this.updateClockDisplay();
         }, 1000);
@@ -245,18 +263,24 @@ class SettingsTab extends BaseTab {
         if (icon) icon.classList.add('spinning');
 
         try {
-            const data = await this.api.getJSON('/api/system/time');
-            this._serverTime = data.unix_milli;
+            // POST 同步系统时间（会尝试修改系统时钟）
+            const data = await this.api.postJSON('/api/system/time/sync');
+            if (data?.updated) {
+                this.toast?.success(data.message || '系统时间已校正');
+            } else {
+                this.toast?.success(data?.message || '系统时间已同步');
+            }
+            // 刷新时钟显示
+            const time = await this.api.getJSON('/api/system/time');
+            this._serverTime = time.unix_milli;
             this._serverTimeFetched = Date.now();
             this.updateClockDisplay();
-            this.toast?.success('时间同步成功');
         } catch (error) {
             console.error('[Settings] 同步时间失败:', error);
-            this.toast?.error('同步时间失败');
+            this.toast?.error('同步时间失败：' + (error.message || '请检查权限'));
         } finally {
             if (icon) icon.classList.remove('spinning');
             if (btn) btn.disabled = false;
-        }
         }
     }
 

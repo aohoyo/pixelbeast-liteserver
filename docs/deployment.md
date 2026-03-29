@@ -264,7 +264,7 @@ ufw allow 2121/tcp  # FTP 服务（如启用）
 tar -czvf pixelbeast-config.tar.gz config/
 
 # 备份数据
-tar -czvf pixelbeast-data.tar.gz www/ ftp/ logs/
+tar -czvf pixelbeast-data.tar.gz www/ ftp/ log/
 ```
 
 ### 恢复
@@ -284,7 +284,7 @@ tar -xzvf pixelbeast-data.tar.gz
 ### 日志位置
 
 ```
-logs/
+log/
 ├── server.log      # 服务日志
 ├── access.log      # 访问日志
 └── error.log       # 错误日志

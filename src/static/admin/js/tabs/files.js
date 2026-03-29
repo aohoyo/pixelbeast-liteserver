@@ -1,49 +1,13 @@
 /**
  * 文件管理模块
- * 
+ *
  * 宝塔风格文件管理器
  * 直接管理服务器文件系统
- * 根据操作系统类型显示不同的快捷目录
+ * 快捷目录通过 API 动态获取
  */
 
 import { BaseTab } from './BaseTab.js';
 import { FileManager } from '../components/file-manager.js';
-
-// 快捷目录配置
-const QUICK_DIRS = {
-    // Linux 系统目录
-    linux: [
-        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
-        { section: '系统目录' },
-        { path: '/', name: '根目录', icon: 'server' },
-        { path: '/home', name: 'home', icon: 'home' },
-        { path: '/var', name: 'var', icon: 'database' },
-        { path: '/etc', name: 'etc', icon: 'settings' },
-        { path: '/tmp', name: 'tmp', icon: 'trash' },
-        { path: '/usr', name: 'usr', icon: 'package' }
-    ],
-    
-    // Windows 系统目录
-    windows: [
-        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
-        { section: '系统目录' },
-        { path: '此电脑', name: '此电脑', icon: 'computer' },
-        { path: 'C:/', name: 'C 盘', icon: 'hard-drive' },
-        { path: 'D:/', name: 'D 盘', icon: 'hard-drive' },
-        { path: 'E:/', name: 'E 盘', icon: 'hard-drive' }
-    ],
-    
-    // macOS 系统目录
-    darwin: [
-        { path: '.', name: '项目目录', icon: 'folder', isDefault: true, showFullPath: true },
-        { section: '系统目录' },
-        { path: '/', name: '根目录', icon: 'server' },
-        { path: '/Users', name: 'Users', icon: 'users' },
-        { path: '/Applications', name: 'Applications', icon: 'package' },
-        { path: '/Library', name: 'Library', icon: 'folder' },
-        { path: '/tmp', name: 'tmp', icon: 'trash' }
-    ]
-};
 
 // 图标 SVG
 const ICONS = {
@@ -57,7 +21,13 @@ const ICONS = {
     'file-text': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
     computer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
     'hard-drive': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`,
-    users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
+    users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    desktop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+    download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+    image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+    music: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+    video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+    share: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
 };
 
 class FilesTab extends BaseTab {
@@ -65,74 +35,77 @@ class FilesTab extends BaseTab {
         super(deps, 'files');
         this.fileManager = null;
         this.programDir = null;
-        this.systemInfo = null;
     }
 
     onInit() {
-        console.log('初始化文件管理...');
-        
-        // 获取系统信息，确保正确获取
-        this.systemInfo = this.state?.get?.('system');
-        if (!this.systemInfo) {
-            // 如果还没有系统信息，使用默认值
-            this.systemInfo = { os: 'linux', isWindows: false, isLinux: true, isMac: false };
-            console.warn('[Files] 系统信息未初始化，使用默认值:', this.systemInfo);
-        } else {
-            console.log('[Files] 系统信息:', this.systemInfo);
-        }
+        // 从 API 加载快捷目录
+        this.loadQuickDirs();
 
-        // 渲染快捷目录
-        this.renderQuickNav();
-        
         // 初始化文件管理器
         this.initFileManager();
+
+        // 绑定分享管理按钮
+        this.bindShareButton();
     }
 
     /**
-     * 根据系统类型渲染快捷目录
+     * 从 API 加载快捷目录
      */
-    renderQuickNav() {
+    async loadQuickDirs() {
         const container = this.$('#fm-quick-nav');
         if (!container) return;
 
-        const os = this.systemInfo.os || 'linux';
-        const dirs = QUICK_DIRS[os] || QUICK_DIRS.linux;
+        try {
+            const result = await this.api.getJSON('/api/files/quick-dirs');
+            if (result?.dirs) {
+                if (result.program_dir) {
+                    this.programDir = result.program_dir;
+                }
+                this.renderQuickNav(result.dirs);
+            }
+        } catch (e) {
+            console.warn('[Files] 加载快捷目录失败:', e);
+        }
+    }
+
+    /**
+     * 渲染快捷目录
+     */
+    renderQuickNav(dirs) {
+        const container = this.$('#fm-quick-nav');
+        if (!container) return;
 
         let html = '';
         for (const item of dirs) {
             if (item.section) {
-                // 分隔标题
                 html += `<div class="fm-quick-divider"></div>`;
                 html += `<div class="fm-quick-section-title">${item.section}</div>`;
             } else {
-                // 快捷项
                 const icon = ICONS[item.icon] || ICONS.folder;
-                // 显示名称，hover 显示完整路径
-                let displayName = item.name;
                 let titlePath = item.path;
-                
-                // 项目目录特殊处理：始终显示"项目目录"，hover 显示完整路径
-                if (item.showFullPath) {
+                if (item.isDefault) {
                     titlePath = this.programDir || item.path;
                 }
-                
+
                 html += `
                     <a class="fm-quick-item" data-path="${item.path}" title="${titlePath}">
                         ${icon}
-                        <span class="fm-quick-name">${displayName}</span>
+                        <span class="fm-quick-name">${item.name}</span>
                     </a>
                 `;
             }
         }
 
         container.innerHTML = html;
+        this.bindQuickNavEvents();
+    }
 
-        // 绑定点击事件
+    bindQuickNavEvents() {
         this.$$('.fm-quick-item').forEach(item => {
             item.addEventListener('click', () => {
                 this.$$('.fm-quick-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
-                
+
                 const path = item.dataset.path;
                 if (this.fileManager && path) {
                     this.fileManager.navigate(path);
@@ -148,18 +121,16 @@ class FilesTab extends BaseTab {
         this.fileManager = new FileManager({
             container: container,
             apiPath: '/admin/api/files',
-            root: '.',  // 默认程序运行目录（Windows/Linux 通用）
-            viewMode: 'grid',  // 默认图标模式
+            root: '.',
+            viewMode: 'grid',
             toast: this.toast,
-            dialog: this.dialog,  // 传递 dialog 组件
+            dialog: this.dialog,
             onOpen: (path) => {
                 window.open(`/admin/api/files/download?path=${encodeURIComponent(path)}`, '_blank');
             },
-            onPathChange: (path, programDir) => {
-                // 更新项目目录显示
+            onPathChange: (_path, programDir) => {
                 if (programDir && !this.programDir) {
                     this.programDir = programDir;
-                    this.renderQuickNav();
                 }
             }
         });
@@ -183,6 +154,145 @@ class FilesTab extends BaseTab {
         this.$$('.fm-quick-item').forEach(item => {
             const itemPath = item.dataset.path;
             item.classList.toggle('active', itemPath === path);
+        });
+    }
+
+    // ==================== 分享管理（独立弹窗） ====================
+
+    bindShareButton() {
+        const btn = this.$('#fm-share-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => this.openShareDialog());
+    }
+
+    /**
+     * 打开分享管理弹窗
+     */
+    async openShareDialog() {
+        // 创建弹窗
+        const overlay = document.createElement('div');
+        overlay.className = 'fm-share-overlay';
+        overlay.innerHTML = `
+            <div class="fm-share-dialog">
+                <div class="fm-share-dialog-header">
+                    <div class="fm-share-dialog-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:var(--primary)">
+                            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                        </svg>
+                        我的分享
+                    </div>
+                    <button class="fm-share-dialog-close" title="关闭">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="fm-share-dialog-body">
+                    <div class="fm-share-list" id="fm-share-list-dialog">
+                        <div class="fm-share-empty">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // 关闭
+        const close = () => overlay.remove();
+        overlay.querySelector('.fm-share-dialog-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+        });
+
+        // 加载数据
+        try {
+            const result = await this.api.getJSON('/api/files/share/list');
+            this.renderShareList(result?.links || [], overlay, close);
+        } catch (e) {
+            const listEl = overlay.querySelector('#fm-share-list-dialog');
+            if (listEl) listEl.innerHTML = `<div class="fm-share-empty">加载失败</div>`;
+        }
+    }
+
+    formatSize(bytes) {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
+    formatExpires(expiresAt) {
+        if (!expiresAt) return '永久';
+        const diff = new Date(expiresAt) - Date.now();
+        if (diff <= 0) return '已过期';
+        const days = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        if (days > 0) return `${days}天${hours}小时`;
+        if (hours > 0) return `${hours}小时`;
+        return `${Math.floor(diff / 60000)}分钟`;
+    }
+
+    renderShareList(links, overlay, close) {
+        const listEl = overlay.querySelector('#fm-share-list-dialog');
+        if (!listEl) return;
+
+        if (!links.length) {
+            listEl.innerHTML = `<div class="fm-share-empty">暂无分享文件</div>`;
+            return;
+        }
+
+        const scheme = location.protocol === 'https:' ? 'https' : 'http';
+        const host = location.host;
+
+        listEl.innerHTML = links.map(link => `
+            <div class="fm-share-item" data-token="${link.token}">
+                <div class="fm-share-item-icon">📄</div>
+                <div class="fm-share-item-info">
+                    <div class="fm-share-item-name" title="${link.fileName}">${link.fileName}</div>
+                    <div class="fm-share-item-meta">
+                        <span>${this.formatSize(link.fileSize)}</span>
+                        <span>剩余 ${this.formatExpires(link.expiresAt)}</span>
+                        <span>${link.downloadCount} 次下载</span>
+                    </div>
+                </div>
+                <div class="fm-share-item-actions">
+                    <button class="fm-share-action copy" data-url="${scheme}://${host}/s/${link.token}" title="复制链接">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                    <button class="fm-share-action delete" data-token="${link.token}" title="删除">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        // 复制链接
+        listEl.querySelectorAll('.fm-share-action.copy').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(btn.dataset.url);
+                    this.toast?.success?.('链接已复制');
+                } catch {
+                    this.toast?.error?.('复制失败');
+                }
+            });
+        });
+
+        // 删除分享
+        listEl.querySelectorAll('.fm-share-action.delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const token = btn.dataset.token;
+                try {
+                    await this.api.post('/api/files/share/delete', { token });
+                    this.toast?.success?.('已删除');
+                    btn.closest('.fm-share-item')?.remove();
+                    if (!listEl.querySelector('.fm-share-item')) {
+                        listEl.innerHTML = `<div class="fm-share-empty">暂无分享文件</div>`;
+                    }
+                } catch {
+                    this.toast?.error?.('删除失败');
+                }
+            });
         });
     }
 

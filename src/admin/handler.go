@@ -115,6 +115,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path = "/"
 	}
 
+	// 域名绑定检查：如果配置了绑定域名，只允许该域名访问
+	if boundDomain := h.ConfigManager.Server.AdminDomain; boundDomain != "" {
+		host := r.Host
+		// 去掉端口
+		if idx := strings.LastIndex(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		if host != boundDomain {
+			http.NotFound(w, r)
+			return
+		}
+	}
+
 	// 分享链接下载（公开访问，优先处理，绕过安全入口检查）
 	if strings.HasPrefix(path, "/s/") || strings.HasPrefix(path, "/share/") {
 		h.downloadSharedFile(w, r)
@@ -233,6 +246,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.executeCleanup(w, r)
 	case "/api/system/time":
 		h.getSystemTime(w, r)
+	case "/api/system/time/sync":
+		h.syncSystemTime(w, r)
 	// 配置
 	case "/api/config":
 		h.getConfig(w, r)
@@ -243,6 +258,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// HTTP 文件管理
 	case "/api/files":
 		h.listFiles(w, r)
+	case "/api/files/quick-dirs":
+		h.getQuickDirs(w, r)
 	case "/api/files/upload":
 		h.uploadFile(w, r)
 	case "/api/files/upload/chunk":

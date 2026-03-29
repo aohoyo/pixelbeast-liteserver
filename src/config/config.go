@@ -26,13 +26,20 @@ type ConfigManager struct {
 // ServerConfig 服务配置
 type ServerConfig struct {
 	// HTTP
-	HTTPPort  int `json:"http_port"`
-	AdminPort int `json:"admin_port"`
+	HTTPPort  int    `json:"http_port"`
+	HTTPDir   string `json:"http_dir"`
+	AdminPort int    `json:"admin_port"`
 
 	// Admin（密码加密存储）
 	AdminUsername string `json:"admin_username"`
 	AdminPassword string `json:"admin_password"` // 加密后的密码
 	AdminPath     string `json:"admin_path"`     // 安全入口路径
+
+	// 面板域名绑定
+	AdminDomain string `json:"admin_domain"` // 绑定域名，为空则允许所有域名访问
+
+	// 面板 SSL（前端显示，后端暂未实现）
+	AdminSSLEnabled bool `json:"admin_ssl_enabled"`
 
 	// 日志
 	Log LogConfig `json:"log"`
@@ -198,7 +205,7 @@ func (cm *ConfigManager) loadSites() error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			cm.Sites = &SitesConfig{Sites: []SiteConfig{}}
+			cm.Sites = cm.defaultSitesConfig()
 			return cm.saveSites()
 		}
 		return err
@@ -288,7 +295,8 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
 
 	return &ServerConfig{
-		HTTPPort:      8080,
+		HTTPPort:      3080,
+		HTTPDir:       "./web",
 		AdminPort:     9527,
 		AdminUsername: "admin",
 		AdminPassword: encryptedPassword,
@@ -312,6 +320,29 @@ func (cm *ConfigManager) defaultFTPConfig() *FTPConfig {
 		Port:    2121,
 		Root:    "./ftp",
 		Users:   []FTPUser{},
+	}
+}
+
+// defaultSitesConfig 默认站点配置
+func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
+	httpDir := cm.Server.HTTPDir
+	if httpDir == "" {
+		httpDir = "./web"
+	}
+	return &SitesConfig{
+		Sites: []SiteConfig{
+			{
+				ID:         "default",
+				Name:       "默认站点",
+				Enabled:    true,
+				Type:       "static",
+				Port:       cm.Server.HTTPPort,
+				Root:       httpDir,
+				IndexFiles: []string{"index.html", "index.htm"},
+				AutoIndex:  true,
+				CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
+			},
+		},
 	}
 }
 

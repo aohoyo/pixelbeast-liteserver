@@ -3,11 +3,14 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -401,10 +404,12 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 			"password": "", // 不返回密码
 			"port":     h.ConfigManager.Server.AdminPort,
 			"path":     h.ConfigManager.Server.AdminPath,
+			"bind_domain": h.ConfigManager.Server.AdminDomain,
+			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
 		},
 		"http": map[string]interface{}{
 			"port": h.ConfigManager.Server.HTTPPort,
-			"root": "./web",
+			"root": h.ConfigManager.Server.HTTPDir,
 		},
 		"ftp": map[string]interface{}{
 			"enabled": h.ConfigManager.FTP.Enabled,
@@ -456,12 +461,21 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		if v, ok := admin["password"].(string); ok && v != "" {
 			h.ConfigManager.SetAdminPassword(v)
 		}
+		if v, ok := admin["bind_domain"].(string); ok {
+			h.ConfigManager.Server.AdminDomain = v
+		}
+		if v, ok := admin["ssl_enabled"].(bool); ok {
+		h.ConfigManager.Server.AdminSSLEnabled = v
+		}
 	}
 
 	// 解析 http 配置
 	if http, ok := data["http"].(map[string]interface{}); ok {
 		if v, ok := http["port"].(float64); ok {
 			h.ConfigManager.Server.HTTPPort = int(v)
+		}
+		if v, ok := http["root"].(string); ok {
+			h.ConfigManager.Server.HTTPDir = v
 		}
 	}
 
@@ -565,7 +579,7 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 			"path":     "/admin",
 		},
 		"http": map[string]interface{}{
-			"port": 8080,
+			"port": 3080,
 			"root": "./web",
 		},
 		"ftp": map[string]interface{}{
@@ -574,7 +588,19 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 			"root":    "./ftp",
 			"users":   []config.FTPUser{},
 		},
-		"sites": []config.SiteConfig{},
+		"sites": []config.SiteConfig{
+				{
+					ID:         "default",
+					Name:       "默认站点",
+					Enabled:    true,
+					Type:       "static",
+					Port:       3080,
+					Root:       "./web",
+					IndexFiles: []string{"index.html", "index.htm"},
+					AutoIndex:  true,
+					CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
+				},
+			},
 		"log": map[string]interface{}{
 			"retention_days": 30,
 			"max_size_mb":    100,
@@ -592,13 +618,26 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 		h.ConfigManager.Server.AdminPort = 9527
 		h.ConfigManager.Server.AdminPath = "/admin"
 		h.ConfigManager.SetAdminPassword("admin123")
-		h.ConfigManager.Server.HTTPPort = 8080
+		h.ConfigManager.Server.HTTPPort = 3080
+		h.ConfigManager.Server.HTTPDir = "./web"
 		h.ConfigManager.Server.BackupDir = "./backups"
 		h.ConfigManager.FTP.Enabled = false
 		h.ConfigManager.FTP.Port = 2121
 		h.ConfigManager.FTP.Root = "./ftp"
 		h.ConfigManager.FTP.Users = []config.FTPUser{}
-		h.ConfigManager.Sites.Sites = []config.SiteConfig{}
+		h.ConfigManager.Sites.Sites = []config.SiteConfig{
+				{
+					ID:         "default",
+					Name:       "默认站点",
+					Enabled:    true,
+					Type:       "static",
+					Port:       3080,
+					Root:       "./web",
+					IndexFiles: []string{"index.html", "index.htm"},
+					AutoIndex:  true,
+					CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
+				},
+			}
 		h.ConfigManager.Server.Log = config.LogConfig{
 			RetentionDays: 30,
 			MaxSizeMB:     100,
@@ -691,9 +730,6 @@ func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getSystemTime(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 
-	// 尝试从 NTP 服务器获取准确时间
-	ntpTime := getNTPTime()
-
 	result := map[string]interface{}{
 		"timestamp":  now.Unix(),
 		"time":       now.Format("2006-01-02 15:04:05"),
@@ -703,39 +739,207 @@ func (h *Handler) getSystemTime(w http.ResponseWriter, r *http.Request) {
 		"ntp_synced": false,
 	}
 
-	if ntpTime != nil {
-		result["ntp_time"] = ntpTime.UTC().Format("2006-01-02 15:04:05")
-		result["ntp_milli"] = ntpTime.UnixMilli()
-		result["ntp_offset_ms"] = ntpTime.Sub(now).Milliseconds()
+	// 使用缓存的 NTP 偏移量（不会每次请求都查询 NTP）
+	if offset, ok := getNTPOffset(); ok {
+		adjusted := now.Add(time.Duration(offset) * time.Millisecond)
+		result["ntp_time"] = adjusted.UTC().Format("2006-01-02 15:04:05")
+		result["ntp_milli"] = adjusted.UnixMilli()
+		result["ntp_offset_ms"] = offset
 		result["ntp_synced"] = true
-		// 使用 NTP 时间作为主时间
-		result["timestamp"] = ntpTime.Unix()
-		result["unix_milli"] = ntpTime.UnixMilli()
+		result["timestamp"] = adjusted.Unix()
+		result["unix_milli"] = adjusted.UnixMilli()
 	}
 
 	Success(w, result)
 }
 
-// getNTPTime 从 NTP 服务器获取时间
-func getNTPTime() *time.Time {
-	ntpServers := []string{
-		"ntp.aliyun.com:123",
-		"time.google.com:123",
-		"time.cloudflare.com:123",
-		"time.apple.com:123",
+// syncSystemTime 通过 NTP 校正后设置系统时间
+func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
 	}
 
-	for _, server := range ntpServers {
-		if t, err := queryNTP(server); err == nil {
-			return t
+	// 强制重新查询 NTP（不用缓存）
+	forceSyncNTP()
+
+	ntpMu.RLock()
+	offset := ntpOffset
+	synced := ntpSynced
+	ntpMu.RUnlock()
+
+	if !synced {
+		Success(w, map[string]interface{}{
+			"updated": false,
+			"message": "NTP 同步失败，无法获取准确时间，请检查网络连接",
+		})
+		return
+	}
+
+	// 偏移小于 500ms 视为无需校正
+	if offset > -500 && offset < 500 {
+		Success(w, map[string]interface{}{
+			"updated": false,
+			"message": fmt.Sprintf("系统时间准确（偏差 %dms），无需校正", offset),
+		})
+		return
+	}
+
+	ntpTime := time.Now().Add(time.Duration(offset) * time.Millisecond)
+	err := setSystemTime(ntpTime)
+	if err != nil {
+		Success(w, map[string]interface{}{
+			"updated": false,
+			"message": fmt.Sprintf("NTP 时间获取成功（偏差 %dms），但修改系统时间失败: %v", offset, err),
+		})
+		return
+	}
+
+	// 重置缓存
+	ntpMu.Lock()
+	ntpOffset = 0
+	ntpSynced = true
+	ntpLastSync = time.Now()
+	ntpMu.Unlock()
+
+	Success(w, map[string]interface{}{
+		"updated": true,
+		"message":  fmt.Sprintf("系统时间已校正 %dms", offset),
+	})
+}
+
+// setSystemTime 设置系统时间（跨平台）
+func setSystemTime(t time.Time) error {
+	switch runtime.GOOS {
+	case "windows":
+		// PowerShell: Set-Date
+		psCmd := fmt.Sprintf("Set-Date -Date '%s'", t.Format("2006-01-02 15:04:05"))
+		return exec.Command("powershell", "-Command", psCmd).Run()
+	case "darwin":
+		// macOS: date -u 走 UTC 设置
+		dateStr := t.UTC().Format("010215042006")
+		return exec.Command("date", "-u", dateStr).Run()
+	default:
+		// Linux: 优先 timedatectl，失败则 date -s
+		dateStr := t.Format("2006-01-02 15:04:05")
+		if err := exec.Command("timedatectl", "set-ntp", "false").Run(); err == nil {
+			if err := exec.Command("timedatectl", "set-time", dateStr).Run(); err == nil {
+				exec.Command("timedatectl", "set-ntp", "true").Run()
+				return nil
+			}
+		}
+		// fallback: date -s
+		return exec.Command("date", "-s", dateStr).Run()
+	}
+}
+
+// ntpOffset 缓存 NTP 偏移量
+var (
+	ntpOffset   int64 // 毫秒偏移
+	ntpSynced   bool
+	ntpLastSync time.Time
+	ntpMu       sync.RWMutex
+)
+
+// getNTPOffset 获取缓存的 NTP 偏移量，过期则重新同步
+func getNTPOffset() (int64, bool) {
+	ntpMu.RLock()
+	if ntpSynced && time.Since(ntpLastSync) < 10*time.Minute {
+		offset := ntpOffset
+		ntpMu.RUnlock()
+		return offset, true
+	}
+	ntpMu.RUnlock()
+
+	// 需要重新同步
+	syncNTP()
+	ntpMu.RLock()
+	defer ntpMu.RUnlock()
+	return ntpOffset, ntpSynced
+}
+
+// forceSyncNTP 强制重新同步 NTP（忽略缓存，用于手动同步按钮）
+func forceSyncNTP() {
+	ntpMu.Lock()
+	defer ntpMu.Unlock()
+	queryNTPServers()
+}
+
+// queryNTPServers 并发查询 NTP 服务器（调用方需持有 ntpMu 写锁）
+func queryNTPServers() {
+	type ntpResult struct {
+		offset int64
+		ok     bool
+	}
+
+	now := time.Now()
+	servers := []string{
+		"ntp.aliyun.com:123",
+		"cn.ntp.org.cn:123",
+		"ntp.tencent.com:123",
+		"time.cloudflare.com:123",
+		"time.google.com:123",
+	}
+
+	ch := make(chan ntpResult, len(servers))
+	for _, server := range servers {
+		go func(addr string) {
+			t, err := queryNTP(addr)
+			if err != nil {
+				fmt.Printf("[NTP] %s 查询失败: %v\n", addr, err)
+				ch <- ntpResult{}
+				return
+			}
+			// 校验 NTP 时间在合理范围（2020-2035），避免解析异常
+			if t.Year() < 2020 || t.Year() > 2035 {
+				fmt.Printf("[NTP] %s 时间异常: %v (year=%d)\n", addr, t, t.Year())
+				ch <- ntpResult{}
+				return
+			}
+			diff := t.Sub(now)
+			fmt.Printf("[NTP] %s 成功, 偏移: %v\n", addr, diff)
+			ch <- ntpResult{offset: diff.Milliseconds(), ok: true}
+		}(server)
+	}
+
+	for range servers {
+		if r := <-ch; r.ok {
+			ntpOffset = r.offset
+			ntpSynced = true
+			ntpLastSync = time.Now()
+			return
 		}
 	}
-	return nil
+	fmt.Println("[NTP] 所有服务器均查询失败")
+}
+
+// syncNTP 同步 NTP 时间（使用缓存，过期则重新查询）
+func syncNTP() {
+	ntpMu.Lock()
+	defer ntpMu.Unlock()
+
+	if ntpSynced && time.Since(ntpLastSync) < 10*time.Minute {
+		return
+	}
+
+	queryNTPServers()
+}
+
+// getNTPTime 从 NTP 服务器获取时间（已弃用，保留兼容）
+func getNTPTime() *time.Time {
+	syncNTP()
+	ntpMu.RLock()
+	defer ntpMu.RUnlock()
+	if !ntpSynced {
+		return nil
+	}
+	t := time.Now().Add(time.Duration(ntpOffset) * time.Millisecond)
+	return &t
 }
 
 // queryNTP 通过 SNTP 协议查询 NTP 服务器
 func queryNTP(server string) (*time.Time, error) {
-	conn, err := net.DialTimeout("udp", server, 3*time.Second)
+	conn, err := net.DialTimeout("udp", server, 2*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +954,7 @@ func queryNTP(server string) (*time.Time, error) {
 		return nil, err
 	}
 
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	resp := make([]byte, 48)
 	if _, err = conn.Read(resp); err != nil {
 		return nil, err
