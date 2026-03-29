@@ -1069,14 +1069,6 @@ pre {
     cursor: not-allowed;
 }
 
-.settings-content {
-    display: none;
-}
-
-.settings-content.active {
-    display: block;
-}
-
 .settings-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1129,12 +1121,6 @@ pre {
 }
 
 .form-select {
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23a8a29e' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
     cursor: pointer;
     height: 42px;
     line-height: 20px;

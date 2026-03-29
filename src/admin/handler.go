@@ -231,6 +231,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.scanCleanup(w, r)
 	case "/api/system/cleanup":
 		h.executeCleanup(w, r)
+	case "/api/system/time":
+		h.getSystemTime(w, r)
 	// 配置
 	case "/api/config":
 		h.getConfig(w, r)
@@ -522,6 +524,7 @@ func (h *Handler) serveCSS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/css")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write(data)
 }
 
@@ -533,6 +536,7 @@ func (h *Handler) serveJS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/javascript")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write(data)
 }
 

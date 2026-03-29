@@ -1,11 +1,10 @@
 /**
- * 设置模块 - 重构版
+ * 设置模块
  *
  * 负责系统设置的加载、编辑、保存
  */
 
 import { BaseTab } from './BaseTab.js';
-import { DirectoryPicker } from '../components/directory-picker.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {
@@ -13,19 +12,51 @@ class SettingsTab extends BaseTab {
         this.config = null;
         this.originalConfig = null;
         this.hasChanges = false;
-        this.currentTab = 'basic';
-        this.directoryPickers = {};
     }
 
     onInit() {
         console.log('[Settings] 初始化设置面板...');
+        this.initNumberInputs();
         this.bindEvents();
-        this.initDirectoryPickers();
+        this.startClock();
     }
 
-    /**
-     * 绑定事件
-     */
+    initNumberInputs() {
+        this.$$('.number-input-wrapper').forEach(wrapper => {
+            const input = wrapper.querySelector('input[type="number"]');
+            const upBtn = wrapper.querySelector('[data-action="up"]');
+            const downBtn = wrapper.querySelector('[data-action="down"]');
+
+            if (!input) return;
+
+            const step = parseInt(input.dataset.step) || 1;
+            const min = input.min !== '' ? parseInt(input.min) : null;
+            const max = input.max !== '' ? parseInt(input.max) : null;
+
+            const updateValue = (delta) => {
+                let value = parseInt(input.value) || 0;
+                value += delta;
+                if (min !== null && value < min) value = min;
+                if (max !== null && value > max) value = max;
+                input.value = value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+
+            upBtn?.addEventListener('click', () => updateValue(step));
+            downBtn?.addEventListener('click', () => updateValue(-step));
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    updateValue(step);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    updateValue(-step);
+                }
+            });
+        });
+    }
+
     bindEvents() {
         // 标签页切换
         this.$$('.settings-tabs .tab-btn').forEach(btn => {
@@ -41,67 +72,31 @@ class SettingsTab extends BaseTab {
         // 重置按钮
         this.$('#btn-reset')?.addEventListener('click', () => this.reset());
 
+        // 同步时间按钮
+        this.$('#btn-sync-time')?.addEventListener('click', () => this.syncTime());
+
         // 密码切换显示
-        this.$('.password-toggle')?.addEventListener('click', (e) => {
+        this.$('#toggle-password')?.addEventListener('click', () => {
             const input = this.$('#admin-password');
-            const eyeOn = e.currentTarget.querySelector('.icon-eye');
-            const eyeOff = e.currentTarget.querySelector('.icon-eye-off');
-            
-            if (input.type === 'password') {
-                input.type = 'text';
-                eyeOn.style.display = 'none';
-                eyeOff.style.display = 'block';
-            } else {
-                input.type = 'password';
-                eyeOn.style.display = 'block';
-                eyeOff.style.display = 'none';
+            const btn = this.$('#toggle-password');
+            if (input && btn) {
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                btn.innerHTML = isPassword
+                    ? '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+                    : '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
             }
         });
 
         // 监听配置变化
-        const inputs = this.$$('.settings-content input, .settings-content select');
-        inputs.forEach(input => {
+        this.$$('.settings-content input, .settings-content select').forEach(input => {
             input.addEventListener('change', () => {
                 this.hasChanges = true;
             });
         });
     }
 
-    /**
-     * 初始化目录选择器
-     */
-    initDirectoryPickers() {
-        // WEB 根目录
-        const webRootContainer = this.$('#web-root-picker');
-        if (webRootContainer) {
-            this.directoryPickers.webRoot = new DirectoryPicker({
-                container: webRootContainer,
-                api: this.api,
-                apiPath: '/api/files',
-                placeholder: './web',
-                onChange: () => { this.hasChanges = true; }
-            });
-        }
-
-        // 备份目录
-        const backupDirContainer = this.$('#backup-dir-picker');
-        if (backupDirContainer) {
-            this.directoryPickers.backup = new DirectoryPicker({
-                container: backupDirContainer,
-                api: this.api,
-                apiPath: '/api/files',
-                placeholder: './backups',
-                onChange: () => { this.hasChanges = true; }
-            });
-        }
-    }
-
-    /**
-     * 切换标签页
-     */
     switchTab(tabName) {
-        this.currentTab = tabName;
-
         // 更新按钮状态
         this.$$('.settings-tabs .tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -113,167 +108,230 @@ class SettingsTab extends BaseTab {
         });
     }
 
-    /**
-     * 加载配置
-     */
     async onLoad() {
         try {
-            const response = await this.api.getJSON('/api/config');
-            this.config = response.data;
+            const config = await this.api.getJSON('/api/config');
+            this.config = config;
             this.originalConfig = JSON.parse(JSON.stringify(this.config));
             this.render();
             console.log('[Settings] 配置加载成功', this.config);
         } catch (error) {
             console.error('[Settings] 加载配置失败:', error);
-            this.toast.error('加载配置失败：' + error.message);
+            this.toast?.error('加载配置失败：' + error.message);
         }
     }
 
-    /**
-     * 渲染配置到表单
-     */
     render() {
         if (!this.config) return;
 
         const { admin, http, log, backup_dir } = this.config;
 
         // 基础设置
-        this.setText('#server-name', 'PixelBeast Server');
-        this.setText('#timezone', 'Asia/Shanghai');
+        this.setValue('#server-name', 'PixelBeast Server');
+        this.setValue('#timezone', 'Asia/Shanghai');
 
         // HTTP 服务
-        this.setText('#http-port', http?.port || 8080);
-        this.setText('#index-files', http?.index_files?.join(', ') || 'index.html, index.htm');
-        this.$('#auto-index').checked = http?.auto_index ?? true;
-
-        // 更新目录选择器
-        if (this.directoryPickers.webRoot && http?.root) {
-            this.directoryPickers.webRoot.setValue(http.root);
-        }
+        this.setValue('#http-port', http?.port || 8080);
+        this.setValue('#http-root', http?.root || './web');
 
         // 管理面板
-        this.setText('#admin-port', admin?.port || 9527);
-        this.setText('#admin-path', admin?.path || '/admin');
-        this.setText('#admin-username', admin?.username || 'admin');
-        this.setText('#admin-password', '');
+        this.setValue('#admin-port', admin?.port || 9527);
+        this.setValue('#admin-path', admin?.path || '/admin');
+        this.setValue('#admin-username', admin?.username || 'admin');
+        this.setValue('#admin-password', '');
 
         // 日志配置
-        this.setText('#log-level', log?.level || 'info');
-        this.setText('#log-retention', log?.retention_days || 30);
-        this.setText('#log-max-size', log?.max_size_mb || 100);
-        this.setText('#log-compress', log?.compress_days || 7);
-        this.setText('#log-cleanup-hour', log?.cleanup_hour || 3);
+        this.setValue('#log-level', log?.level || 'info');
+        this.setValue('#log-retention', log?.retention_days || 30);
+        this.setValue('#log-max-size', log?.max_size_mb || 100);
+        this.setValue('#log-compress', log?.compress_days || 7);
+        this.setValue('#log-cleanup-hour', log?.cleanup_hour || 3);
 
         // 备份设置
-        this.setText('#backup-dir', backup_dir || './backups');
-        if (this.directoryPickers.backup && backup_dir) {
-            this.directoryPickers.backup.setValue(backup_dir);
-        }
-        this.$('#auto-backup').checked = true;
+        this.setValue('#backup-dir', backup_dir || './backups');
+        this.setChecked('#auto-backup', true);
+
+        // FTP 配置
+        const ftp = this.config.ftp || {};
+        this.setChecked('#ftp-enabled', ftp.enabled ?? false);
+        this.setValue('#ftp-port', ftp.port || 2121);
+        this.setValue('#ftp-root', ftp.root || './ftp');
 
         this.hasChanges = false;
     }
 
-    /**
-     * 从表单收集配置
-     */
     collectConfig() {
         const config = JSON.parse(JSON.stringify(this.originalConfig));
 
-        // HTTP 服务
-        config.http.port = parseInt(this.$('#http-port').value) || 8080;
-        config.http.root = this.directoryPickers.webRoot?.getValue() || './web';
-        config.http.index_files = (this.$('#index-files').value || 'index.html')
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean);
-        config.http.auto_index = this.$('#auto-index').checked;
+        // HTTP
+        config.http.port = this.getInt('#http-port', 8080);
+        config.http.root = this.getValue('#http-root') || './web';
 
-        // 管理面板
-        config.admin.port = parseInt(this.$('#admin-port').value) || 9527;
-        config.admin.path = this.$('#admin-path').value || '/admin';
-        config.admin.username = this.$('#admin-username').value || 'admin';
-
-        const adminPassword = this.$('#admin-password').value;
-        if (adminPassword && adminPassword.trim()) {
-            config.admin.password = adminPassword;
+        // Admin
+        config.admin.port = this.getInt('#admin-port', 9527);
+        config.admin.path = this.getValue('#admin-path') || '/admin';
+        config.admin.username = this.getValue('#admin-username') || 'admin';
+        const pwd = this.getValue('#admin-password');
+        if (pwd && pwd.trim()) {
+            config.admin.password = pwd;
         }
 
-        // 日志配置
-        config.log.level = this.$('#log-level').value || 'info';
-        config.log.retention_days = parseInt(this.$('#log-retention').value) || 30;
-        config.log.max_size_mb = parseInt(this.$('#log-max-size').value) || 100;
-        config.log.compress_days = parseInt(this.$('#log-compress').value) || 7;
-        config.log.cleanup_hour = parseInt(this.$('#log-cleanup-hour').value) || 3;
+        // Log
+        config.log.level = this.getValue('#log-level') || 'info';
+        config.log.retention_days = this.getInt('#log-retention', 30);
+        config.log.max_size_mb = this.getInt('#log-max-size', 100);
+        config.log.compress_days = this.getInt('#log-compress', 7);
+        config.log.cleanup_hour = this.getInt('#log-cleanup-hour', 3);
 
-        // 备份设置
-        config.backup_dir = this.directoryPickers.backup?.getValue() || './backups';
+        // Backup
+        config.backup_dir = this.getValue('#backup-dir') || './backups';
+
+        // FTP
+        config.ftp.enabled = this.isChecked('#ftp-enabled');
+        config.ftp.port = this.getInt('#ftp-port', 2121);
+        config.ftp.root = this.getValue('#ftp-root') || './ftp';
 
         return config;
     }
 
-    /**
-     * 保存配置
-     */
     async save() {
-        if (!this.hasChanges && !this.$('#admin-password').value) {
-            this.toast.info('没有需要保存的更改');
+        if (!this.hasChanges && !this.getValue('#admin-password')) {
+            this.toast?.info('没有需要保存的更改');
             return;
         }
 
         try {
             const config = this.collectConfig();
-            await this.api.post('/api/config', config);
-            
+            await this.api.post('/api/config/save', config);
             this.originalConfig = JSON.parse(JSON.stringify(config));
             this.hasChanges = false;
-            
-            this.toast.success('配置保存成功');
-            console.log('[Settings] 配置保存成功', config);
-
-            // 触发配置更新事件
+            this.toast?.success('配置保存成功');
             this.events.emit('config:updated', config);
         } catch (error) {
-            console.error('[Settings] 保存配置失败:', error);
-            this.toast.error('保存失败：' + error.message);
+            console.error('[Settings] 保存失败:', error);
+            this.toast?.error('保存失败：' + error.message);
         }
     }
 
-    /**
-     * 重置配置
-     */
     reset() {
-        this.dialog.confirm('确定要重置所有配置吗？未保存的更改将丢失。', () => {
+        this.dialog?.confirm('确定要重置所有配置吗？未保存的更改将丢失。', () => {
             this.render();
-            this.toast.success('配置已重置');
+            this.toast?.success('配置已重置');
         });
     }
 
-    /**
-     * 刷新
-     */
     async onRefresh() {
         await this.onLoad();
     }
 
-    /**
-     * 销毁
-     */
     onDestroy() {
-        // 清理目录选择器
-        Object.values(this.directoryPickers).forEach(picker => {
-            if (picker.destroy) picker.destroy();
-        });
-        this.directoryPickers = {};
+        if (this._clockTimer) {
+            clearInterval(this._clockTimer);
+            this._clockTimer = null;
+        }
+    }
+
+    startClock() {
+        this.syncTime();
+        this._clockTimer = setInterval(() => {
+            this.updateClockDisplay();
+        }, 1000);
+    }
+
+    async syncTime() {
+        const btn = this.$('#btn-sync-time');
+        const icon = btn?.querySelector('.icon');
+        if (btn) btn.disabled = true;
+        if (icon) icon.classList.add('spinning');
+
+        try {
+            const data = await this.api.getJSON('/api/system/time');
+            this._serverTime = data.unix_milli;
+            this._serverTimeFetched = Date.now();
+            this.updateClockDisplay();
+            this.toast?.success('时间同步成功');
+        } catch (error) {
+            console.error('[Settings] 同步时间失败:', error);
+            this.toast?.error('同步时间失败');
+        } finally {
+            if (icon) icon.classList.remove('spinning');
+            if (btn) btn.disabled = false;
+        }
+        }
+    }
+
+    updateClockDisplay() {
+        const el = this.$('#system-time');
+        if (!el) return;
+
+        let now;
+        if (this._serverTime && this._serverTimeFetched) {
+            const elapsed = Date.now() - this._serverTimeFetched;
+            now = new Date(this._serverTime + elapsed);
+        } else {
+            now = new Date();
+        }
+
+        const timezone = this.getValue('#timezone') || 'Asia/Shanghai';
+        try {
+            el.textContent = now.toLocaleString('zh-CN', {
+                timeZone: timezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        } catch {
+            el.textContent = now.toLocaleString('zh-CN', { hour12: false });
+        }
+    }
+
+    // ========== 工具方法 ==========
+
+    getValue(selector) {
+        const el = this.$(selector);
+        return el?.value || '';
+    }
+
+    setValue(selector, value) {
+        const el = this.$(selector);
+        if (el) {
+            el.value = value;
+        }
+    }
+
+    getInt(selector, defaultVal) {
+        const val = parseInt(this.getValue(selector));
+        return isNaN(val) ? defaultVal : val;
+    }
+
+    isChecked(selector) {
+        const el = this.$(selector);
+        return el?.checked ?? false;
+    }
+
+    setChecked(selector, checked) {
+        const el = this.$(selector);
+        if (el) {
+            el.checked = checked;
+        }
     }
 }
 
-// 导出单例
-export default new SettingsTab({
-    api: window.api,
-    state: window.state,
-    toast: window.toast,
-    message: window.message,
-    dialog: window.dialog,
-    events: window.events
-});
+let instance = null;
+
+export function initSettingsTab(deps) {
+    if (!instance) {
+        instance = new SettingsTab(deps);
+        instance.init();
+    }
+    return instance;
+}
+
+export function cleanupSettingsTab() {
+    instance?.destroy();
+    instance = null;
+}

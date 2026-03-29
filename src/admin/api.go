@@ -404,7 +404,7 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 		},
 		"http": map[string]interface{}{
 			"port": h.ConfigManager.Server.HTTPPort,
-			"root": "./web", // TODO: 后续可添加独立的 WebRoot 配置字段
+			"root": "./web",
 		},
 		"ftp": map[string]interface{}{
 			"enabled": h.ConfigManager.FTP.Enabled,
@@ -686,4 +686,88 @@ func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
 
 	os.WriteFile(logPath, []byte{}, 0644)
 	SuccessMessage(w, "日志已清空")
+}
+
+func (h *Handler) getSystemTime(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+
+	// 尝试从 NTP 服务器获取准确时间
+	ntpTime := getNTPTime()
+
+	result := map[string]interface{}{
+		"timestamp":  now.Unix(),
+		"time":       now.Format("2006-01-02 15:04:05"),
+		"utc_time":   now.UTC().Format("2006-01-02 15:04:05"),
+		"timezone":   now.Location().String(),
+		"unix_milli": now.UnixMilli(),
+		"ntp_synced": false,
+	}
+
+	if ntpTime != nil {
+		result["ntp_time"] = ntpTime.UTC().Format("2006-01-02 15:04:05")
+		result["ntp_milli"] = ntpTime.UnixMilli()
+		result["ntp_offset_ms"] = ntpTime.Sub(now).Milliseconds()
+		result["ntp_synced"] = true
+		// 使用 NTP 时间作为主时间
+		result["timestamp"] = ntpTime.Unix()
+		result["unix_milli"] = ntpTime.UnixMilli()
+	}
+
+	Success(w, result)
+}
+
+// getNTPTime 从 NTP 服务器获取时间
+func getNTPTime() *time.Time {
+	ntpServers := []string{
+		"ntp.aliyun.com:123",
+		"time.google.com:123",
+		"time.cloudflare.com:123",
+		"time.apple.com:123",
+	}
+
+	for _, server := range ntpServers {
+		if t, err := queryNTP(server); err == nil {
+			return t
+		}
+	}
+	return nil
+}
+
+// queryNTP 通过 SNTP 协议查询 NTP 服务器
+func queryNTP(server string) (*time.Time, error) {
+	conn, err := net.DialTimeout("udp", server, 3*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	// NTP 客户端请求包 (48 bytes)
+	// LI=0, VN=4, Mode=3 (client)
+	req := make([]byte, 48)
+	req[0] = 0x23 // 00 100 011 = LI=0, VN=4, Mode=3
+
+	if _, err = conn.Write(req); err != nil {
+		return nil, err
+	}
+
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	resp := make([]byte, 48)
+	if _, err = conn.Read(resp); err != nil {
+		return nil, err
+	}
+
+	// Transmit Timestamp 从第 40 字节开始 (8 bytes: 4秒 + 4小数)
+	sec := uint64(resp[40])<<24 | uint64(resp[41])<<16 | uint64(resp[42])<<8 | uint64(resp[43])
+	frac := uint64(resp[44])<<24 | uint64(resp[45])<<16 | uint64(resp[46])<<8 | uint64(resp[47])
+
+	// NTP 纪元: 1900-01-01, Unix 纪元: 1970-01-01, 差值 70 年
+	const ntpEpochOffset = 2208988800
+	unixSec := int64(sec - ntpEpochOffset)
+	unixNsec := int64(float64(frac) * float64(time.Second))
+	if unixNsec < 0 {
+		unixNsec = 0
+	}
+
+	t := time.Unix(unixSec, unixNsec)
+	return &t, nil
 }

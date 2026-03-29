@@ -27,46 +27,11 @@
 
     <!-- 标签页切换 -->
     <div class="settings-tabs">
-        <button class="tab-btn active" data-tab="basic">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-            </svg>
-            基础设置
-        </button>
-        <button class="tab-btn" data-tab="http">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            </svg>
-            HTTP 服务
-        </button>
-        <button class="tab-btn" data-tab="admin">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-            </svg>
-            管理面板
-        </button>
-        <button class="tab-btn" data-tab="log">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            日志配置
-        </button>
-        <button class="tab-btn" data-tab="backup">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            备份设置
-        </button>
+        <button class="tab-btn active" data-tab="basic">基础设置</button>
+        <button class="tab-btn" data-tab="http">HTTP 服务</button>
+        <button class="tab-btn" data-tab="ftp">FTP 服务</button>
+        <button class="tab-btn" data-tab="log">日志配置</button>
+        <button class="tab-btn" data-tab="backup">备份设置</button>
     </div>
 
     <!-- 设置内容区 -->
@@ -75,19 +40,97 @@
         <div class="tab-pane active" id="tab-basic">
             <div class="settings-section">
                 <h3 class="section-title">服务配置</h3>
-                <div class="form-group">
-                    <label class="form-label">服务器名称</label>
-                    <input type="text" class="form-input" id="server-name" placeholder="PixelBeast Server">
-                    <p class="form-hint">显示在管理面板标题</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">服务器名称</label>
+                    <input type="text" class="form-input-inline" id="server-name" placeholder="PixelBeast Server">
+                    <span class="form-hint-text">显示在管理面板标题</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">时区</label>
-                    <select class="form-select" id="timezone">
-                        <option value="Asia/Shanghai">Asia/Shanghai (UTC+8)</option>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">时区</label>
+                    <select class="form-select-inline" id="timezone">
+                        <option value="Pacific/Midway">Pacific/Midway (UTC-11)</option>
+                        <option value="Pacific/Honolulu">Pacific/Honolulu (UTC-10)</option>
+                        <option value="America/Anchorage">America/Anchorage (UTC-9)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (UTC-8)</option>
+                        <option value="America/Denver">America/Denver (UTC-7)</option>
+                        <option value="America/Chicago">America/Chicago (UTC-6)</option>
+                        <option value="America/New_York">America/New_York (UTC-5)</option>
+                        <option value="America/Sao_Paulo">America/Sao_Paulo (UTC-3)</option>
+                        <option value="Atlantic/Reykjavik">Atlantic/Reykjavik (UTC+0)</option>
+                        <option value="Europe/London">Europe/London (UTC+0/+1)</option>
+                        <option value="Europe/Paris">Europe/Paris (UTC+1/+2)</option>
+                        <option value="Europe/Berlin">Europe/Berlin (UTC+1/+2)</option>
+                        <option value="Europe/Moscow">Europe/Moscow (UTC+3)</option>
+                        <option value="Asia/Dubai">Asia/Dubai (UTC+4)</option>
+                        <option value="Asia/Kolkata">Asia/Kolkata (UTC+5:30)</option>
+                        <option value="Asia/Dhaka">Asia/Dhaka (UTC+6)</option>
+                        <option value="Asia/Bangkok">Asia/Bangkok (UTC+7)</option>
+                        <option value="Asia/Shanghai" selected>Asia/Shanghai (UTC+8)</option>
+                        <option value="Asia/Hong_Kong">Asia/Hong_Kong (UTC+8)</option>
+                        <option value="Asia/Singapore">Asia/Singapore (UTC+8)</option>
+                        <option value="Asia/Taipei">Asia/Taipei (UTC+8)</option>
+                        <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
+                        <option value="Asia/Seoul">Asia/Seoul (UTC+9)</option>
+                        <option value="Australia/Sydney">Australia/Sydney (UTC+10/+11)</option>
+                        <option value="Pacific/Auckland">Pacific/Auckland (UTC+12/+13)</option>
                         <option value="UTC">UTC</option>
-                        <option value="America/New_York">America/New_York</option>
-                        <option value="Europe/London">Europe/London</option>
                     </select>
+                    <span class="form-hint-text">系统时间显示时区</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">系统时间</label>
+                    <div class="time-display">
+                        <span id="system-time">--</span>
+                        <button type="button" class="btn btn-sm" id="btn-sync-time" title="同步时间">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                                <path d="M3 3v5h5"/>
+                            </svg>
+                            同步
+                        </button>
+                    </div>
+                    <span class="form-hint-text">当前服务器时间</span>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3 class="section-title">管理面板配置</h3>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">管理端口</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="admin-port" min="1" max="65535" value="9527">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">管理面板监听端口</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">安全入口路径</label>
+                    <input type="text" class="form-input-inline" id="admin-path" placeholder="/admin">
+                    <span class="form-hint-text">隐藏后台地址，提升安全性</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">管理员用户名</label>
+                    <input type="text" class="form-input-inline" id="admin-username" placeholder="admin">
+                    <span class="form-hint-text"></span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">管理员密码</label>
+                    <div class="input-with-eye">
+                        <input type="password" class="form-input-inline" id="admin-password" placeholder="不修改请留空">
+                        <button type="button" class="inside-input" id="toggle-password">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <span class="form-hint-text">留空表示不修改密码</span>
                 </div>
             </div>
         </div>
@@ -96,65 +139,60 @@
         <div class="tab-pane" id="tab-http">
             <div class="settings-section">
                 <h3 class="section-title">HTTP 配置</h3>
-                <div class="form-group">
-                    <label class="form-label">HTTP 端口</label>
-                    <input type="number" class="form-input" id="http-port" min="1" max="65535" placeholder="8080">
-                    <p class="form-hint">网站服务监听端口</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">HTTP 端口</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="http-port" min="1" max="65535" value="8080">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">网站服务监听端口</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">WEB 根目录</label>
-                    <div id="web-root-picker" class="directory-picker"></div>
-                    <p class="form-hint">静态文件存放目录</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">默认首页文件</label>
-                    <input type="text" class="form-input" id="index-files" placeholder="index.html, index.htm">
-                    <p class="form-hint">多个文件用逗号分隔</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">
-                        <input type="checkbox" id="auto-index">
-                        启用目录列表
-                    </label>
-                    <p class="form-hint">当没有首页文件时显示目录内容</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">WEB 根目录</label>
+                    <input type="text" class="form-input-inline" id="http-root" placeholder="./web">
+                    <span class="form-hint-text">静态文件存放目录</span>
                 </div>
             </div>
         </div>
 
-        <!-- 管理面板 -->
-        <div class="tab-pane" id="tab-admin">
+        <!-- FTP 服务 -->
+        <div class="tab-pane" id="tab-ftp">
             <div class="settings-section">
-                <h3 class="section-title">管理面板配置</h3>
-                <div class="form-group">
-                    <label class="form-label">管理端口</label>
-                    <input type="number" class="form-input" id="admin-port" min="1" max="65535" placeholder="9527">
-                    <p class="form-hint">管理面板监听端口</p>
+                <h3 class="section-title">FTP 配置</h3>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">启用服务</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="ftp-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="form-hint-text">开启后允许通过 FTP 管理文件</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">安全入口路径</label>
-                    <input type="text" class="form-input" id="admin-path" placeholder="/admin">
-                    <p class="form-hint">隐藏后台地址，提升安全性</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">管理员用户名</label>
-                    <input type="text" class="form-input" id="admin-username" placeholder="admin">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">管理员密码</label>
-                    <div class="password-input-group">
-                        <input type="password" class="form-input" id="admin-password" placeholder="不修改请留空">
-                        <button type="button" class="btn-icon password-toggle">
-                            <svg class="icon icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                            <svg class="icon icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                                <line x1="1" y1="1" x2="23" y2="23"/>
-                            </svg>
-                        </button>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">FTP 端口</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="ftp-port" min="1" max="65535" value="2121">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
                     </div>
-                    <p class="form-hint">留空表示不修改密码</p>
+                    <span class="form-hint-text">FTP 服务监听端口</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">FTP 根目录</label>
+                    <input type="text" class="form-input-inline" id="ftp-root" placeholder="./ftp">
+                    <span class="form-hint-text">FTP 用户默认访问目录</span>
                 </div>
             </div>
         </div>
@@ -163,33 +201,75 @@
         <div class="tab-pane" id="tab-log">
             <div class="settings-section">
                 <h3 class="section-title">日志配置</h3>
-                <div class="form-group">
-                    <label class="form-label">日志级别</label>
-                    <select class="form-select" id="log-level">
+                <div class="form-group-inline">
+                    <label class="form-label-inline">日志级别</label>
+                    <select class="form-select-inline" id="log-level">
                         <option value="debug">DEBUG - 调试</option>
                         <option value="info">INFO - 信息</option>
                         <option value="warn">WARN - 警告</option>
                         <option value="error">ERROR - 错误</option>
                     </select>
+                    <span class="form-hint-text">日志输出级别</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">日志保留天数</label>
-                    <input type="number" class="form-input" id="log-retention" min="1" max="365" placeholder="30">
-                    <p class="form-hint">超过此天数的日志将被清理</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">日志保留天数</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="log-retention" min="1" max="365" value="30">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">超过此天数的日志将被清理</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">日志文件最大大小 (MB)</label>
-                    <input type="number" class="form-input" id="log-max-size" min="10" max="1000" placeholder="100">
+                <div class="form-group-inline">
+                    <label class="form-label-inline">单文件最大大小</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="log-max-size" min="10" max="1000" value="100" data-step="10">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">单位 MB，超过将自动分割</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">日志压缩天数</label>
-                    <input type="number" class="form-input" id="log-compress" min="1" max="30" placeholder="7">
-                    <p class="form-hint">超过此天数的日志将被压缩</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">压缩旧日志</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="log-compress" min="1" max="30" value="7">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">超过此天数的日志将被压缩</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">日志清理时间</label>
-                    <input type="number" class="form-input" id="log-cleanup-hour" min="0" max="23" placeholder="3">
-                    <p class="form-hint">每天在此时间执行清理（24 小时制）</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">清理时间</label>
+                    <div class="number-input-wrapper">
+                        <input type="number" class="form-input-inline" id="log-cleanup-hour" min="0" max="23" value="3">
+                        <div class="number-input-controls">
+                            <button type="button" class="number-input-btn" data-action="up">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
+                            </button>
+                            <button type="button" class="number-input-btn" data-action="down">
+                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <span class="form-hint-text">每天在此时间执行清理（24h）</span>
                 </div>
             </div>
         </div>
@@ -198,17 +278,18 @@
         <div class="tab-pane" id="tab-backup">
             <div class="settings-section">
                 <h3 class="section-title">备份配置</h3>
-                <div class="form-group">
-                    <label class="form-label">备份目录</label>
-                    <div id="backup-dir-picker" class="directory-picker"></div>
-                    <p class="form-hint">配置文件备份存放位置</p>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">备份目录</label>
+                    <input type="text" class="form-input-inline" id="backup-dir" placeholder="./backups">
+                    <span class="form-hint-text">配置文件备份存放位置</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">
+                <div class="form-group-inline">
+                    <label class="form-label-inline">自动备份</label>
+                    <label class="toggle">
                         <input type="checkbox" id="auto-backup">
-                        启用自动备份
+                        <span class="toggle-slider"></span>
                     </label>
-                    <p class="form-hint">保存配置时自动备份</p>
+                    <span class="form-hint-text">保存配置时自动备份</span>
                 </div>
             </div>
         </div>
