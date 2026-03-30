@@ -1,13 +1,6 @@
 <div class="file-manager-page">
     <!-- 左侧快捷目录 -->
     <aside class="fm-sidebar">
-        <div class="fm-sidebar-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-            <span>快捷目录</span>
-        </div>
         <nav class="fm-quick-nav" id="fm-quick-nav">
             <!-- 由 JS 动态生成 -->
         </nav>
@@ -48,24 +41,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-}
-
-.fm-sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-md);
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: var(--space-sm);
-}
-
-.fm-sidebar-header .icon {
-    width: 16px;
-    height: 16px;
 }
 
 .fm-quick-nav {

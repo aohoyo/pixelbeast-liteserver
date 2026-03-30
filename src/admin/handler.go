@@ -244,8 +244,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.scanCleanup(w, r)
 	case "/api/system/cleanup":
 		h.executeCleanup(w, r)
-	case "/api/system/time":
-		h.getSystemTime(w, r)
 	case "/api/system/time/sync":
 		h.syncSystemTime(w, r)
 	// 配置

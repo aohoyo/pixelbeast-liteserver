@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -727,33 +728,8 @@ func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "日志已清空")
 }
 
-func (h *Handler) getSystemTime(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
 
-	result := map[string]interface{}{
-		"timestamp":  now.Unix(),
-		"time":       now.Format("2006-01-02 15:04:05"),
-		"utc_time":   now.UTC().Format("2006-01-02 15:04:05"),
-		"timezone":   now.Location().String(),
-		"unix_milli": now.UnixMilli(),
-		"ntp_synced": false,
-	}
-
-	// 使用缓存的 NTP 偏移量（不会每次请求都查询 NTP）
-	if offset, ok := getNTPOffset(); ok {
-		adjusted := now.Add(time.Duration(offset) * time.Millisecond)
-		result["ntp_time"] = adjusted.UTC().Format("2006-01-02 15:04:05")
-		result["ntp_milli"] = adjusted.UnixMilli()
-		result["ntp_offset_ms"] = offset
-		result["ntp_synced"] = true
-		result["timestamp"] = adjusted.Unix()
-		result["unix_milli"] = adjusted.UnixMilli()
-	}
-
-	Success(w, result)
-}
-
-// syncSystemTime 通过 NTP 校正后设置系统时间
+// syncSystemTime 通过 NTP 校正后设置系统时间，同时返回当前时间数据
 func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -768,30 +744,36 @@ func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
 	synced := ntpSynced
 	ntpMu.RUnlock()
 
+	// 构建时间数据（无论同步是否成功都返回）
+	now := time.Now()
+	result := map[string]interface{}{
+		"timestamp":  now.Unix(),
+		"time":       now.Format("2006-01-02 15:04:05"),
+		"utc_time":   now.UTC().Format("2006-01-02 15:04:05"),
+		"timezone":   now.Location().String(),
+		"unix_milli": now.UnixMilli(),
+		"ntp_synced": synced,
+		"updated":    false,
+	}
+
 	if !synced {
-		Success(w, map[string]interface{}{
-			"updated": false,
-			"message": "NTP 同步失败，无法获取准确时间，请检查网络连接",
-		})
+		result["message"] = "NTP 同步失败，无法获取准确时间，请检查网络连接"
+		Success(w, result)
 		return
 	}
 
 	// 偏移小于 500ms 视为无需校正
 	if offset > -500 && offset < 500 {
-		Success(w, map[string]interface{}{
-			"updated": false,
-			"message": fmt.Sprintf("系统时间准确（偏差 %dms），无需校正", offset),
-		})
+		result["message"] = fmt.Sprintf("系统时间准确（偏差 %dms），无需校正", offset)
+		Success(w, result)
 		return
 	}
 
 	ntpTime := time.Now().Add(time.Duration(offset) * time.Millisecond)
 	err := setSystemTime(ntpTime)
 	if err != nil {
-		Success(w, map[string]interface{}{
-			"updated": false,
-			"message": fmt.Sprintf("NTP 时间获取成功（偏差 %dms），但修改系统时间失败: %v", offset, err),
-		})
+		result["message"] = fmt.Sprintf("NTP 时间获取成功（偏差 %dms），但修改系统时间失败: %v", offset, err)
+		Success(w, result)
 		return
 	}
 
@@ -802,10 +784,17 @@ func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
 	ntpLastSync = time.Now()
 	ntpMu.Unlock()
 
-	Success(w, map[string]interface{}{
-		"updated": true,
-		"message":  fmt.Sprintf("系统时间已校正 %dms", offset),
-	})
+	// 同步成功后重新获取当前时间
+	now = time.Now()
+	result["timestamp"] = now.Unix()
+	result["time"] = now.Format("2006-01-02 15:04:05")
+	result["utc_time"] = now.UTC().Format("2006-01-02 15:04:05")
+	result["unix_milli"] = now.UnixMilli()
+	result["ntp_synced"] = true
+	result["updated"] = true
+	result["message"] = fmt.Sprintf("系统时间已校正 %dms", offset)
+
+	Success(w, result)
 }
 
 // setSystemTime 设置系统时间（跨平台）
@@ -842,21 +831,6 @@ var (
 )
 
 // getNTPOffset 获取缓存的 NTP 偏移量，过期则重新同步
-func getNTPOffset() (int64, bool) {
-	ntpMu.RLock()
-	if ntpSynced && time.Since(ntpLastSync) < 10*time.Minute {
-		offset := ntpOffset
-		ntpMu.RUnlock()
-		return offset, true
-	}
-	ntpMu.RUnlock()
-
-	// 需要重新同步
-	syncNTP()
-	ntpMu.RLock()
-	defer ntpMu.RUnlock()
-	return ntpOffset, ntpSynced
-}
 
 // forceSyncNTP 强制重新同步 NTP（忽略缓存，用于手动同步按钮）
 func forceSyncNTP() {
@@ -914,28 +888,8 @@ func queryNTPServers() {
 }
 
 // syncNTP 同步 NTP 时间（使用缓存，过期则重新查询）
-func syncNTP() {
-	ntpMu.Lock()
-	defer ntpMu.Unlock()
-
-	if ntpSynced && time.Since(ntpLastSync) < 10*time.Minute {
-		return
-	}
-
-	queryNTPServers()
-}
 
 // getNTPTime 从 NTP 服务器获取时间（已弃用，保留兼容）
-func getNTPTime() *time.Time {
-	syncNTP()
-	ntpMu.RLock()
-	defer ntpMu.RUnlock()
-	if !ntpSynced {
-		return nil
-	}
-	t := time.Now().Add(time.Duration(ntpOffset) * time.Millisecond)
-	return &t
-}
 
 // queryNTP 通过 SNTP 协议查询 NTP 服务器
 func queryNTP(server string) (*time.Time, error) {
@@ -945,10 +899,9 @@ func queryNTP(server string) (*time.Time, error) {
 	}
 	defer conn.Close()
 
-	// NTP 客户端请求包 (48 bytes)
-	// LI=0, VN=4, Mode=3 (client)
+	// NTP 客户端请求: LI=0, VN=4, Mode=3
 	req := make([]byte, 48)
-	req[0] = 0x23 // 00 100 011 = LI=0, VN=4, Mode=3
+	req[0] = 0x23
 
 	if _, err = conn.Write(req); err != nil {
 		return nil, err
@@ -956,21 +909,35 @@ func queryNTP(server string) (*time.Time, error) {
 
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	resp := make([]byte, 48)
-	if _, err = conn.Read(resp); err != nil {
+	// 用 io.ReadFull 确保读取完整 48 字节
+	if _, err = io.ReadFull(conn, resp); err != nil {
 		return nil, err
 	}
 
-	// Transmit Timestamp 从第 40 字节开始 (8 bytes: 4秒 + 4小数)
+	// 校验响应：VN=4, Mode=4 (服务器)
+	vn := (resp[0] >> 3) & 0x07
+	mode := resp[0] & 0x07
+	if vn != 4 || mode != 4 {
+		return nil, fmt.Errorf("无效 NTP 响应 (VN=%d, Mode=%d)", vn, mode)
+	}
+
+	// 校验 Stratum（1=主服务器, 2-15=次级服务器）
+	stratum := resp[1]
+	if stratum == 0 || stratum > 15 {
+		return nil, fmt.Errorf("无效 Stratum=%d", stratum)
+	}
+
+	// Transmit Timestamp: bytes 40-47 (4秒 + 4小数)
 	sec := uint64(resp[40])<<24 | uint64(resp[41])<<16 | uint64(resp[42])<<8 | uint64(resp[43])
 	frac := uint64(resp[44])<<24 | uint64(resp[45])<<16 | uint64(resp[46])<<8 | uint64(resp[47])
 
-	// NTP 纪元: 1900-01-01, Unix 纪元: 1970-01-01, 差值 70 年
-	const ntpEpochOffset = 2208988800
-	unixSec := int64(sec - ntpEpochOffset)
-	unixNsec := int64(float64(frac) * float64(time.Second))
-	if unixNsec < 0 {
-		unixNsec = 0
+	// NTP 纪元 1900 → Unix 纪元 1970
+	const ntpEpochOffset uint64 = 2208988800
+	if sec < ntpEpochOffset {
+		return nil, fmt.Errorf("NTP 时间戳异常 (sec=%d)", sec)
 	}
+	unixSec := int64(sec - ntpEpochOffset)
+	unixNsec := int64(float64(frac) / float64(1<<32) * float64(time.Second))
 
 	t := time.Unix(unixSec, unixNsec)
 	return &t, nil
