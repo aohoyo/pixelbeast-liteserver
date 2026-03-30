@@ -253,17 +253,26 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.saveConfig(w, r)
 	case "/api/config/reset":
 		h.resetConfig(w, r)
+	// 备份管理
+	case "/api/backups":
+		h.listBackups(w, r)
+	case "/api/backups/create":
+		h.createBackup(w, r)
+	case "/api/backups/delete":
+		h.deleteBackup(w, r)
 	// HTTP 文件管理
 	case "/api/files":
 		h.listFiles(w, r)
 	case "/api/files/quick-dirs":
 		h.getQuickDirs(w, r)
-	case "/api/files/upload":
-		h.uploadFile(w, r)
 	case "/api/files/upload/chunk":
 		h.uploadChunk(w, r)
 	case "/api/files/upload/merge":
 		h.mergeChunks(w, r)
+	case "/api/files/upload/status":
+		h.uploadChunkStatus(w, r)
+	case "/api/files/upload/path":
+		h.uploadFileWithPath(w, r)
 	case "/api/files/delete":
 		h.deleteFile(w, r)
 	case "/api/files/mkdir":
@@ -522,7 +531,7 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(staticFS, "favicon.svg")
+	data, err := fs.ReadFile(staticFS, "favicon.ico")
 	if err != nil {
 		http.NotFound(w, r)
 		return

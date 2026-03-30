@@ -31,8 +31,8 @@ tmp/
 .claude/
 
 # 运行时数据（保留目录结构，忽略内容）
-data/sites/*
-!data/sites/.gitkeep
+sites/*
+!sites/.gitkeep
 data/ssl/*
 !data/ssl/.gitkeep
 

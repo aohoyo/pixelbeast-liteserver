@@ -210,6 +210,20 @@
     font-size: 12px;
 }
 
+/* 地址栏输入框 */
+.fb-address-input {
+    width: 100%;
+    padding: 6px 12px;
+    background: var(--bg);
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--primary-alpha);
+}
+
 /* 搜索框 - 缩小宽度 */
 .fb-search-box {
     position: relative;

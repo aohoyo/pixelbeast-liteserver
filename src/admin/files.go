@@ -223,50 +223,6 @@ func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) uploadFile(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-	// 增加上传限制到 500MB
-	maxSize := int64(500 << 20)
-	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
-	if err := r.ParseMultipartForm(maxSize); err != nil {
-		BadRequest(w, err.Error())
-		return
-	}
-
-	file, handler, err := r.FormFile("file")
-	if err != nil {
-		BadRequest(w, err.Error())
-		return
-	}
-	defer file.Close()
-
-	destPath := r.FormValue("path")
-	if strings.Contains(destPath, "..") {
-		BadRequest(w, "Invalid path")
-		return
-	}
-
-	targetDir := resolvePath(destPath)
-	os.MkdirAll(targetDir, 0755)
-
-	dst := filepath.Join(targetDir, handler.Filename)
-	f, err := os.Create(dst)
-	if err != nil {
-		InternalServerError(w, err.Error())
-		return
-	}
-	defer f.Close()
-
-	if _, err = f.ReadFrom(file); err != nil {
-		InternalServerError(w, err.Error())
-		return
-	}
-	SuccessWithData(w, map[string]interface{}{"filename": handler.Filename}, "上传成功")
-}
-
 func (h *Handler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -316,9 +272,9 @@ func (h *Handler) mergeChunks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetDir := resolvePath(req.DestPath)
-	os.MkdirAll(targetDir, 0755)
 
 	destFile := filepath.Join(targetDir, req.Filename)
+	os.MkdirAll(filepath.Dir(destFile), 0755)
 	f, err := os.Create(destFile)
 	if err != nil {
 		InternalServerError(w, err.Error())
@@ -337,6 +293,83 @@ func (h *Handler) mergeChunks(w http.ResponseWriter, r *http.Request) {
 	}
 	os.RemoveAll(chunkDir)
 	SuccessMessage(w, "合并成功")
+}
+
+func (h *Handler) uploadChunkStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	uploadID := r.URL.Query().Get("uploadID")
+	if uploadID == "" || strings.Contains(uploadID, "..") || strings.Contains(uploadID, "/") || strings.Contains(uploadID, "\\") {
+		BadRequest(w, "Invalid uploadID")
+		return
+	}
+
+	chunkDir := filepath.Join(os.TempDir(), "litefeather-uploads", uploadID)
+	entries, err := os.ReadDir(chunkDir)
+	if err != nil {
+		Success(w, map[string]interface{}{"chunks": []int{}})
+		return
+	}
+
+	chunks := make([]int, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "chunk_") {
+			var idx int
+			if _, err := fmt.Sscanf(entry.Name(), "chunk_%d", &idx); err == nil {
+				chunks = append(chunks, idx)
+			}
+		}
+	}
+	Success(w, map[string]interface{}{"chunks": chunks})
+}
+
+func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	maxSize := int64(500 << 20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+	if err := r.ParseMultipartForm(maxSize); err != nil {
+		BadRequest(w, err.Error())
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		BadRequest(w, err.Error())
+		return
+	}
+	defer file.Close()
+
+	destPath := r.FormValue("path")
+	relativePath := r.FormValue("relativePath")
+	if strings.Contains(destPath, "..") || strings.Contains(relativePath, "..") {
+		BadRequest(w, "Invalid path")
+		return
+	}
+
+	targetDir := resolvePath(destPath)
+	if relativePath != "" {
+		targetDir = filepath.Join(targetDir, filepath.Dir(relativePath))
+	}
+	os.MkdirAll(targetDir, 0755)
+
+	dst := filepath.Join(targetDir, handler.Filename)
+	f, err := os.Create(dst)
+	if err != nil {
+		InternalServerError(w, err.Error())
+		return
+	}
+	defer f.Close()
+
+	if _, err = f.ReadFrom(file); err != nil {
+		InternalServerError(w, err.Error())
+		return
+	}
+	SuccessWithData(w, map[string]interface{}{"filename": handler.Filename}, "上传成功")
 }
 
 func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {

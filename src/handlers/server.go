@@ -54,7 +54,7 @@ func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManage
 		SSLManager:    NewSSLManager("./ssl"),
 	}
 
-	sm.SitesRouter.SetSharedPort(cm.Server.HTTPPort)
+	sm.SitesRouter.SetSharedPort(cm.GetSharedPort())
 
 	// 初始化文件管理器书签
 	sm.FileManager.UpdateBookmarksFromConfig(cm.Sites.Sites)
@@ -214,7 +214,7 @@ func (m *ServerManager) ReloadSites() error {
 	// 使用 ConfigManager 重新加载
 	if m.ConfigManager != nil {
 		// 重新加载配置文件
-		newCM, err := config.NewConfigManager(m.ConfigManager.Server.BackupDir)
+		newCM, err := config.NewConfigManager(m.ConfigManager.ConfigDir())
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
@@ -224,7 +224,7 @@ func (m *ServerManager) ReloadSites() error {
 
 	// 重建虚拟主机路由
 	m.SitesRouter = NewVirtualHostRouter()
-	m.SitesRouter.SetSharedPort(m.ConfigManager.Server.HTTPPort)
+	m.SitesRouter.SetSharedPort(m.ConfigManager.GetSharedPort())
 
 	for i := range m.ConfigManager.Sites.Sites {
 		site := &m.ConfigManager.Sites.Sites[i]
@@ -464,7 +464,7 @@ func (m *ServerManager) ReloadConfig() error {
 
 	// 使用 ConfigManager 重新加载
 	if m.ConfigManager != nil {
-		newCM, err := config.NewConfigManager(m.ConfigManager.Server.BackupDir)
+		newCM, err := config.NewConfigManager(m.ConfigManager.ConfigDir())
 		if err != nil {
 			return err
 		}

@@ -6,6 +6,7 @@
 
 import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './file-icons.js';
 import { contextMenu } from './context-menu.js';
+import { UploadManager } from './upload-manager.js';
 
 // SVG 图标
 const ICONS = {
@@ -26,6 +27,7 @@ const ICONS = {
     sortAsc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10"/><path d="M11 9h7"/><path d="M11 13h4"/><path d="M3 17l3 3 3-3"/><path d="M6 18V4"/></svg>`,
     sortDesc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10"/><path d="M11 9h7"/><path d="M11 13h4"/><path d="M3 7l3-3 3 3"/><path d="M6 6v14"/></svg>`,
     close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    minimize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 12 14 20 14"/><line x1="4" y1="14" x2="20" y2="14" stroke-dasharray="3 3"/></svg>`,
     plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
     trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
     download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
@@ -38,7 +40,9 @@ const ICONS = {
     extract: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><polyline points="8 12 12 16 16 12"/></svg>`,
     chmod: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     copyPath: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
-    info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
+    info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+    uploadFolder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="12 11 12 17"/><polyline points="9 14 12 11 15 14"/></svg>`
 };
 
 export class FileManager {
@@ -76,8 +80,26 @@ export class FileManager {
     init() {
         this.render();
         this.bindEvents();
+        this.initUploadManager();
         // 创建第一个标签
         this.createTab(this.options.root);
+    }
+
+    initUploadManager() {
+        this.uploadManager = new UploadManager({
+            apiPath: this.options.apiPath,
+            onProgress: (uploads) => this.renderUploadProgress(uploads),
+            onFileComplete: (filename) => {
+                this.options.toast?.success?.(`${filename} 上传成功`);
+            },
+            onAllComplete: () => {
+                this.loadFilesForTab();
+                setTimeout(() => this.hideUploadProgress(), 2000);
+            },
+            onError: (filename, error) => {
+                this.options.toast?.error?.(`${filename} 上传失败: ${error}`);
+            }
+        });
     }
 
     render() {
@@ -205,6 +227,7 @@ export class FileManager {
             </div>
             
             <input type="file" id="fm-file-input" multiple hidden>
+            <input type="file" id="fm-folder-input" webkitdirectory directory multiple hidden>
         `;
         
         // 缓存元素
@@ -221,6 +244,7 @@ export class FileManager {
             content: this.container.querySelector('#fm-content'),
             dropOverlay: this.container.querySelector('#fm-drop-overlay'),
             fileInput: this.container.querySelector('#fm-file-input'),
+            folderInput: this.container.querySelector('#fm-folder-input'),
             viewBtns: this.container.querySelector('#fm-view-btns'),
             newBtn: this.container.querySelector('#fm-new-btn'),
             mkdir: this.container.querySelector('#fm-mkdir'),
@@ -1373,16 +1397,163 @@ export class FileManager {
     uploadFiles(files) {
         const tab = this.getActiveTab();
         if (!tab || !files?.length) return;
-        
-        const formData = new FormData();
-        formData.append('path', tab.path);
-        for (const file of files) formData.append('files', file);
-        
-        fetch(`${this.options.apiPath}/upload`, { method: 'POST', body: formData })
-            .then(() => { this.options.toast?.success?.('上传成功'); this.loadFilesForTab(); })
-            .catch((e) => this.options.toast?.error?.('上传失败: ' + e.message));
-        
+        this.uploadManager.uploadFiles(Array.from(files), tab.path);
         if (this.els.fileInput) this.els.fileInput.value = '';
+    }
+
+    triggerFileUpload() {
+        const input = this.els.fileInput;
+        if (!input) return;
+        input.value = '';
+        input.onchange = () => {
+            if (input.files?.length) {
+                const tab = this.getActiveTab();
+                if (tab) this.uploadManager.uploadFiles(Array.from(input.files), tab.path);
+            }
+            input.onchange = null;
+        };
+        input.click();
+    }
+
+    triggerFolderUpload() {
+        const input = this.els.folderInput;
+        if (!input) return;
+        input.value = '';
+        input.onchange = () => {
+            if (input.files?.length) {
+                const tab = this.getActiveTab();
+                if (tab) {
+                    const relativePaths = new Map();
+                    for (const file of input.files) {
+                        relativePaths.set(file, file.webkitRelativePath);
+                    }
+                    this.uploadManager.uploadFiles(Array.from(input.files), tab.path, { relativePaths });
+                }
+            }
+            input.onchange = null;
+        };
+        input.click();
+    }
+
+    renderUploadProgress(uploads) {
+        if (!uploads?.length) return;
+
+        let panel = this.container.querySelector('.fm-upload-drawer');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'fm-upload-drawer';
+            this.container.querySelector('.file-manager')?.appendChild(panel);
+
+            // 事件委托：只绑定一次，不会被 innerHTML 重建影响
+            panel.addEventListener('click', (e) => {
+                const btn = e.target.closest('.fm-upload-act-btn');
+                if (!btn) return;
+                const { act, uid } = btn.dataset;
+                if (act === 'pause') this.uploadManager.pauseUpload(uid);
+                else if (act === 'resume') this.uploadManager.resumeUpload(uid);
+                else if (act === 'remove') this.uploadManager.removeUpload(uid);
+            });
+
+            // 头部按钮也用委托
+            panel.addEventListener('click', (e) => {
+                if (e.target.closest('.fm-upload-close-btn')) {
+                    this.container.querySelector('.fm-upload-badge')?.remove();
+                    this.hideUploadProgress();
+                } else if (e.target.closest('.fm-upload-min-btn')) {
+                    panel.classList.add('minimized');
+                    panel.classList.remove('open');
+                }
+            });
+        }
+
+        const activeCount = uploads.filter(u => u.status === 'uploading').length;
+        const completedCount = uploads.filter(u => u.status === 'complete').length;
+        const totalSize = uploads.reduce((s, u) => s + (u.file?.size || 0), 0);
+        const uploadedSize = uploads.reduce((s, u) => s + ((u.file?.size || 0) * (u.progress || 0) / 100), 0);
+        const overall = totalSize > 0 ? Math.round((uploadedSize / totalSize) * 100) : 0;
+        const allDone = activeCount === 0 && completedCount === uploads.length;
+
+        // 汇总速度
+        const totalSpeed = uploads.reduce((s, u) => s + (u.speed || 0), 0);
+        const speedStr = this.uploadManager.formatSpeed(totalSpeed);
+
+        // 如果是最小化状态，只更新浮标
+        if (panel.classList.contains('minimized')) {
+            const badge = this.container.querySelector('.fm-upload-badge');
+            if (!badge) {
+                const b = document.createElement('div');
+                b.className = 'fm-upload-badge';
+                b.innerHTML = `<span class="fm-upload-badge-icon">${ICONS.upload}</span><span>${completedCount}/${uploads.length}</span>`;
+                b.addEventListener('click', () => {
+                    panel.classList.remove('minimized');
+                    panel.classList.add('open');
+                    b.remove();
+                });
+                this.container.querySelector('.file-manager')?.appendChild(b);
+            }
+            return;
+        }
+
+        panel.innerHTML = `
+            <div class="fm-upload-header">
+                <span class="fm-upload-title">上传列表</span>
+                <span class="fm-upload-stats">${completedCount}/${uploads.length}${speedStr ? ' · ' + speedStr : ''}</span>
+                <div class="fm-upload-header-actions">
+                    <button class="fm-upload-min-btn" title="最小化">${ICONS.minimize}</button>
+                    <button class="fm-upload-close-btn" title="关闭">${ICONS.close}</button>
+                </div>
+            </div>
+            <div class="fm-upload-overall">
+                <div class="fm-upload-bar"><div class="fm-upload-bar-fill" style="width:${overall}%"></div></div>
+                <span class="fm-upload-percent">${overall}%</span>
+            </div>
+            <div class="fm-upload-file-list">
+                ${uploads.map(u => {
+                    const fSpeed = this.uploadManager.formatSpeed(u.speed);
+                    return `
+                    <div class="fm-upload-file-item ${u.status}">
+                        <div class="fm-upload-file-info">
+                            <span class="fm-upload-file-name">${this.escapeHtml(u.fileName)}</span>
+                            <span class="fm-upload-file-meta">
+                                ${u.file ? formatFileSize(u.file.size) : ''}
+                                ${u.status === 'uploading' ? ' · ' + u.progress + '%' : ''}
+                                ${u.status === 'uploading' && fSpeed ? ' · ' + fSpeed : ''}
+                                ${u.status === 'complete' ? ' · 完成' : ''}
+                                ${u.status === 'error' ? ' · 失败' : ''}
+                                ${u.status === 'paused' ? ' · 暂停 ' + u.progress + '%' : ''}
+                            </span>
+                        </div>
+                        <div class="fm-upload-file-bar">
+                            <div class="fm-upload-file-bar-fill ${u.status === 'complete' ? 'success' : ''} ${u.status === 'error' ? 'error' : ''}" style="width:${u.progress}%"></div>
+                        </div>
+                        <div class="fm-upload-file-actions">
+                            ${u.status === 'uploading' ? `<button class="fm-upload-act-btn" data-act="pause" data-uid="${u.id}" title="暂停">⏸</button><button class="fm-upload-act-btn danger" data-act="remove" data-uid="${u.id}" title="删除">✕</button>` : ''}
+                            ${u.status === 'paused' ? `${u.type === 'chunked' ? `<button class="fm-upload-act-btn" data-act="resume" data-uid="${u.id}" title="继续">▶</button>` : ''}<button class="fm-upload-act-btn danger" data-act="remove" data-uid="${u.id}" title="删除">✕</button>` : ''}
+                            ${u.status === 'error' ? `<button class="fm-upload-act-btn danger" data-act="remove" data-uid="${u.id}" title="删除">✕</button>` : ''}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        `;
+
+        panel.classList.add('open');
+
+        // 全部完成后 3 秒自动关闭
+        if (allDone) {
+            setTimeout(() => {
+                const badge = this.container.querySelector('.fm-upload-badge');
+                if (badge) badge.remove();
+                this.hideUploadProgress();
+            }, 3000);
+        }
+    }
+
+    hideUploadProgress() {
+        const panel = this.container.querySelector('.fm-upload-drawer');
+        if (panel) {
+            panel.classList.remove('open');
+            panel.classList.remove('minimized');
+        }
     }
     
     showContextMenu(e) {
@@ -1556,6 +1727,19 @@ export class FileManager {
                     icon: ICONS.refresh,
                     action: 'refresh',
                     onClick: () => this.loadFilesForTab()
+                },
+                { divider: true },
+                {
+                    label: '上传文件',
+                    icon: ICONS.upload,
+                    action: 'uploadFiles',
+                    onClick: () => this.triggerFileUpload()
+                },
+                {
+                    label: '上传文件夹',
+                    icon: ICONS.uploadFolder,
+                    action: 'uploadFolder',
+                    onClick: () => this.triggerFolderUpload()
                 },
                 { divider: true },
                 {

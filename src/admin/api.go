@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -89,10 +92,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"sites":             sites,
 		"ftp_running":       ftpRunning,
 		"ftp_port":          h.ConfigManager.FTP.Port,
-		"ftp_root":          h.ConfigManager.FTP.Root,
-		"ftp_dir":           h.ConfigManager.Server.FTPDir,
-		"backup_dir":        h.ConfigManager.Server.BackupDir,
-	}
+							}
 
 	// 如果有 CSRF token，添加到响应中
 	if csrfToken != "" {
@@ -233,7 +233,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		// 保留原有字段
 		"memory_mb":  memoryMB,
 		"goroutines": runtime.NumGoroutine(),
-		"os":         runtime.GOOS,
+	"os":         runtime.GOOS,
 		"arch":       runtime.GOARCH,
 	}
 
@@ -408,14 +408,14 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 			"bind_domain": h.ConfigManager.Server.AdminDomain,
 			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
 		},
-		"http": map[string]interface{}{
-			"port": h.ConfigManager.Server.HTTPPort,
-			"root": h.ConfigManager.Server.HTTPDir,
+		"directories": map[string]interface{}{
+			"sites":  h.ConfigManager.Server.Directories.Sites,
+			"ftp":    h.ConfigManager.Server.Directories.FTP,
+			"backup": h.ConfigManager.Server.Directories.Backup,
 		},
 		"ftp": map[string]interface{}{
 			"enabled": h.ConfigManager.FTP.Enabled,
 			"port":    h.ConfigManager.FTP.Port,
-			"root":    h.ConfigManager.FTP.Root,
 			"users":   h.ConfigManager.FTP.Users,
 		},
 		"sites": h.ConfigManager.Sites.Sites,
@@ -427,7 +427,12 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 			"level":          h.ConfigManager.Server.Log.Level,
 			"levels":         h.ConfigManager.Server.Log.Levels,
 		},
-		"backup_dir": h.ConfigManager.Server.BackupDir,
+		"backup": map[string]interface{}{
+			"auto_enabled": h.ConfigManager.Server.Backup.AutoEnabled,
+			"schedule":     h.ConfigManager.Server.Backup.Schedule,
+			"retention":    h.ConfigManager.Server.Backup.Retention,
+			"items":        h.ConfigManager.Server.Backup.Items,
+		},
 	}
 	Success(w, cfg)
 }
@@ -470,13 +475,37 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 解析 http 配置
-	if http, ok := data["http"].(map[string]interface{}); ok {
-		if v, ok := http["port"].(float64); ok {
-			h.ConfigManager.Server.HTTPPort = int(v)
+	// 解析 directories 配置
+	if dirs, ok := data["directories"].(map[string]interface{}); ok {
+		if v, ok := dirs["sites"].(string); ok {
+			h.ConfigManager.Server.Directories.Sites = v
 		}
-		if v, ok := http["root"].(string); ok {
-			h.ConfigManager.Server.HTTPDir = v
+		if v, ok := dirs["ftp"].(string); ok {
+			h.ConfigManager.Server.Directories.FTP = v
+		}
+		if v, ok := dirs["backup"].(string); ok {
+			h.ConfigManager.Server.Directories.Backup = v
+		}
+	}
+	// 解析 backup 配置
+	if backup, ok := data["backup"].(map[string]interface{}); ok {
+		if v, ok := backup["auto_enabled"].(bool); ok {
+			h.ConfigManager.Server.Backup.AutoEnabled = v
+		}
+		if v, ok := backup["schedule"].(string); ok {
+			h.ConfigManager.Server.Backup.Schedule = v
+		}
+		if v, ok := backup["retention"].(float64); ok {
+			h.ConfigManager.Server.Backup.Retention = int(v)
+		}
+		if items, ok := backup["items"].([]interface{}); ok {
+			itemStrs := make([]string, 0, len(items))
+			for _, item := range items {
+				if s, ok := item.(string); ok {
+					itemStrs = append(itemStrs, s)
+				}
+			}
+			h.ConfigManager.Server.Backup.Items = itemStrs
 		}
 	}
 
@@ -489,7 +518,7 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 			h.ConfigManager.FTP.Port = int(v)
 		}
 		if v, ok := ftp["root"].(string); ok {
-			h.ConfigManager.FTP.Root = v
+			h.ConfigManager.Server.Directories.FTP = v
 		}
 	}
 
@@ -548,11 +577,6 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 解析 backup_dir
-	if v, ok := data["backup_dir"].(string); ok {
-		h.ConfigManager.Server.BackupDir = v
-	}
-
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
 		InternalServerError(w, err.Error())
@@ -571,92 +595,59 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 恢复默认配置
-	defaultConfig := map[string]interface{}{
-		"admin": map[string]interface{}{
-			"username": "admin",
-			"password": "",
-			"port":     9527,
-			"path":     "/admin",
-		},
-		"http": map[string]interface{}{
-			"port": 3080,
-			"root": "./web",
-		},
-		"ftp": map[string]interface{}{
-			"enabled": false,
-			"port":    2121,
-			"root":    "./ftp",
-			"users":   []config.FTPUser{},
-		},
-		"sites": []config.SiteConfig{
-				{
-					ID:         "default",
-					Name:       "默认站点",
-					Enabled:    true,
-					Type:       "static",
-					Port:       3080,
-					Root:       "./web",
-					IndexFiles: []string{"index.html", "index.htm"},
-					AutoIndex:  true,
-					CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
-				},
-			},
-		"log": map[string]interface{}{
-			"retention_days": 30,
-			"max_size_mb":    100,
-			"compress_days":  7,
-			"cleanup_hour":   3,
-			"level":          "info",
-			"levels":         map[string]string{},
-		},
-		"backup_dir": "./backups",
+	if h.ConfigManager == nil {
+		InternalServerError(w, "配置管理器未初始化")
+		return
 	}
 
-	// 重置 ConfigManager
-	if h.ConfigManager != nil {
-		h.ConfigManager.Server.AdminUsername = "admin"
-		h.ConfigManager.Server.AdminPort = 9527
-		h.ConfigManager.Server.AdminPath = "/admin"
-		h.ConfigManager.SetAdminPassword("admin123")
-		h.ConfigManager.Server.HTTPPort = 3080
-		h.ConfigManager.Server.HTTPDir = "./web"
-		h.ConfigManager.Server.BackupDir = "./backups"
-		h.ConfigManager.FTP.Enabled = false
-		h.ConfigManager.FTP.Port = 2121
-		h.ConfigManager.FTP.Root = "./ftp"
-		h.ConfigManager.FTP.Users = []config.FTPUser{}
-		h.ConfigManager.Sites.Sites = []config.SiteConfig{
-				{
-					ID:         "default",
-					Name:       "默认站点",
-					Enabled:    true,
-					Type:       "static",
-					Port:       3080,
-					Root:       "./web",
-					IndexFiles: []string{"index.html", "index.htm"},
-					AutoIndex:  true,
-					CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
-				},
-			}
-		h.ConfigManager.Server.Log = config.LogConfig{
-			RetentionDays: 30,
-			MaxSizeMB:     100,
-			CompressDays:  7,
-			CleanupHour:   3,
-			Level:         "info",
-			Levels:        map[string]string{},
-		}
+	// 使用 ConfigManager 统一的默认配置方法重置
+	h.ConfigManager.ResetToDefaults()
 
-		if err := h.ConfigManager.Save(); err != nil {
-			InternalServerError(w, err.Error())
-			handlers.LogPanelConfigChange(username, "重置配置", false)
-			return
-		}
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, err.Error())
+		handlers.LogPanelConfigChange(username, "重置配置", false)
+		return
 	}
 
 	handlers.LogPanelConfigChange(username, "重置配置", true)
-	Success(w, defaultConfig)
+
+	// 返回重置后的完整配置（复用 getConfig 逻辑）
+	cfg := map[string]interface{}{
+		"admin": map[string]interface{}{
+			"username": h.ConfigManager.Server.AdminUsername,
+			"password": "",
+			"port":     h.ConfigManager.Server.AdminPort,
+			"path":     h.ConfigManager.Server.AdminPath,
+			"bind_domain": h.ConfigManager.Server.AdminDomain,
+			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
+		},
+		"directories": map[string]interface{}{
+			"sites":  h.ConfigManager.Server.Directories.Sites,
+			"ftp":    h.ConfigManager.Server.Directories.FTP,
+			"backup": h.ConfigManager.Server.Directories.Backup,
+		},
+		"ftp": map[string]interface{}{
+			"enabled": h.ConfigManager.FTP.Enabled,
+			"port":    h.ConfigManager.FTP.Port,
+			"users":   h.ConfigManager.FTP.Users,
+		},
+		"sites": h.ConfigManager.Sites.Sites,
+		"log": map[string]interface{}{
+			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
+			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
+			"compress_days":  h.ConfigManager.Server.Log.CompressDays,
+			"cleanup_hour":   h.ConfigManager.Server.Log.CleanupHour,
+			"level":          h.ConfigManager.Server.Log.Level,
+			"levels":         h.ConfigManager.Server.Log.Levels,
+		},
+		"backup": map[string]interface{}{
+			"auto_enabled": h.ConfigManager.Server.Backup.AutoEnabled,
+			"schedule":     h.ConfigManager.Server.Backup.Schedule,
+			"retention":    h.ConfigManager.Server.Backup.Retention,
+			"items":        h.ConfigManager.Server.Backup.Items,
+		},
+	}
+	Success(w, cfg)
 }
 
 // ==================== 日志 ====================
@@ -941,4 +932,199 @@ func queryNTP(server string) (*time.Time, error) {
 
 	t := time.Unix(unixSec, unixNsec)
 	return &t, nil
+}
+
+
+// ==================== 备份管理 ====================
+
+// listBackups 列出备份文件
+func (h *Handler) listBackups(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	username := h.getSessionUsername(r)
+	clientIP := getClientIP(r)
+	defer func() {
+		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
+	}()
+
+	backupDir := h.ConfigManager.GetBackupDir()
+	absPath := resolvePath(backupDir)
+
+	entries, err := os.ReadDir(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			Success(w, map[string]interface{}{
+				"backups": []interface{}{},
+				"dir":     backupDir,
+			})
+			return
+		}
+		InternalServerError(w, "读取备份目录失败: "+err.Error())
+		return
+	}
+
+	backups := make([]map[string]interface{}, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		name := entry.Name()
+		if !(strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip")) {
+			continue
+		}
+		backups = append(backups, map[string]interface{}{
+			"name":     name,
+			"size":     info.Size(),
+			"modified": info.ModTime().Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// 按修改时间倒序
+	for i, j := 0, len(backups)-1; i < j; i, j = i+1, j-1 {
+		backups[i], backups[j] = backups[j], backups[i]
+	}
+
+	Success(w, map[string]interface{}{
+		"backups": backups,
+		"dir":     backupDir,
+	})
+}
+
+// createBackup 手动创建备份
+func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	username := h.getSessionUsername(r)
+	clientIP := getClientIP(r)
+	defer func() {
+		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
+	}()
+
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	backupDir := h.ConfigManager.GetBackupDir()
+	absBackupDir := resolvePath(backupDir)
+	os.MkdirAll(absBackupDir, 0755)
+
+	timestamp := time.Now().Format("2006-01-02_150405")
+	backupName := fmt.Sprintf("backup_%s.tar.gz", timestamp)
+	backupPath := filepath.Join(absBackupDir, backupName)
+
+	configDir := h.ConfigManager.ConfigDir()
+	absConfigDir := resolvePath(configDir)
+
+	if err := createTarGz(backupPath, absConfigDir, "config"); err != nil {
+		InternalServerError(w, "创建备份失败: "+err.Error())
+		return
+	}
+
+	handlers.LogPanelConfigChange(username, "创建备份 "+backupName, true)
+	Success(w, map[string]interface{}{
+		"name":    backupName,
+		"message": "备份创建成功",
+	})
+}
+
+// deleteBackup 删除备份
+func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	username := h.getSessionUsername(r)
+	clientIP := getClientIP(r)
+	defer func() {
+		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
+	}()
+
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+
+	name, ok := data["name"].(string)
+	if !ok || name == "" {
+		BadRequest(w, "备份文件名不能为空")
+		return
+	}
+
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		BadRequest(w, "无效的备份文件名")
+		return
+	}
+
+	backupDir := h.ConfigManager.GetBackupDir()
+	absPath := filepath.Join(resolvePath(backupDir), name)
+
+	if err := os.Remove(absPath); err != nil {
+		InternalServerError(w, "删除备份失败: "+err.Error())
+		return
+	}
+
+	handlers.LogPanelConfigChange(username, "删除备份 "+name, true)
+	SuccessMessage(w, "备份已删除")
+}
+
+// createTarGz 创建 tar.gz 压缩包
+func createTarGz(outputPath, srcDir, prefix string) error {
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+
+		if relPath == "." {
+			return nil
+		}
+
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+
+		header.Name = filepath.Join(prefix, relPath)
+		if info.IsDir() {
+			header.Name += "/"
+		}
+
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			_, err = io.Copy(tw, f)
+			return err
+		}
+
+		return nil
+	})
 }

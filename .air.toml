@@ -19,7 +19,7 @@ tmp_dir = "tmp"
   # 要包含的目录
   include_dir = ["src", "embed.go"]
   # 要忽略的目录
-  exclude_dir = ["tmp", "vendor", "testdata", "web", "ftp", "log", "docs"]
+  exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs"]
   # 要忽略的文件
   exclude_file = []
   # 延迟时间（毫秒）

@@ -362,7 +362,7 @@ class SitesTab extends BaseTab {
         };
 
         if (type === 'static') {
-            data.root = root || './data/sites/default';
+            data.root = root || './sites/default';
             data.index_files = ['index.html', 'index.htm'];
             data.auto_index = true;
         } else {

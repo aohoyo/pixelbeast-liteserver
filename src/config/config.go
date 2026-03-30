@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -25,10 +26,7 @@ type ConfigManager struct {
 
 // ServerConfig 服务配置
 type ServerConfig struct {
-	// HTTP
-	HTTPPort  int    `json:"http_port"`
-	HTTPDir   string `json:"http_dir"`
-	AdminPort int    `json:"admin_port"`
+	AdminPort int `json:"admin_port"`
 
 	// Admin（密码加密存储）
 	AdminUsername string `json:"admin_username"`
@@ -41,12 +39,20 @@ type ServerConfig struct {
 	// 面板 SSL（前端显示，后端暂未实现）
 	AdminSSLEnabled bool `json:"admin_ssl_enabled"`
 
+	// 目录配置
+	Directories DirectoriesConfig `json:"directories"`
+
+	// 备份配置
+	Backup BackupConfig `json:"backup"`
+
 	// 日志
 	Log LogConfig `json:"log"`
 
-	// 全局
-	FTPDir    string `json:"ftp_dir"`
-	BackupDir string `json:"backup_dir"`
+	// 旧字段（迁移后删除）
+	HTTPPort  int    `json:"http_port,omitempty"`
+	HTTPDir   string `json:"http_dir,omitempty"`
+	FTPDir    string `json:"ftp_dir,omitempty"`
+	BackupDir string `json:"backup_dir,omitempty"`
 }
 
 // SitesConfig 站点配置
@@ -101,8 +107,10 @@ type SSLConfig struct {
 type FTPConfig struct {
 	Enabled bool      `json:"enabled"`
 	Port    int       `json:"port"`
-	Root    string    `json:"root"`
 	Users   []FTPUser `json:"users"`
+
+	// 旧字段（迁移后删除）
+	Root string `json:"root,omitempty"`
 }
 
 // LogConfig 日志配置
@@ -113,6 +121,21 @@ type LogConfig struct {
 	CleanupHour   int               `json:"cleanup_hour"`
 	Level         string            `json:"level"`
 	Levels        map[string]string `json:"levels,omitempty"`
+}
+
+// DirectoriesConfig 目录配置
+type DirectoriesConfig struct {
+	Sites  string `json:"sites"`  // 站点默认根目录
+	FTP    string `json:"ftp"`    // FTP 根目录
+	Backup string `json:"backup"` // 备份目录
+}
+
+// BackupConfig 备份配置
+type BackupConfig struct {
+	AutoEnabled bool     `json:"auto_enabled"`           // 自动备份
+	Schedule    string   `json:"schedule"`               // daily, weekly, monthly
+	Retention   int      `json:"retention"`              // 保留份数
+	Items       []string `json:"items"`                  // 备份内容：config, sites, ftp
 }
 
 // FTPUser FTP 用户
@@ -172,8 +195,33 @@ func (cm *ConfigManager) load() error {
 		return err
 	}
 
-	return nil
-}
+		// 确保默认站点目录存在
+		cm.ensureDefaultDirectories()
+
+		return nil
+	}
+
+	// ensureDefaultDirectories 确保关键目录存在
+	func (cm *ConfigManager) ensureDefaultDirectories() {
+		// 站点根目录
+		sitesDir := cm.GetSitesDir()
+		if err := os.MkdirAll(sitesDir, 0755); err != nil {
+			log.Printf("警告: 创建站点目录失败: %v", err)
+		}
+
+		// 默认站点目录
+		for _, site := range cm.Sites.Sites {
+			if site.Root != "" {
+				os.MkdirAll(site.Root, 0755)
+			}
+		}
+
+		// FTP 根目录
+		ftpDir := cm.GetFTPRoot()
+		if ftpDir != "" {
+			os.MkdirAll(ftpDir, 0755)
+		}
+	}
 
 // loadServer 加载服务配置
 func (cm *ConfigManager) loadServer() error {
@@ -195,7 +243,112 @@ func (cm *ConfigManager) loadServer() error {
 	}
 
 	cm.Server = &cfg
+	// 迁移旧字段到新结构
+	cm.migrateConfig()
 	return nil
+}
+
+// migrateConfig 迁移旧配置字段到新结构
+func (cm *ConfigManager) migrateConfig() {
+	changed := false
+
+	// 迁移 http_port → 无（端口由站点管理，不再需要全局配置）
+
+	// 迁移 http_dir → directories.sites
+	if cm.Server.HTTPDir != "" && cm.Server.Directories.Sites == "" {
+		cm.Server.Directories.Sites = cm.Server.HTTPDir
+		cm.Server.HTTPDir = ""
+		changed = true
+	}
+
+	// 迁移 ftp_dir → directories.ftp
+	if cm.Server.FTPDir != "" && cm.Server.Directories.FTP == "" {
+		cm.Server.Directories.FTP = cm.Server.FTPDir
+		cm.Server.FTPDir = ""
+		changed = true
+	}
+
+	// 迁移 ftp.root → directories.ftp
+	if cm.FTP != nil && cm.FTP.Root != "" && cm.Server.Directories.FTP == "" {
+		cm.Server.Directories.FTP = cm.FTP.Root
+		cm.FTP.Root = ""
+		changed = true
+	}
+
+	// 迁移 backup_dir → directories.backup
+	if cm.Server.BackupDir != "" && cm.Server.Directories.Backup == "" {
+		cm.Server.Directories.Backup = cm.Server.BackupDir
+		cm.Server.BackupDir = ""
+		changed = true
+	}
+
+	// 确保 directories 有默认值
+	if cm.Server.Directories.Sites == "" {
+		cm.Server.Directories.Sites = "./sites"
+		changed = true
+	}
+	if cm.Server.Directories.FTP == "" {
+		cm.Server.Directories.FTP = "./ftp"
+		changed = true
+	}
+	if cm.Server.Directories.Backup == "" {
+		cm.Server.Directories.Backup = "./backups"
+		changed = true
+	}
+
+	// 确保 backup 有默认值
+	if cm.Server.Backup.Schedule == "" {
+		cm.Server.Backup.Schedule = "daily"
+		changed = true
+	}
+	if cm.Server.Backup.Retention == 0 {
+		cm.Server.Backup.Retention = 7
+		changed = true
+	}
+	if cm.Server.Backup.Items == nil {
+		cm.Server.Backup.Items = []string{"config", "sites", "ftp"}
+		changed = true
+	}
+
+	// 保存迁移后的配置
+	if changed {
+		cm.saveServer()
+		if cm.FTP != nil {
+			cm.saveFTP()
+		}
+	}
+}
+
+
+// ========== 辅助方法 ==========
+
+// ConfigDir 获取配置目录路径
+func (cm *ConfigManager) ConfigDir() string {
+	return cm.configDir
+}
+
+// GetFTPRoot 获取 FTP 根目录
+func (cm *ConfigManager) GetFTPRoot() string {
+	if cm.Server.Directories.FTP != "" {
+		return cm.Server.Directories.FTP
+	}
+	return "./ftp"
+}
+
+// GetSitesDir 获取站点默认根目录
+func (cm *ConfigManager) GetSitesDir() string {
+	if cm.Server.Directories.Sites != "" {
+		return cm.Server.Directories.Sites
+	}
+	return "./sites"
+}
+
+// GetBackupDir 获取备份目录
+func (cm *ConfigManager) GetBackupDir() string {
+	if cm.Server.Directories.Backup != "" {
+		return cm.Server.Directories.Backup
+	}
+	return "./backups"
 }
 
 // loadSites 加载站点配置
@@ -295,12 +448,21 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
 
 	return &ServerConfig{
-		HTTPPort:      3080,
-		HTTPDir:       "./web",
 		AdminPort:     9527,
 		AdminUsername: "admin",
 		AdminPassword: encryptedPassword,
-		AdminPath:     "/admin", // 默认安全入口
+		AdminPath:     "/admin",
+		Directories: DirectoriesConfig{
+			Sites:  "./sites",
+			FTP:    "./ftp",
+			Backup: "./backups",
+		},
+		Backup: BackupConfig{
+			AutoEnabled: true,
+			Schedule:    "daily",
+			Retention:   7,
+			Items:       []string{"config", "sites", "ftp"},
+		},
 		Log: LogConfig{
 			RetentionDays: 30,
 			MaxSizeMB:     100,
@@ -308,8 +470,6 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 			CleanupHour:   3,
 			Level:         "info",
 		},
-		FTPDir:    "./ftp",
-		BackupDir: "./backups",
 	}
 }
 
@@ -318,16 +478,15 @@ func (cm *ConfigManager) defaultFTPConfig() *FTPConfig {
 	return &FTPConfig{
 		Enabled: false,
 		Port:    2121,
-		Root:    "./ftp",
 		Users:   []FTPUser{},
 	}
 }
 
 // defaultSitesConfig 默认站点配置
 func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
-	httpDir := cm.Server.HTTPDir
-	if httpDir == "" {
-		httpDir = "./web"
+	sitesDir := cm.Server.Directories.Sites
+	if sitesDir == "" {
+		sitesDir = "./sites"
 	}
 	return &SitesConfig{
 		Sites: []SiteConfig{
@@ -336,8 +495,8 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 				Name:       "默认站点",
 				Enabled:    true,
 				Type:       "static",
-				Port:       cm.Server.HTTPPort,
-				Root:       httpDir,
+				Port:       3080,
+				Root:       sitesDir + "/default",
 				IndexFiles: []string{"index.html", "index.htm"},
 				AutoIndex:  true,
 				CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
@@ -346,7 +505,32 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 	}
 }
 
+// ========== 配置重置 ==========
+
+// ResetToDefaults 重置所有配置为默认值
+func (cm *ConfigManager) ResetToDefaults() {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cm.Server = cm.defaultServerConfig()
+	cm.Sites = cm.defaultSitesConfig()
+	cm.FTP = cm.defaultFTPConfig()
+}
+
 // ========== Admin 密码管理 ==========
+
+// GetSharedPort 获取共享端口（从第一个站点推导）
+func (cm *ConfigManager) GetSharedPort() int {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for _, site := range cm.Sites.Sites {
+		if site.Enabled && site.Port > 0 {
+			return site.Port
+		}
+	}
+	return 3080
+}
 
 // SetAdminPassword 设置管理员密码（加密存储）
 func (cm *ConfigManager) SetAdminPassword(password string) error {

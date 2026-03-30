@@ -60,7 +60,7 @@ func main() {
 	// 创建 FTP 服务器
 	ftpCfg := cm.FTP
 	if ftpCfg.Port > 0 {
-		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm)
+		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm, cm.GetFTPRoot())
 		if err != nil {
 			handlers.LogSystemWarn("创建FTP服务器失败: %v", err)
 		} else {

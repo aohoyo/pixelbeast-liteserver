@@ -5,7 +5,7 @@
  * 参考 Windows 资源管理器设计
  */
 
-import { getFileIcon, formatFileSize, formatDate } from './file-icons.js';
+import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from '../file-icons.js';
 
 // 当前实例
 let currentInstance = null;
@@ -99,6 +99,7 @@ class FileBrowser {
                     <!-- 地址栏 -->
                     <div class="fb-address-bar">
                         <div class="fb-path-breadcrumb" id="fb-breadcrumb"></div>
+                        <input type="text" class="fb-address-input" id="fb-path-input" style="display:none;" placeholder="输入路径">
                     </div>
                     
                     <!-- 搜索框 -->
@@ -157,6 +158,23 @@ class FileBrowser {
                 this.filterAndRender();
             }, 200);
         };
+
+        // 地址栏输入框
+        const pathInput = modal.querySelector('#fb-path-input');
+        pathInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const path = pathInput.value.trim();
+                if (path) this.loadDirectory(path);
+                this.switchToBreadcrumbMode();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this.switchToBreadcrumbMode();
+            }
+        });
+        pathInput.addEventListener('blur', () => {
+            setTimeout(() => this.switchToBreadcrumbMode(), 150);
+        });
         
         // 键盘快捷键
         this.keyHandler = (e) => {
@@ -282,13 +300,13 @@ class FileBrowser {
         const isThisPC = this.currentPath === '此电脑';
         
         listEl.innerHTML = items.map(item => {
-            const icon = getFileIcon(item.name, item.is_dir);
+            const iconClass = getIconColorClass(item.name, item.is_dir);
+            const iconHtml = getFileIcon(item.name, item.is_dir);
             const selectable = this.isSelectable(item);
-            
+
             // 构建路径
             let itemPath;
             if (isThisPC) {
-                // "此电脑"视图：驱动器路径如 C:/
                 itemPath = item.name + '/';
             } else if (this.currentPath === '/') {
                 itemPath = '/' + item.name;
@@ -296,26 +314,15 @@ class FileBrowser {
                 const basePath = this.currentPath.endsWith('/') ? this.currentPath : this.currentPath + '/';
                 itemPath = basePath + item.name;
             }
-            
+
             const selected = this.selectedItems.some(s => s.path === itemPath);
-            
-            // 驱动器图标特殊处理
-            let iconHtml = icon.svg;
-            if (isThisPC && item.is_dir) {
-                // 显示驱动器图标
-                iconHtml = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="4" width="20" height="16" rx="2"/>
-                    <path d="M6 8h.01M10 8h.01"/>
-                    <line x1="2" y1="14" x2="22" y2="14"/>
-                </svg>`;
-            }
-            
+
             return `
                 <div class="fb-item ${selected ? 'selected' : ''} ${!selectable ? 'disabled' : ''}"
                      data-path="${itemPath}"
                      data-name="${item.name}"
                      data-is-dir="${item.is_dir}">
-                    <span class="fb-item-icon" style="color: ${icon.color}">${iconHtml}</span>
+                    <span class="fb-item-icon ${iconClass}">${iconHtml}</span>
                     <span class="fb-item-name">${this.escapeHtml(item.name)}${isThisPC && item.is_dir ? '/' : ''}</span>
                     ${!item.is_dir ? `<span class="fb-item-size">${formatFileSize(item.size)}</span>` : ''}
                     ${!isThisPC && item.modified ? `<span class="fb-item-date">${formatDate(item.modified)}</span>` : ''}
@@ -385,6 +392,49 @@ class FileBrowser {
                 }
             };
         });
+
+        // 双击面包屑切换到输入模式
+        breadcrumb.ondblclick = (e) => {
+            e.preventDefault();
+            this.switchToInputMode();
+        };
+
+        // 点击空白区域也切换到输入模式
+        breadcrumb.onclick = (e) => {
+            if (!e.target.closest('.fb-crumb')) {
+                this.switchToInputMode();
+            }
+        };
+    }
+
+    switchToInputMode() {
+        const breadcrumb = this.modal.querySelector('#fb-breadcrumb');
+        const input = this.modal.querySelector('#fb-path-input');
+        if (!breadcrumb || !input) return;
+
+        breadcrumb.style.display = 'none';
+        input.style.display = 'block';
+
+        // 显示完整路径
+        let displayPath = this.currentPath;
+        if (this.programDir && (displayPath === '.' || displayPath === './')) {
+            displayPath = this.programDir;
+        } else if (this.programDir && displayPath.startsWith('./')) {
+            displayPath = this.programDir + displayPath.substring(1);
+        }
+
+        input.value = displayPath;
+        input.focus();
+        input.select();
+    }
+
+    switchToBreadcrumbMode() {
+        const breadcrumb = this.modal.querySelector('#fb-breadcrumb');
+        const input = this.modal.querySelector('#fb-path-input');
+        if (!breadcrumb || !input) return;
+
+        input.style.display = 'none';
+        breadcrumb.style.display = 'flex';
     }
     
     goBack() {
@@ -513,11 +563,7 @@ class FileBrowser {
         const newItem = document.createElement('div');
         newItem.className = 'fb-item new-folder';
         newItem.innerHTML = `
-            <span class="fb-item-icon" style="color: var(--warning)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-            </span>
+            <span class="fb-item-icon file-icon-folder">${getFileIcon('', true)}</span>
             <input type="text" class="fb-folder-name-input" placeholder="输入文件夹名称" autofocus>
             <div class="fb-folder-actions">
                 <button class="fb-folder-btn confirm">确定</button>

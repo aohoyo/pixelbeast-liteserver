@@ -42,14 +42,9 @@ class ServicesTab extends BaseTab {
     updateUI(data) {
         if (!data) return;
 
-        // HTTP 服务
-        this.setText('#http-service-port', data.http_port);
-        this.setText('#http-service-root', data.http_root);
-        this.setStatusBadge('#http-service-status', data.http_running);
-
         // FTP 服务
         this.setText('#ftp-service-port', data.ftp_port);
-        this.setText('#ftp-service-root', data.ftp_root);
+        this.setText('#ftp-service-root', data.directories?.ftp || './ftp');
         this.setStatusBadge('#ftp-service-status', data.ftp_running);
         this.setStatusBadge('#ftp-service-status-badge', data.ftp_running);
         this.updateControlButtons(data.ftp_running);

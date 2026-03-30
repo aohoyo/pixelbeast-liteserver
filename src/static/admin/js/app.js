@@ -277,7 +277,6 @@ async function loadInitialData() {
 
                 state.batch({
                     'services': {
-                        http: { running: true, port: data.http_port },
                         ftp: { running: data.ftp_running, port: data.ftp_port }
                     }
                 });

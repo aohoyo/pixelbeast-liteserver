@@ -93,7 +93,7 @@ func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	absPath := absRoot
 	if subPath != "" && subPath != "/" {
 		absPath = filepath.Join(absRoot, subPath)
@@ -146,7 +146,7 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir := filepath.Join(h.ConfigManager.FTP.Root, destPath)
+	targetDir := filepath.Join(h.ConfigManager.GetFTPRoot(), destPath)
 	os.MkdirAll(targetDir, 0755)
 
 	dst := filepath.Join(targetDir, handler.Filename)
@@ -183,9 +183,9 @@ func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建完整路径
-	fullPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.Path, "/"), req.Name)
+	fullPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.Name)
 	absPath, _ := filepath.Abs(fullPath)
-	absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absPath, absRoot) {
 		Forbidden(w, "Access denied")
 		return
@@ -216,7 +216,7 @@ func (h *Handler) mkdirFtp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newDir := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.Path, "/"), req.Name)
+	newDir := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.Name)
 	if err := os.MkdirAll(newDir, 0755); err != nil {
 		InternalServerError(w, err.Error())
 		return
@@ -235,9 +235,9 @@ func (h *Handler) downloadFtpFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建完整路径
-	fullPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(path, "/"), name)
+	fullPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(path, "/"), name)
 	absPath, _ := filepath.Abs(fullPath)
-	absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absPath, absRoot) {
 		Forbidden(w, "Access denied")
 		return
@@ -291,16 +291,16 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 源文件路径
-	oldPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.Path, "/"), req.OldName)
+	oldPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.OldName)
 	absOld, _ := filepath.Abs(oldPath)
-	absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absOld, absRoot) {
 		Forbidden(w, "Access denied")
 		return
 	}
 
 	// 目标文件路径
-	newPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.Path, "/"), req.NewName)
+	newPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.NewName)
 	absNew, _ := filepath.Abs(newPath)
 	if !strings.HasPrefix(absNew, absRoot) {
 		Forbidden(w, "Access denied")
@@ -336,16 +336,16 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 源文件路径
-	srcPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.SrcPath, "/"), req.SrcName)
+	srcPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.SrcPath, "/"), req.SrcName)
 	absSrc, _ := filepath.Abs(srcPath)
-	absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absSrc, absRoot) {
 		Forbidden(w, "Access denied")
 		return
 	}
 
 	// 目标文件路径
-	dstPath := filepath.Join(h.ConfigManager.FTP.Root, strings.TrimPrefix(req.SrcPath, "/"), req.DstName)
+	dstPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.SrcPath, "/"), req.DstName)
 	absDst, _ := filepath.Abs(dstPath)
 	if !strings.HasPrefix(absDst, absRoot) {
 		Forbidden(w, "Access denied")
@@ -441,7 +441,7 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 
 	// 设置默认根目录
 	if req.RootPath == "" {
-		req.RootPath = filepath.Join(h.ConfigManager.FTP.Root, req.Username)
+		req.RootPath = filepath.Join(h.ConfigManager.GetFTPRoot(), req.Username)
 	}
 
 	// 自动创建用户目录
@@ -534,7 +534,7 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 	// 如果勾选删除文件，删除用户目录
 	if req.DeleteFiles && userRootPath != "" {
 		// 安全检查：确保路径在 FTP 根目录下
-		absRoot, _ := filepath.Abs(h.ConfigManager.FTP.Root)
+		absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 		absUserPath, _ := filepath.Abs(userRootPath)
 		
 		if strings.HasPrefix(absUserPath, absRoot) {
@@ -650,8 +650,7 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
-		h.ConfigManager.FTP.Users = h.ConfigManager.FTP.Users
-		if err := h.ConfigManager.Save(); err != nil {
+				if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, "保存配置失败: "+err.Error())
 			return
 		}

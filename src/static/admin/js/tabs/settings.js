@@ -5,6 +5,7 @@
  */
 
 import { BaseTab } from './BaseTab.js';
+import { openFileBrowser } from '../components/file-browser/index.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {
@@ -88,6 +89,14 @@ class SettingsTab extends BaseTab {
             }
         });
 
+        // 目录选择器
+        this.$$('.directory-picker-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+        });
+
+        // 创建备份按钮
+        this.$('#btn-create-backup')?.addEventListener('click', () => this.createBackup());
+
         // 监听配置变化
         this.$$('.settings-content input, .settings-content select').forEach(input => {
             input.addEventListener('change', () => {
@@ -114,6 +123,7 @@ class SettingsTab extends BaseTab {
             this.config = config;
             this.originalConfig = JSON.parse(JSON.stringify(this.config));
             this.render();
+            this.loadBackups();
             console.log('[Settings] 配置加载成功', this.config);
         } catch (error) {
             console.error('[Settings] 加载配置失败:', error);
@@ -124,15 +134,16 @@ class SettingsTab extends BaseTab {
     render() {
         if (!this.config) return;
 
-        const { admin, http, log, backup_dir } = this.config;
+        const { admin, directories, log, backup } = this.config;
 
         // 基础设置
         this.setValue('#server-name', 'PixelBeast Server');
         this.setValue('#timezone', 'Asia/Shanghai');
 
-        // HTTP 服务
-        this.setValue('#http-port', http?.port || 3080);
-        this.setValue('#http-root', http?.root || './web');
+        // 目录设置
+        this.setValue('#dir-sites', directories?.sites || './sites');
+        this.setValue('#dir-ftp', directories?.ftp || './ftp');
+        this.setValue('#dir-backup', directories?.backup || './backups');
 
         // 管理面板
         this.setValue('#admin-port', admin?.port || 9527);
@@ -150,24 +161,147 @@ class SettingsTab extends BaseTab {
         this.setValue('#log-cleanup-hour', log?.cleanup_hour || 3);
 
         // 备份设置
-        this.setValue('#backup-dir', backup_dir || './backups');
-        this.setChecked('#auto-backup', true);
+        this.setChecked('#backup-enabled', backup?.auto_enabled ?? false);
+        const items = backup?.items || ['config', 'sites', 'ftp'];
+        this.setChecked('#backup-item-config', items.includes('config'));
+        this.setChecked('#backup-item-sites', items.includes('sites'));
+        this.setChecked('#backup-item-ftp', items.includes('ftp'));
+        this.setValue('#backup-schedule', backup?.schedule || 'daily');
+        this.setValue('#backup-retention', backup?.retention || 7);
 
         // FTP 配置
         const ftp = this.config.ftp || {};
         this.setChecked('#ftp-enabled', ftp.enabled ?? false);
         this.setValue('#ftp-port', ftp.port || 2121);
-        this.setValue('#ftp-root', ftp.root || './ftp');
 
         this.hasChanges = false;
+    }
+
+    async openDirPicker(inputId) {
+        const input = this.$(`#${inputId}`);
+        if (!input) return;
+        try {
+            const selected = await openFileBrowser({
+                title: '选择目录',
+                selectMode: 'folder',
+                root: input.value || '.',
+                api: this.api,
+            });
+            if (selected) {
+                input.value = selected;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } catch (e) {
+            // 用户取消或关闭
+        }
+    }
+
+
+    // ========== 备份管理 ==========
+
+    async loadBackups() {
+        const container = this.$('#backup-list');
+        if (!container) return;
+        try {
+            const data = await this.api.getJSON('/api/backups');
+            const backups = data?.backups || [];
+            if (backups.length === 0) {
+                container.innerHTML = '<div class="backup-empty" style="text-align: center; padding: 32px; color: var(--text-muted, #78716c); font-size: 14px;">暂无备份文件</div>';
+                return;
+            }
+            container.innerHTML = `
+                <div style="display: grid; gap: 8px;">
+                    ${backups.map(b => `
+                        <div class="backup-item" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-elevated, #1c1917); border-radius: 8px; border: 1px solid var(--border, #44403c);">
+                            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:var(--warning, #fbbf24);flex-shrink:0;"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+                                <div style="min-width: 0;">
+                                    <div style="font-size: 14px; color: var(--text, #fafaf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(b.name)}</div>
+                                    <div style="font-size: 12px; color: var(--text-muted, #78716c);">${b.modified} · ${this.formatSize(b.size)}</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm backup-delete-btn" data-name="${this.escapeHtml(b.name)}" style="flex-shrink:0;color:var(--danger, #ef4444);" title="删除">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            // Bind delete events
+            container.querySelectorAll('.backup-delete-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.deleteBackup(btn.dataset.name));
+            });
+        } catch (error) {
+            console.error('[Settings] 加载备份列表失败:', error);
+        }
+    }
+
+    async createBackup() {
+        const btn = this.$('#btn-create-backup');
+        if (btn) btn.disabled = true;
+        try {
+            const data = await this.api.postJSON('/api/backups/create');
+            this.toast?.success(data?.message || '备份创建成功');
+            this.loadBackups();
+        } catch (error) {
+            this.toast?.error('创建备份失败：' + error.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async deleteBackup(name) {
+        this.dialog?.confirm(`确定要删除备份 "${name}" 吗？`, async () => {
+            try {
+                await this.api.post('/api/backups/delete', { name });
+                this.toast?.success('备份已删除');
+                this.loadBackups();
+            } catch (error) {
+                this.toast?.error('删除失败：' + error.message);
+            }
+        });
+    }
+
+    formatSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let i = 0;
+        let size = bytes;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
+        return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    }
+
+    escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     collectConfig() {
         const config = JSON.parse(JSON.stringify(this.originalConfig));
 
-        // HTTP
-        config.http.port = this.getInt('#http-port', 3080);
-        config.http.root = this.getValue('#http-root') || './web';
+        // Directories
+        config.directories = {
+            sites: this.getValue('#dir-sites') || './sites',
+            ftp: this.getValue('#dir-ftp') || './ftp',
+            backup: this.getValue('#dir-backup') || './backups',
+        };
+
+        // Backup
+        config.backup = {
+            auto_enabled: this.isChecked('#backup-enabled'),
+            items: [
+                ...(this.isChecked('#backup-item-config') ? ['config'] : []),
+                ...(this.isChecked('#backup-item-sites') ? ['sites'] : []),
+                ...(this.isChecked('#backup-item-ftp') ? ['ftp'] : []),
+            ],
+            schedule: this.getValue('#backup-schedule') || 'daily',
+            retention: this.getInt('#backup-retention', 7),
+        };
 
         // Admin
         config.admin.port = this.getInt('#admin-port', 9527);
@@ -190,12 +324,9 @@ class SettingsTab extends BaseTab {
         config.log.cleanup_hour = this.getInt('#log-cleanup-hour', 3);
 
         // Backup
-        config.backup_dir = this.getValue('#backup-dir') || './backups';
-
         // FTP
         config.ftp.enabled = this.isChecked('#ftp-enabled');
         config.ftp.port = this.getInt('#ftp-port', 2121);
-        config.ftp.root = this.getValue('#ftp-root') || './ftp';
 
         return config;
     }

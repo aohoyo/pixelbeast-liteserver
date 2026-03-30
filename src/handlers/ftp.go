@@ -35,17 +35,18 @@ type FTPServer struct {
 	clients   map[net.Conn]bool
 	mu        sync.Mutex
 	running   bool
+	rootDir   string
 }
 
 // NewFTPServer 创建FTP服务器
-func NewFTPServer(cfg *config.FTPConfig) (*FTPServer, error) {
-	return NewFTPServerWithValidator(cfg, nil)
+func NewFTPServer(cfg *config.FTPConfig, rootDir string) (*FTPServer, error) {
+	return NewFTPServerWithValidator(cfg, nil, rootDir)
 }
 
 // NewFTPServerWithValidator 创建FTP服务器（带密码验证器）
-func NewFTPServerWithValidator(cfg *config.FTPConfig, validator PasswordValidator) (*FTPServer, error) {
+func NewFTPServerWithValidator(cfg *config.FTPConfig, validator PasswordValidator, rootDir string) (*FTPServer, error) {
 	// 确保FTP根目录存在
-	if err := os.MkdirAll(cfg.Root, 0755); err != nil {
+	if err := os.MkdirAll(rootDir, 0755); err != nil {
 		return nil, err
 	}
 
@@ -53,6 +54,7 @@ func NewFTPServerWithValidator(cfg *config.FTPConfig, validator PasswordValidato
 		Config:    cfg,
 		validator: validator,
 		clients:   make(map[net.Conn]bool),
+		rootDir:   rootDir,
 	}, nil
 }
 
@@ -68,7 +70,7 @@ func (s *FTPServer) Start() error {
 	s.running = true
 
 	Log(LogCategoryFTP, "access", LogLevelInfo, "[FTP] 服务器启动在端口 %d", s.Config.Port)
-	Log(LogCategoryFTP, "access", LogLevelInfo, "[FTP] 根目录: %s", s.Config.Root)
+	Log(LogCategoryFTP, "access", LogLevelInfo, "[FTP] 根目录: %s", s.rootDir)
 
 	go s.acceptConnections()
 	return nil
@@ -121,7 +123,7 @@ func (s *FTPServer) handleClient(conn net.Conn) {
 		server:   s,
 		conn:     conn,
 		reader:   bufio.NewReader(conn),
-		rootDir:  s.Config.Root,
+		rootDir:  s.rootDir,
 		cwd:      "/",
 		loggedIn: false,
 	}
