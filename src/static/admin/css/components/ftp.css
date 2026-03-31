@@ -247,6 +247,18 @@
     color: var(--text-secondary);
 }
 
+.ftp-root-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+}
+
+.ftp-root-link:hover {
+    text-decoration: underline;
+    color: var(--primary);
+}
+
 /* 有效期 */
 .ftp-expiry {
     display: flex;

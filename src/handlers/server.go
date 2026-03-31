@@ -437,6 +437,17 @@ func (m *ServerManager) SetFTPServer(server *FTPServer, cfg *config.FTPConfig) {
 	m.FTPConfig = cfg
 }
 
+// SyncFTPConfig 同步 FTP 服务器配置指针
+// 当 ConfigManager 重新加载后，FTP 服务器的 Config 指针需要更新
+func (m *ServerManager) SyncFTPConfig() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.FTPServer != nil && m.ConfigManager != nil {
+		m.FTPServer.Config = m.ConfigManager.FTP
+		m.FTPConfig = m.ConfigManager.FTP
+	}
+}
+
 // StartFTP 启动 FTP 服务
 func (m *ServerManager) StartFTP() error {
 	m.mu.Lock()

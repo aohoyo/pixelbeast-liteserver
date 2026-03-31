@@ -26,6 +26,7 @@ type ConfigManager struct {
 // ServerConfig 服务配置
 type ServerConfig struct {
 	Name        string          `json:"name"`
+	Timezone    string          `json:"timezone"`
 	Admin       AdminConfig     `json:"admin"`
 	Directories DirectoriesConfig `json:"directories"`
 	Backup      BackupConfig    `json:"backup"`
@@ -131,7 +132,12 @@ type FTPUser struct {
 	UsedSpace int64  `json:"used_space"`
 	ExpiryDays int   `json:"expiry_days"`
 	ExpiryDate string `json:"expiry_date"`
-	Remark    string `json:"remark"`
+	Remark        string `json:"remark"`
+	SpeedLimit    int64  `json:"speed_limit"`      // 下载速度限制 KB/s, 0=无限制
+	Bandwidth     int64  `json:"bandwidth"`         // 上传速度限制 KB/s, 0=无限制
+	MaxConnections int   `json:"max_connections"`   // 最大连接数, 0=无限制
+	MaxFiles      int    `json:"max_files"`          // 最大文件数量, 0=无限制
+	MaxFileSize   int64  `json:"max_file_size"`      // 单文件大小限制 MB, 0=无限制
 }
 
 // NewConfigManager 创建配置管理器
@@ -230,6 +236,11 @@ func (cm *ConfigManager) ensureDefaults() {
 	}
 	if cm.Server.Directories.Backup == "" {
 		cm.Server.Directories.Backup = "./backups"
+		changed = true
+	}
+
+	if cm.Server.Timezone == "" {
+		cm.Server.Timezone = "Asia/Shanghai"
 		changed = true
 	}
 
@@ -560,6 +571,20 @@ func (cm *ConfigManager) ValidateFTPUser(username, password string) bool {
 	}
 
 	return false
+}
+
+// GetFTPUserConfig 获取 FTP 用户配置（带锁，返回副本）
+func (cm *ConfigManager) GetFTPUserConfig(username string) *FTPUser {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	for _, user := range cm.FTP.Users {
+		if user.Username == username && user.Status == "enabled" {
+			cp := user
+			return &cp
+		}
+	}
+	return nil
 }
 
 // EncryptPassword 加密密码

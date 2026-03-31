@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -25,17 +27,19 @@ func isValidUTF8(s string) bool {
 // PasswordValidator 密码验证器接口
 type PasswordValidator interface {
 	ValidateFTPUser(username, password string) bool
+	GetFTPUserConfig(username string) *config.FTPUser
 }
 
 // FTPServer 简易FTP服务器
 type FTPServer struct {
-	Config    *config.FTPConfig
-	validator PasswordValidator // 密码验证器（支持加密密码）
-	listener  net.Listener
-	clients   map[net.Conn]bool
-	mu        sync.Mutex
-	running   bool
-	rootDir   string
+	Config       *config.FTPConfig
+	validator    PasswordValidator // 密码验证器（支持加密密码）
+	listener     net.Listener
+	clients      map[net.Conn]bool
+	mu           sync.Mutex
+	running      bool
+	rootDir      string
+	userConns    map[string]int // 每用户当前连接数
 }
 
 // NewFTPServer 创建FTP服务器
@@ -54,6 +58,7 @@ func NewFTPServerWithValidator(cfg *config.FTPConfig, validator PasswordValidato
 		Config:    cfg,
 		validator: validator,
 		clients:   make(map[net.Conn]bool),
+		userConns: make(map[string]int),
 		rootDir:   rootDir,
 	}, nil
 }
@@ -112,13 +117,6 @@ func (s *FTPServer) acceptConnections() {
 
 // handleClient 处理客户端连接
 func (s *FTPServer) handleClient(conn net.Conn) {
-	defer func() {
-		s.mu.Lock()
-		delete(s.clients, conn)
-		s.mu.Unlock()
-		conn.Close()
-	}()
-
 	client := &FTPClient{
 		server:   s,
 		conn:     conn,
@@ -127,6 +125,20 @@ func (s *FTPServer) handleClient(conn net.Conn) {
 		cwd:      "/",
 		loggedIn: false,
 	}
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.clients, conn)
+		// 释放用户连接计数
+		if client.connTracked && client.username != "" {
+			s.userConns[client.username]--
+			if s.userConns[client.username] <= 0 {
+				delete(s.userConns, client.username)
+			}
+		}
+		s.mu.Unlock()
+		conn.Close()
+	}()
 
 	LogFTPConnection(conn.RemoteAddr().String(), true)
 	client.sendMessage("220 轻羽 FTP Server Ready")
@@ -171,6 +183,7 @@ type FTPClient struct {
 	passiveListener net.Listener
 	transferMu      sync.Mutex
 	utf8Enabled     bool // UTF-8 编码支持
+	connTracked     bool // 连接计数已计入 userConns
 }
 
 // sendMessage 发送消息
@@ -272,6 +285,86 @@ func (c *FTPClient) checkLogin() bool {
 	return true
 }
 
+// getUserConfig è·åå½åç¨æ·çéç½®
+func (c *FTPClient) getUserConfig() *config.FTPUser {
+	if c.username == "" || c.server.validator == nil {
+		return nil
+	}
+	return c.server.validator.GetFTPUserConfig(c.username)
+}
+
+// countFiles è®¡ç®ç¨æ·ç®å½ä¸çæä»¶æ»æ°
+func (c *FTPClient) countFiles(root string) int {
+	count := 0
+	filepath.Walk(root, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		count++
+		return nil
+	})
+	return count
+}
+
+// rateLimitedWrite ä»¥ééæ¹å¼åå¥æ°æ®
+func (c *FTPClient) rateLimitedWrite(conn net.Conn, data []byte, bytesPerSec int64) {
+	if bytesPerSec <= 0 {
+		conn.Write(data)
+		return
+	}
+
+	chunkSize := bytesPerSec / 10
+	if chunkSize < 1024 {
+		chunkSize = 1024
+	}
+	interval := time.Duration(float64(time.Second) * float64(chunkSize) / float64(bytesPerSec))
+
+	for offset := 0; offset < len(data); {
+		end := offset + int(chunkSize)
+		if end > len(data) {
+			end = len(data)
+		}
+		if _, err := conn.Write(data[offset:end]); err != nil {
+			return
+		}
+		offset = end
+		if offset < len(data) {
+			time.Sleep(interval)
+		}
+	}
+}
+
+// rateLimitedRead ä»¥ééæ¹å¼è¯»åæ°æ®
+func (c *FTPClient) rateLimitedRead(src io.Reader, dst io.Writer, bytesPerSec int64) (int64, error) {
+	if bytesPerSec <= 0 {
+		return io.Copy(dst, src)
+	}
+
+	chunkSize := bytesPerSec / 10
+	if chunkSize < 1024 {
+		chunkSize = 1024
+	}
+	interval := time.Duration(float64(time.Second) * float64(chunkSize) / float64(bytesPerSec))
+
+	buf := make([]byte, chunkSize)
+	var total int64
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return total, werr
+			}
+			total += int64(n)
+		}
+		if err != nil {
+			return total, err
+		}
+		if int64(n) >= chunkSize {
+			time.Sleep(interval)
+		}
+	}
+}
+
 // handleUSER 处理USER命令
 func (c *FTPClient) handleUSER(username string) {
 	c.username = username
@@ -295,21 +388,53 @@ func (c *FTPClient) handlePASS(password string) {
 		return
 	}
 
-	// 查找用户配置以获取其根目录
-	for _, user := range c.server.Config.Users {
-		if user.Username == c.username && user.Status == "enabled" {
-			c.rootDir = user.RootPath
-			c.cwd = "/"
-			// 确保用户目录存在
-			os.MkdirAll(c.rootDir, 0755)
-			break
+	// 通过验证器（带锁）获取用户配置，确保读取最新状态
+	userCfg := c.server.validator.GetFTPUserConfig(c.username)
+	if userCfg == nil {
+		c.sendMessage("530 User not found or disabled")
+		LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "用户不存在或已禁用")
+		c.username = ""
+		return
+	}
+
+	// 检查账号是否过期
+	if userCfg.ExpiryDate != "" {
+		if expiryTime, err := time.Parse("2006-01-02", userCfg.ExpiryDate); err == nil {
+			if time.Now().After(expiryTime) {
+				c.sendMessage("530 Account expired")
+				LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "账号已过期")
+				c.username = ""
+				return
+			}
 		}
 	}
+
+	// 检查最大连接数
+	if userCfg.MaxConnections > 0 {
+		c.server.mu.Lock()
+		current := c.server.userConns[c.username]
+		if current >= userCfg.MaxConnections {
+			c.server.mu.Unlock()
+			c.sendMessage(fmt.Sprintf("530 Too many connections (max %d)", userCfg.MaxConnections))
+			LogFTPLogin(c.username, c.conn.RemoteAddr().String(), false, "超过最大连接数")
+			c.username = ""
+			return
+		}
+		c.server.userConns[c.username] = current + 1
+		c.server.mu.Unlock()
+		c.connTracked = true
+	}
+
+	c.rootDir = userCfg.RootPath
+	c.cwd = "/"
+	// 确保用户目录存在
+	os.MkdirAll(c.rootDir, 0755)
 
 	c.loggedIn = true
 	c.sendMessage("230 Login successful, welcome " + c.username)
 	LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
 }
+
 
 // handleCWD 处理CWD命令
 func (c *FTPClient) handleCWD(path string) {
@@ -524,73 +649,136 @@ func (c *FTPClient) handleLIST(args string) {
 	c.sendMessage("226 Transfer complete")
 }
 
-// handleRETR 处理RETR命令
+// handleRETR å¤çRETRå½ä»¤
 func (c *FTPClient) handleRETR(filename string) {
-	// 转换文件名编码
+	// è½¬æ¢æä»¶åç¼ç 
 	filename = c.toUTF8(filename)
 	path := c.resolvePath(filename)
 	fullPath := filepath.Join(c.rootDir, path)
 
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "下载 "+filename, "文件不存在")
+	info, err := os.Stat(fullPath)
+	if err != nil || info.IsDir() {
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸è½½ "+filename, "æä»¶ä¸å­å¨")
 		c.sendMessage("550 File not found")
 		return
 	}
 
+	// æ£æ¥åæä»¶å¤§å°éå¶
+	if userCfg := c.getUserConfig(); userCfg != nil && userCfg.MaxFileSize > 0 {
+		if info.Size() > userCfg.MaxFileSize*1024*1024 {
+			LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸è½½ "+filename, "è¶è¿åæä»¶å¤§å°éå¶")
+			c.sendMessage("550 File too large")
+			return
+		}
+	}
+
 	c.sendMessage("150 Opening data connection for file transfer")
 
 	dataConn, err := c.getDataConnection()
 	if err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "下载 "+filename, err.Error())
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸è½½ "+filename, err.Error())
 		c.sendMessage("425 Cannot open data connection")
 		return
 	}
 	defer dataConn.Close()
 
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸è½½ "+filename, err.Error())
+		c.sendMessage("550 Cannot read file")
+		return
+	}
+
 	start := time.Now()
-	dataConn.Write(data)
+	// ä¸è½½éé
+	if userCfg := c.getUserConfig(); userCfg != nil && userCfg.SpeedLimit > 0 {
+		c.rateLimitedWrite(dataConn, data, userCfg.SpeedLimit*1024)
+	} else {
+		dataConn.Write(data)
+	}
 	duration := time.Since(start)
-	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "下载", int64(len(data)), duration, true)
+	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "ä¸è½½", int64(len(data)), duration, true)
 	c.sendMessage("226 Transfer complete")
 }
 
-// handleSTOR 处理STOR命令
+// handleSTOR å¤çSTORå½ä»¤
 func (c *FTPClient) handleSTOR(filename string) {
-	// 转换文件名编码
+	// è½¬æ¢æä»¶åç¼ç 
 	filename = c.toUTF8(filename)
 	path := c.resolvePath(filename)
 	fullPath := filepath.Join(c.rootDir, path)
 
+	userCfg := c.getUserConfig()
+
+	// æ£æ¥æä»¶æ°ééå¶
+	if userCfg != nil && userCfg.MaxFiles > 0 {
+		if c.countFiles(c.rootDir) >= userCfg.MaxFiles {
+			LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, "è¶è¿æä»¶æ°ééå¶")
+			c.sendMessage("550 Too many files")
+			return
+		}
+	}
+
 	c.sendMessage("150 Opening data connection for file transfer")
 
 	dataConn, err := c.getDataConnection()
 	if err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "上传 "+filename, err.Error())
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, err.Error())
 		c.sendMessage("425 Cannot open data connection")
 		return
 	}
 	defer dataConn.Close()
 
 	start := time.Now()
-	data := make([]byte, 0)
-	buf := make([]byte, 4096)
-	for {
-		n, err := dataConn.Read(buf)
-		if err != nil {
-			break
-		}
-		data = append(data, buf[:n]...)
+	var buf bytes.Buffer
+	var totalSize int64
+
+	// ä¸ä¼ éé + åæä»¶å¤§å°æ£æ¥
+	maxFileSize := int64(0)
+	if userCfg != nil {
+		maxFileSize = userCfg.MaxFileSize * 1024 * 1024
 	}
 
-	if err := os.WriteFile(fullPath, data, 0644); err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "上传 "+filename, err.Error())
+	if userCfg != nil && userCfg.Bandwidth > 0 {
+		// ééè¯»å
+		var tmpBuf bytes.Buffer
+		totalSize, _ = c.rateLimitedRead(dataConn, &tmpBuf, userCfg.Bandwidth*1024)
+		if maxFileSize > 0 && totalSize > maxFileSize {
+			LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, "è¶è¿åæä»¶å¤§å°éå¶")
+			c.sendMessage("553 File too large")
+			return
+		}
+		buf = tmpBuf
+	} else {
+		// ä¸ééï¼ä½æ£æ¥æä»¶å¤§å°
+		tmpBuf := make([]byte, 0, 64*1024)
+		readBuf := make([]byte, 32*1024)
+		for {
+			n, err := dataConn.Read(readBuf)
+			if n > 0 {
+				totalSize += int64(n)
+				if maxFileSize > 0 && totalSize > maxFileSize {
+					LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, "è¶è¿åæä»¶å¤§å°éå¶")
+					c.sendMessage("553 File too large")
+					return
+				}
+				tmpBuf = append(tmpBuf, readBuf[:n]...)
+			}
+			if err != nil {
+				break
+			}
+		}
+		buf = *bytes.NewBuffer(tmpBuf)
+	}
+
+	if err := os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, err.Error())
 		c.sendMessage("553 Cannot store file")
 		return
 	}
 
 	duration := time.Since(start)
-	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "上传", int64(len(data)), duration, true)
+	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "ä¸ä¼ ", totalSize, duration, true)
 	c.sendMessage("226 Transfer complete")
 }
 

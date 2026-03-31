@@ -38,6 +38,13 @@ class FilesTab extends BaseTab {
     }
 
     onInit() {
+        // 监听外部导航事件（如 FTP 页面跳转）
+        this.events.on('files:navigate', (path) => {
+            if (this.fileManager && path) {
+                this.fileManager.navigate(path);
+            }
+        });
+
         // 从 API 加载快捷目录
         this.loadQuickDirs();
 

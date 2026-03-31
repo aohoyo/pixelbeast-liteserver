@@ -88,10 +88,14 @@ func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, "服务管理器未初始化")
 		return
 	}
+	// 重载配置文件
 	if err := h.ServerManager.ReloadSites(); err != nil {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	// 同步管理面板和 FTP 服务器的配置指针
+	h.ConfigManager = h.ServerManager.ConfigManager
+	h.ServerManager.SyncFTPConfig()
 	SuccessMessage(w, "配置已重载")
 }
 
@@ -409,6 +413,19 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 
 // ==================== FTP 用户管理 ====================
 
+// calculateDirSize 计算目录总大小
+func calculateDirSize(path string) int64 {
+	var size int64
+	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		size += info.Size()
+		return nil
+	})
+	return size
+}
+
 func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
 	users := make([]map[string]interface{}, 0)
 	for _, u := range h.ConfigManager.FTP.Users {
@@ -416,14 +433,33 @@ func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
 		if status == "" {
 			status = "enabled"
 		}
+
+		// 解密密码用于显示
+		password, _ := h.ConfigManager.GetFTPUserPassword(u.Username)
+
+		// 计算已用空间
+		var usedSpace int64
+		if u.RootPath != "" {
+			if info, err := os.Stat(u.RootPath); err == nil && info.IsDir() {
+				usedSpace = calculateDirSize(u.RootPath)
+			}
+		}
+
 		users = append(users, map[string]interface{}{
-			"username":   u.Username,
-			"password":   u.Password,
-			"rootPath":   u.RootPath,
-			"status":     status,
-			"quota":      u.Quota,
-			"expiryDays": u.ExpiryDays,
-			"remark":     u.Remark,
+			"username":       u.Username,
+			"password":       password,
+			"rootPath":       u.RootPath,
+			"status":         status,
+			"quota":          u.Quota,
+			"usedSpace":      usedSpace,
+			"expiryDays":     u.ExpiryDays,
+			"expiryDate":     u.ExpiryDate,
+			"remark":         u.Remark,
+			"speedLimit":     u.SpeedLimit,
+			"maxConnections": u.MaxConnections,
+			"bandwidth":      u.Bandwidth,
+			"maxFiles":       u.MaxFiles,
+			"maxFileSize":    u.MaxFileSize,
 		})
 	}
 	Success(w, map[string]interface{}{
@@ -687,4 +723,126 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessMessage(w, "批量操作完成")
+}
+
+// ==================== FTP 用户详情路由 ====================
+
+// handleFtpUserDetail 处理带用户名的 FTP 用户路由
+func (h *Handler) handleFtpUserDetail(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	// 匹配 /api/ftp/users/{username}/config
+	if strings.HasSuffix(path, "/config") {
+		if r.Method != http.MethodPost {
+			MethodNotAllowed(w, "方法不允许")
+			return
+		}
+		username := strings.TrimSuffix(path, "/config")
+		username = strings.TrimPrefix(username, "/api/ftp/users/")
+		if username == "" {
+			BadRequest(w, "用户名不能为空")
+			return
+		}
+		h.updateFtpUserConfig(w, r, username)
+		return
+	}
+
+	// 匹配 /api/ftp/users/{username}
+	username := strings.TrimPrefix(path, "/api/ftp/users/")
+	if username == "" || strings.Contains(username, "/") {
+		BadRequest(w, "无效的用户名")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		h.updateFtpUser(w, r, username)
+	default:
+		MethodNotAllowed(w, "方法不允许")
+	}
+}
+
+// updateFtpUser 更新 FTP 用户信息
+func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username string) {
+	var req struct {
+		RootPath   string `json:"rootPath"`
+		Password   string `json:"password"`
+		Quota      int64  `json:"quota"`
+		ExpiryDays int    `json:"expiryDays"`
+		Status     string `json:"status"`
+		Remark     string `json:"remark"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+
+	user := h.ConfigManager.GetFTPUser(username)
+	if user == nil {
+		BadRequest(w, "用户不存在")
+		return
+	}
+
+	// 更新密码（单独处理，因为 UpdateFTPUser 会保留原密码）
+	if req.Password != "" {
+		if err := h.ConfigManager.SetFTPUserPassword(username, req.Password); err != nil {
+			InternalServerError(w, "密码更新失败: "+err.Error())
+			return
+		}
+	}
+
+	// 更新其他字段
+	updated := *user
+	updated.RootPath = req.RootPath
+	updated.Quota = req.Quota
+	updated.ExpiryDays = req.ExpiryDays
+	updated.Status = req.Status
+	updated.Remark = req.Remark
+
+	// 过期天数变更时重新计算过期日期
+	if req.ExpiryDays > 0 && req.ExpiryDays != user.ExpiryDays {
+		updated.ExpiryDate = time.Now().AddDate(0, 0, req.ExpiryDays).Format("2006-01-02")
+	}
+
+	if err := h.ConfigManager.UpdateFTPUser(username, updated); err != nil {
+		InternalServerError(w, "更新用户失败: "+err.Error())
+		return
+	}
+
+	SuccessMessage(w, "用户已更新")
+}
+
+// updateFtpUserConfig 更新 FTP 用户配置（速度限制、连接数等）
+func (h *Handler) updateFtpUserConfig(w http.ResponseWriter, r *http.Request, username string) {
+	var req struct {
+		SpeedLimit    int64 `json:"speedLimit"`
+		MaxConnections int   `json:"maxConnections"`
+		Bandwidth     int64 `json:"bandwidth"`
+		MaxFiles      int   `json:"maxFiles"`
+		MaxFileSize   int64 `json:"maxFileSize"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+
+	user := h.ConfigManager.GetFTPUser(username)
+	if user == nil {
+		BadRequest(w, "用户不存在")
+		return
+	}
+
+	updated := *user
+	updated.SpeedLimit = req.SpeedLimit
+	updated.MaxConnections = req.MaxConnections
+	updated.Bandwidth = req.Bandwidth
+	updated.MaxFiles = req.MaxFiles
+	updated.MaxFileSize = req.MaxFileSize
+
+	if err := h.ConfigManager.UpdateFTPUser(username, updated); err != nil {
+		InternalServerError(w, "保存配置失败: "+err.Error())
+		return
+	}
+
+	SuccessMessage(w, "配置已保存")
 }

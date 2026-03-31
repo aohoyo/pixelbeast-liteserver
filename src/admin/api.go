@@ -470,39 +470,12 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 // ==================== 配置 ====================
 
 func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
-	// 构建前端期望的格式
-	cfg := map[string]interface{}{
-		"admin": map[string]interface{}{
-			"name":        h.ConfigManager.Server.Name,
-			"username":    h.ConfigManager.Server.Admin.Username,
-			"password":    "", // 不返回密码
-			"port":        h.ConfigManager.Server.Admin.Port,
-			"path":        h.ConfigManager.Server.Admin.Path,
-			"bind_domain": h.ConfigManager.Server.Admin.Domain,
-			"ssl_enabled": h.ConfigManager.Server.Admin.SSLEnabled,
-		},
-		"directories": map[string]interface{}{
-			"sites":  h.ConfigManager.Server.Directories.Sites,
-			"ftp":    h.ConfigManager.Server.Directories.FTP,
-			"backup": h.ConfigManager.Server.Directories.Backup,
-		},
-		"log": map[string]interface{}{
-			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
-			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
-			"compress_days":  h.ConfigManager.Server.Log.CompressDays,
-			"cleanup_hour":   h.ConfigManager.Server.Log.CleanupHour,
-			"level":          h.ConfigManager.Server.Log.Level,
-			"levels":         h.ConfigManager.Server.Log.Levels,
-		},
-		"backup": map[string]interface{}{
-			"auto_enabled": h.ConfigManager.Server.Backup.AutoEnabled,
-			"schedule":     h.ConfigManager.Server.Backup.Schedule,
-			"retention":    h.ConfigManager.Server.Backup.Retention,
-			"items":        h.ConfigManager.Server.Backup.Items,
-		},
-	}
+	// 序列化 ServerConfig，直接返回与 server.json 一致的结构
+	cfg := *h.ConfigManager.Server
+	cfg.Admin.Password = "" // 不返回密码
 	Success(w, cfg)
 }
+
 
 func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 	username := h.getSessionUsername(r)
@@ -520,66 +493,34 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 解析 admin 配置
-	if admin, ok := data["admin"].(map[string]interface{}); ok {
-		if v, ok := admin["name"].(string); ok {
-			h.ConfigManager.Server.Name = v
-		}
-		if v, ok := admin["username"].(string); ok {
-			h.ConfigManager.Server.Admin.Username = v
-		}
-		if v, ok := admin["port"].(float64); ok {
-			h.ConfigManager.Server.Admin.Port = int(v)
-		}
-		if v, ok := admin["path"].(string); ok {
-			h.ConfigManager.Server.Admin.Path = v
-		}
-		if v, ok := admin["password"].(string); ok && v != "" {
-			h.ConfigManager.SetAdminPassword(v)
-		}
-		if v, ok := admin["bind_domain"].(string); ok {
-			h.ConfigManager.Server.Admin.Domain = v
-		}
-		if v, ok := admin["ssl_enabled"].(bool); ok {
-			h.ConfigManager.Server.Admin.SSLEnabled = v
-		}
+	// 记住密码，反序列化后恢复
+	oldPassword := h.ConfigManager.Server.Admin.Password
+
+	// JSON 反序列化：直接将前端数据映射到 ServerConfig
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		BadRequest(w, "JSON 解析失败: "+err.Error())
+		handlers.LogPanelConfigChange(username, "保存配置", false)
+		return
 	}
 
-	// 解析 directories 配置
-	if dirs, ok := data["directories"].(map[string]interface{}); ok {
-		if v, ok := dirs["sites"].(string); ok {
-			h.ConfigManager.Server.Directories.Sites = v
-		}
-		if v, ok := dirs["ftp"].(string); ok {
-			h.ConfigManager.Server.Directories.FTP = v
-		}
-		if v, ok := dirs["backup"].(string); ok {
-			h.ConfigManager.Server.Directories.Backup = v
-		}
-	}
-	// 解析 backup 配置
-	if backup, ok := data["backup"].(map[string]interface{}); ok {
-		if v, ok := backup["auto_enabled"].(bool); ok {
-			h.ConfigManager.Server.Backup.AutoEnabled = v
-		}
-		if v, ok := backup["schedule"].(string); ok {
-			h.ConfigManager.Server.Backup.Schedule = v
-		}
-		if v, ok := backup["retention"].(float64); ok {
-			h.ConfigManager.Server.Backup.Retention = int(v)
-		}
-		if items, ok := backup["items"].([]interface{}); ok {
-			itemStrs := make([]string, 0, len(items))
-			for _, item := range items {
-				if s, ok := item.(string); ok {
-					itemStrs = append(itemStrs, s)
-				}
-			}
-			h.ConfigManager.Server.Backup.Items = itemStrs
-		}
+	var newCfg config.ServerConfig
+	if err := json.Unmarshal(jsonBytes, &newCfg); err != nil {
+		BadRequest(w, "配置格式错误: "+err.Error())
+		handlers.LogPanelConfigChange(username, "保存配置", false)
+		return
 	}
 
-	// 解析 sites 配置
+	// 密码特殊处理：前端传空则保留原密码
+	if newCfg.Admin.Password != "" {
+		h.ConfigManager.SetAdminPassword(newCfg.Admin.Password)
+	} else {
+		newCfg.Admin.Password = oldPassword
+	}
+
+	*h.ConfigManager.Server = newCfg
+
+	// 解析 sites 配置（单独的配置文件）
 	if sites, ok := data["sites"].([]interface{}); ok {
 		siteConfigs := make([]config.SiteConfig, 0, len(sites))
 		for _, s := range sites {
@@ -603,33 +544,6 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		h.ConfigManager.Sites.Sites = siteConfigs
 	}
 
-	// 解析 log 配置
-	if log, ok := data["log"].(map[string]interface{}); ok {
-		if v, ok := log["retention_days"].(float64); ok {
-			h.ConfigManager.Server.Log.RetentionDays = int(v)
-		}
-		if v, ok := log["max_size_mb"].(float64); ok {
-			h.ConfigManager.Server.Log.MaxSizeMB = int(v)
-		}
-		if v, ok := log["compress_days"].(float64); ok {
-			h.ConfigManager.Server.Log.CompressDays = int(v)
-		}
-		if v, ok := log["cleanup_hour"].(float64); ok {
-			h.ConfigManager.Server.Log.CleanupHour = int(v)
-		}
-		if v, ok := log["level"].(string); ok {
-			h.ConfigManager.Server.Log.Level = v
-		}
-		if v, ok := log["levels"].(map[string]interface{}); ok {
-			levels := make(map[string]string)
-			for k, val := range v {
-				if s, ok := val.(string); ok {
-					levels[k] = s
-				}
-			}
-			h.ConfigManager.Server.Log.Levels = levels
-		}
-	}
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
@@ -665,39 +579,12 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 
 	handlers.LogPanelConfigChange(username, "重置配置", true)
 
-	// 返回重置后的完整配置（复用 getConfig 逻辑）
-	cfg := map[string]interface{}{
-		"admin": map[string]interface{}{
-			"name":        h.ConfigManager.Server.Name,
-			"username":    h.ConfigManager.Server.Admin.Username,
-			"password":    "",
-			"port":        h.ConfigManager.Server.Admin.Port,
-			"path":        h.ConfigManager.Server.Admin.Path,
-			"bind_domain": h.ConfigManager.Server.Admin.Domain,
-			"ssl_enabled": h.ConfigManager.Server.Admin.SSLEnabled,
-		},
-		"directories": map[string]interface{}{
-			"sites":  h.ConfigManager.Server.Directories.Sites,
-			"ftp":    h.ConfigManager.Server.Directories.FTP,
-			"backup": h.ConfigManager.Server.Directories.Backup,
-		},
-		"log": map[string]interface{}{
-			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
-			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
-			"compress_days":  h.ConfigManager.Server.Log.CompressDays,
-			"cleanup_hour":   h.ConfigManager.Server.Log.CleanupHour,
-			"level":          h.ConfigManager.Server.Log.Level,
-			"levels":         h.ConfigManager.Server.Log.Levels,
-		},
-		"backup": map[string]interface{}{
-			"auto_enabled": h.ConfigManager.Server.Backup.AutoEnabled,
-			"schedule":     h.ConfigManager.Server.Backup.Schedule,
-			"retention":    h.ConfigManager.Server.Backup.Retention,
-			"items":        h.ConfigManager.Server.Backup.Items,
-		},
-	}
+	// 返回重置后的完整配置
+	cfg := *h.ConfigManager.Server
+	cfg.Admin.Password = ""
 	Success(w, cfg)
 }
+
 
 // ==================== 日志 ====================
 
@@ -785,11 +672,16 @@ func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
 
 	// 构建时间数据（无论同步是否成功都返回）
 	now := time.Now()
+	tz := h.ConfigManager.Server.Timezone
+	if tz == "" {
+		tz = "Asia/Shanghai"
+	}
+	loc, _ := time.LoadLocation(tz)
 	result := map[string]interface{}{
 		"timestamp":  now.Unix(),
-		"time":       now.Format("2006-01-02 15:04:05"),
+		"time":       now.In(loc).Format("2006-01-02 15:04:05"),
 		"utc_time":   now.UTC().Format("2006-01-02 15:04:05"),
-		"timezone":   now.Location().String(),
+		"timezone":   tz,
 		"unix_milli": now.UnixMilli(),
 		"ntp_synced": synced,
 		"updated":    false,
@@ -1062,12 +954,75 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 	backupName := fmt.Sprintf("backup_%s.tar.gz", timestamp)
 	backupPath := filepath.Join(absBackupDir, backupName)
 
-	configDir := h.ConfigManager.ConfigDir()
-	absConfigDir := resolvePath(configDir)
+	// 根据 items 配置决定备份内容
+	items := h.ConfigManager.Server.Backup.Items
+	if len(items) == 0 {
+		items = []string{"config"}
+	}
 
-	if err := createTarGz(backupPath, absConfigDir, "config"); err != nil {
+	// 创建 tar.gz，包含多个目录
+	f, err := os.Create(backupPath)
+	if err != nil {
 		InternalServerError(w, "创建备份失败: "+err.Error())
 		return
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	for _, item := range items {
+		var srcDir, prefix string
+		switch item {
+		case "config":
+			srcDir = resolvePath(h.ConfigManager.ConfigDir())
+			prefix = "config"
+		case "sites":
+			srcDir = resolvePath(h.ConfigManager.GetSitesDir())
+			prefix = "sites"
+		case "ftp":
+			srcDir = resolvePath(h.ConfigManager.GetFTPRoot())
+			prefix = "ftp"
+		default:
+			continue
+		}
+
+		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+			continue
+		}
+
+		filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			relPath, err := filepath.Rel(srcDir, path)
+			if err != nil || relPath == "." {
+				return nil
+			}
+			header, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return nil
+			}
+			header.Name = filepath.Join(prefix, relPath)
+			if info.IsDir() {
+				header.Name += "/"
+			}
+			if err := tw.WriteHeader(header); err != nil {
+				return nil
+			}
+			if !info.IsDir() {
+				file, err := os.Open(path)
+				if err != nil {
+					return nil
+				}
+				defer file.Close()
+				io.Copy(tw, file)
+			}
+			return nil
+		})
 	}
 
 	handlers.LogPanelConfigChange(username, "创建备份 "+backupName, true)
@@ -1075,6 +1030,7 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 		"name":    backupName,
 		"message": "备份创建成功",
 	})
+
 }
 
 // deleteBackup 删除备份

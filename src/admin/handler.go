@@ -380,6 +380,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// 处理带 ID 的站点路由
 		if strings.HasPrefix(actualPath, "/api/sites/") {
 			h.handleSitesDetail(w, r)
+		} else if strings.HasPrefix(actualPath, "/api/ftp/users/") {
+			h.handleFtpUserDetail(w, r)
 		} else {
 			http.NotFound(w, r)
 		}

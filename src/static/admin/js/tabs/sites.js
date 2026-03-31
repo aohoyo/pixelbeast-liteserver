@@ -391,9 +391,18 @@ class SitesTab extends BaseTab {
             this.$('#site-form-domain').value = (this.editingSite.domain || []).join(', ');
             this.$('#site-form-root').value = this.editingSite.root || '';
             this.$('#site-form-proxy').value = this.editingSite.proxy?.target || '';
+            // 首页文件 & 目录浏览
+            const indexFiles = this.editingSite.index_files || ['index.html', 'index.htm'];
+            this.$('#site-form-index-files').value = indexFiles.join(', ');
+            const autoIndex = this.$('#site-form-auto-index');
+            if (autoIndex) autoIndex.checked = this.editingSite.auto_index !== false;
         } else {
             title.textContent = '添加网站';
             this.$('#site-form')?.reset();
+            // 新建默认值
+            this.$('#site-form-index-files').value = 'index.html, index.htm';
+            const autoIndex = this.$('#site-form-auto-index');
+            if (autoIndex) autoIndex.checked = true;
         }
 
         this.onTypeChange();
@@ -431,8 +440,11 @@ class SitesTab extends BaseTab {
 
         if (type === 'static') {
             data.root = root || './sites/default';
-            data.index_files = ['index.html', 'index.htm'];
-            data.auto_index = true;
+            const indexFilesStr = this.$('#site-form-index-files')?.value.trim();
+            data.index_files = indexFilesStr
+                ? indexFilesStr.split(',').map(f => f.trim()).filter(Boolean)
+                : ['index.html', 'index.htm'];
+            data.auto_index = this.$('#site-form-auto-index')?.checked ?? true;
         } else {
             if (!proxyTarget) { this.message.error('请输入代理目标'); return; }
             data.proxy = { target: proxyTarget };

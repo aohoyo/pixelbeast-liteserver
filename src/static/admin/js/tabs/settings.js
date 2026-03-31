@@ -2,6 +2,7 @@
  * 设置模块
  *
  * 负责系统设置的加载、编辑、保存
+ * 表单元素使用 data-path 对齐后端 JSON 字段路径，实现自动填充/收集
  */
 
 import { BaseTab } from './BaseTab.js';
@@ -137,45 +138,93 @@ class SettingsTab extends BaseTab {
         }
     }
 
+    // ========== 表单自动填充/收集（基于 data-path） ==========
+
+    /**
+     * 根据 data-path 从 config 对象获取嵌套值
+     * 例如 getPathValue(config, 'admin.port') → config.admin.port
+     */
+    getPathValue(obj, path) {
+        return path.split('.').reduce((o, key) => o?.[key], obj);
+    }
+
+    /**
+     * 根据 data-path 设置 config 对象的嵌套值
+     * 例如 setPathValue(config, 'admin.port', 8080) → config.admin.port = 8080
+     */
+    setPathValue(obj, path, value) {
+        const keys = path.split('.');
+        const last = keys.pop();
+        const target = keys.reduce((o, key) => {
+            if (o[key] == null) o[key] = {};
+            return o[key];
+        }, obj);
+        target[last] = value;
+    }
+
+    /**
+     * 自动填充表单：遍历所有带 data-path 的元素，从 config 读取值
+     */
     render() {
         if (!this.config) return;
 
-        const { admin, directories, log, backup } = this.config;
+        this.$$('.settings-content [data-path]').forEach(el => {
+            const path = el.dataset.path;
+            const value = this.getPathValue(this.config, path);
 
-        // 基础设置
-        this.setValue('#server-name', admin?.name || 'PixelBeast Server');
-        this.setValue('#timezone', 'Asia/Shanghai');
+            if (el.type === 'checkbox') {
+                el.checked = !!value;
+            } else {
+                // password 字段不回填
+                if (path === 'admin.password') {
+                    el.value = '';
+                } else if (value != null) {
+                    el.value = value;
+                }
+            }
+        });
 
-        // 目录设置
-        this.setValue('#dir-sites', directories?.sites || './sites');
-        this.setValue('#dir-ftp', directories?.ftp || './ftp');
-        this.setValue('#dir-backup', directories?.backup || './backups');
-
-        // 管理面板
-        this.setValue('#admin-port', admin?.port || 9527);
-        this.setValue('#admin-path', admin?.path || '/admin');
-        this.setValue('#admin-username', admin?.username || 'admin');
-        this.setValue('#admin-password', '');
-        this.setValue('#admin-bind-domain', admin?.bind_domain || '');
-        this.setChecked('#admin-ssl-enabled', admin?.ssl_enabled ?? false);
-
-        // 日志配置
-        this.setValue('#log-level', log?.level || 'info');
-        this.setValue('#log-retention', log?.retention_days || 30);
-        this.setValue('#log-max-size', log?.max_size_mb || 100);
-        this.setValue('#log-compress', log?.compress_days || 7);
-        this.setValue('#log-cleanup-hour', log?.cleanup_hour || 3);
-
-        // 备份设置
-        this.setChecked('#backup-enabled', backup?.auto_enabled ?? false);
-        const items = backup?.items || ['config', 'sites', 'ftp'];
+        // backup.items 特殊处理：3个 checkbox 对应一个数组
+        const items = this.config.backup?.items || ['config', 'sites', 'ftp'];
         this.setChecked('#backup-item-config', items.includes('config'));
         this.setChecked('#backup-item-sites', items.includes('sites'));
         this.setChecked('#backup-item-ftp', items.includes('ftp'));
-        this.setValue('#backup-schedule', backup?.schedule || 'daily');
-        this.setValue('#backup-retention', backup?.retention || 3);
 
         this.hasChanges = false;
+    }
+
+    /**
+     * 自动收集表单：遍历所有带 data-path 的元素，写入 config 对象
+     */
+    collectConfig() {
+        const config = JSON.parse(JSON.stringify(this.originalConfig));
+
+        this.$$('.settings-content [data-path]').forEach(el => {
+            const path = el.dataset.path;
+
+            if (el.type === 'checkbox') {
+                this.setPathValue(config, path, el.checked);
+            } else if (el.type === 'number') {
+                const val = parseInt(el.value);
+                if (!isNaN(val)) {
+                    this.setPathValue(config, path, val);
+                }
+            } else {
+                const val = el.value;
+                // password 为空则不更新
+                if (path === 'admin.password' && (!val || !val.trim())) return;
+                this.setPathValue(config, path, val);
+            }
+        });
+
+        // backup.items 特殊处理
+        config.backup.items = [
+            ...(this.isChecked('#backup-item-config') ? ['config'] : []),
+            ...(this.isChecked('#backup-item-sites') ? ['sites'] : []),
+            ...(this.isChecked('#backup-item-ftp') ? ['ftp'] : []),
+        ];
+
+        return config;
     }
 
     async openDirPicker(inputId) {
@@ -220,17 +269,17 @@ class SettingsTab extends BaseTab {
                                     <div style="font-size: 14px; color: var(--text, #fafaf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(b.name)}</div>
                                     <div style="font-size: 12px; color: var(--text-muted, #78716c);">${b.modified} · ${this.formatSize(b.size)}</div>
                                 </div>
+                            </div>
                             <div style="display: flex; gap: 6px; flex-shrink: 0;">
-                                <button class="btn btn-sm backup-download-btn" data-name="${this.escapeHtml(b.name)}" title="下载" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
-                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <button class="btn btn-sm backup-download-btn" data-name="${this.escapeHtml(b.name)}" title="下载">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 </button>
-                                <button class="btn btn-sm backup-restore-btn" data-name="${this.escapeHtml(b.name)}" title="恢复" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
-                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                <button class="btn btn-sm backup-restore-btn" data-name="${this.escapeHtml(b.name)}" title="恢复">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                                 </button>
                                 <button class="btn btn-sm backup-delete-btn" data-name="${this.escapeHtml(b.name)}" style="color:var(--danger, #ef4444);" title="删除">
-                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 </button>
-                            </div>
                             </div>
                         </div>
                     `).join('')}
@@ -316,52 +365,6 @@ class SettingsTab extends BaseTab {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
-    }
-
-    collectConfig() {
-        const config = JSON.parse(JSON.stringify(this.originalConfig));
-
-        // Directories
-        config.directories = {
-            sites: this.getValue('#dir-sites') || './sites',
-            ftp: this.getValue('#dir-ftp') || './ftp',
-            backup: this.getValue('#dir-backup') || './backups',
-        };
-
-        // Backup
-        config.backup = {
-            auto_enabled: this.isChecked('#backup-enabled'),
-            items: [
-                ...(this.isChecked('#backup-item-config') ? ['config'] : []),
-                ...(this.isChecked('#backup-item-sites') ? ['sites'] : []),
-                ...(this.isChecked('#backup-item-ftp') ? ['ftp'] : []),
-            ],
-            schedule: this.getValue('#backup-schedule') || 'daily',
-            retention: this.getInt('#backup-retention', 3),
-        };
-
-        // Admin
-        config.admin.name = this.getValue('#server-name') || 'PixelBeast Server';
-        config.admin.port = this.getInt('#admin-port', 9527);
-        config.admin.path = this.getValue('#admin-path') || '/admin';
-        config.admin.username = this.getValue('#admin-username') || 'admin';
-        const pwd = this.getValue('#admin-password');
-        if (pwd && pwd.trim()) {
-            config.admin.password = pwd;
-        }
-
-        // 域名绑定 & SSL
-        config.admin.bind_domain = this.getValue('#admin-bind-domain') || '';
-        config.admin.ssl_enabled = this.isChecked('#admin-ssl-enabled');
-
-        // Log
-        config.log.level = this.getValue('#log-level') || 'info';
-        config.log.retention_days = this.getInt('#log-retention', 30);
-        config.log.max_size_mb = this.getInt('#log-max-size', 100);
-        config.log.compress_days = this.getInt('#log-compress', 7);
-        config.log.cleanup_hour = this.getInt('#log-cleanup-hour', 3);
-
-        return config;
     }
 
     async save() {
@@ -482,18 +485,6 @@ class SettingsTab extends BaseTab {
     getValue(selector) {
         const el = this.$(selector);
         return el?.value || '';
-    }
-
-    setValue(selector, value) {
-        const el = this.$(selector);
-        if (el) {
-            el.value = value;
-        }
-    }
-
-    getInt(selector, defaultVal) {
-        const val = parseInt(this.getValue(selector));
-        return isNaN(val) ? defaultVal : val;
     }
 
     isChecked(selector) {

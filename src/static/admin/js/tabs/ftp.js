@@ -22,6 +22,7 @@ class FtpTab extends BaseTab {
         console.log('初始化 FTP 用户管理面板...');
         this.initDirectoryPicker();
         this.initDataTable();
+        this.initNumberInputs();
         this.bindEvents();
         this.checkServiceStatus(); // 检查服务状态
     }
@@ -88,6 +89,44 @@ class FtpTab extends BaseTab {
         });
     }
 
+    // ========== NumberInputs ==========
+
+    initNumberInputs() {
+        this.$$('.number-input-wrapper').forEach(wrapper => {
+            const input = wrapper.querySelector('input[type="number"]');
+            const upBtn = wrapper.querySelector('[data-action="up"]');
+            const downBtn = wrapper.querySelector('[data-action="down"]');
+
+            if (!input) return;
+
+            const step = parseInt(input.dataset.step) || 1;
+            const min = input.min !== '' ? parseInt(input.min) : null;
+            const max = input.max !== '' ? parseInt(input.max) : null;
+
+            const updateValue = (delta) => {
+                let value = parseInt(input.value) || 0;
+                value += delta;
+                if (min !== null && value < min) value = min;
+                if (max !== null && value > max) value = max;
+                input.value = value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+
+            upBtn?.addEventListener('click', () => updateValue(step));
+            downBtn?.addEventListener('click', () => updateValue(-step));
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    updateValue(step);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    updateValue(-step);
+                }
+            });
+        });
+    }
+
     getColumns() {
         return [
             {
@@ -122,7 +161,7 @@ class FtpTab extends BaseTab {
                 title: '根目录',
                 dataIndex: 'rootPath',
                 className: 'col-root',
-                render: (value) => `<div class="ftp-root-path"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><span>${escapeHtml(value || '/')}</span></div>`
+                render: (value) => `<div class="ftp-root-path"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><a class="ftp-root-link" href="#" data-browse-path="${escapeHtml(value || '/')}" title="在文件管理中打开">${escapeHtml(value || '/')}</a></div>`
             },
             {
                 title: '操作',
@@ -256,6 +295,20 @@ class FtpTab extends BaseTab {
         this.$$('.ftp-action-text.delete').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.showDeleteConfirm(btn.dataset.username);
+            });
+        });
+
+        // 根目录跳转文件管理
+        this.$$('.ftp-root-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const path = link.dataset.browsePath;
+                if (path && window.app?.switchTab) {
+                    window.app.switchTab('files');
+                    setTimeout(() => {
+                        this.events.emit('files:navigate', path);
+                    }, 150);
+                }
             });
         });
     }
@@ -557,6 +610,8 @@ class FtpTab extends BaseTab {
         this.$('#ftp-config-speed-limit').value = this.editingUser.speedLimit || 0;
         this.$('#ftp-config-max-connections').value = this.editingUser.maxConnections || 0;
         this.$('#ftp-config-bandwidth').value = this.editingUser.bandwidth || 0;
+        this.$('#ftp-config-max-files').value = this.editingUser.maxFiles || 0;
+        this.$('#ftp-config-max-file-size').value = this.editingUser.maxFileSize || 0;
         
         this.$('#ftp-config-modal')?.classList.add('active');
     }
@@ -573,12 +628,16 @@ class FtpTab extends BaseTab {
             speedLimit: parseInt(this.$('#ftp-config-speed-limit')?.value) || 0,
             maxConnections: parseInt(this.$('#ftp-config-max-connections')?.value) || 0,
             bandwidth: parseInt(this.$('#ftp-config-bandwidth')?.value) || 0,
+            maxFiles: parseInt(this.$('#ftp-config-max-files')?.value) || 0,
+            maxFileSize: parseInt(this.$('#ftp-config-max-file-size')?.value) || 0,
         };
         
         try {
             await this.api.post(`/api/ftp/users/${this.editingUser.username}/config`, config);
             this.message.success('配置已保存');
             this.hideConfigModal();
+            this.api.clearCache('/api/ftp/users');
+            await this.refresh();
         } catch (error) {
             this.message.error('保存失败: ' + error.message);
         }

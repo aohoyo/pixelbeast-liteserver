@@ -41,12 +41,12 @@
                 <h3 class="section-title">服务配置</h3>
                 <div class="form-group-inline">
                     <label class="form-label-inline">服务器名称</label>
-                    <input type="text" class="form-input-inline" id="server-name" placeholder="PixelBeast Server">
+                    <input type="text" class="form-input-inline" id="server-name" data-path="name" placeholder="PixelBeast Server">
                     <span class="form-hint-text">显示在管理面板标题</span>
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">时区</label>
-                    <select class="form-select-inline" id="timezone">
+                    <select class="form-select-inline" id="timezone" data-path="timezone">
                         <option value="Pacific/Midway">Pacific/Midway (UTC-11)</option>
                         <option value="Pacific/Honolulu">Pacific/Honolulu (UTC-10)</option>
                         <option value="America/Anchorage">America/Anchorage (UTC-9)</option>
@@ -96,7 +96,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">管理端口</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="admin-port" min="1" max="65535" value="9527">
+                        <input type="number" class="form-input-inline" id="admin-port" data-path="admin.port" min="1" max="65535" value="9527">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -110,18 +110,18 @@
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">安全入口路径</label>
-                    <input type="text" class="form-input-inline" id="admin-path" placeholder="/admin">
+                    <input type="text" class="form-input-inline" id="admin-path" data-path="admin.path" placeholder="/admin">
                     <span class="form-hint-text">隐藏后台地址，提升安全性</span>
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">管理员用户名</label>
-                    <input type="text" class="form-input-inline" id="admin-username" placeholder="admin">
+                    <input type="text" class="form-input-inline" id="admin-username" data-path="admin.username" placeholder="admin">
                     <span class="form-hint-text"></span>
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">管理员密码</label>
                     <div class="input-with-eye">
-                        <input type="password" class="form-input-inline" id="admin-password" placeholder="不修改请留空">
+                        <input type="password" class="form-input-inline" id="admin-password" data-path="admin.password" placeholder="不修改请留空">
                         <button type="button" class="inside-input" id="toggle-password">
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -133,13 +133,13 @@
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">绑定域名</label>
-                    <input type="text" class="form-input-inline" id="admin-bind-domain" placeholder="留空表示允许所有域名访问">
+                    <input type="text" class="form-input-inline" id="admin-domain" data-path="admin.domain" placeholder="留空表示允许所有域名访问">
                     <span class="form-hint-text">绑定后只能通过此域名访问面板，留空则不限制</span>
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">面板 SSL</label>
                     <label class="toggle">
-                        <input type="checkbox" id="admin-ssl-enabled">
+                        <input type="checkbox" id="admin-ssl-enabled" data-path="admin.ssl_enabled">
                         <span class="toggle-slider"></span>
                     </label>
                     <span class="form-hint-text">启用后使用 HTTPS 访问面板（即将支持）</span>
@@ -153,7 +153,7 @@
                     <label class="form-label-inline">站点根目录</label>
                     <div class="directory-picker">
                         <div class="directory-picker-input">
-                            <input type="text" class="form-input-inline" id="dir-sites" placeholder="./sites">
+                            <input type="text" class="form-input-inline" id="dir-sites" data-path="directories.sites" placeholder="./sites">
                             <button type="button" class="btn btn-secondary directory-picker-btn" data-dir="dir-sites" title="浏览目录">
                                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 浏览
@@ -166,7 +166,7 @@
                     <label class="form-label-inline">FTP 根目录</label>
                     <div class="directory-picker">
                         <div class="directory-picker-input">
-                            <input type="text" class="form-input-inline" id="dir-ftp" placeholder="./ftp">
+                            <input type="text" class="form-input-inline" id="dir-ftp" data-path="directories.ftp" placeholder="./ftp">
                             <button type="button" class="btn btn-secondary directory-picker-btn" data-dir="dir-ftp" title="浏览目录">
                                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 浏览
@@ -179,7 +179,7 @@
                     <label class="form-label-inline">备份根目录</label>
                     <div class="directory-picker">
                         <div class="directory-picker-input">
-                            <input type="text" class="form-input-inline" id="dir-backup" placeholder="./backups">
+                            <input type="text" class="form-input-inline" id="dir-backup" data-path="directories.backup" placeholder="./backups">
                             <button type="button" class="btn btn-secondary directory-picker-btn" data-dir="dir-backup" title="浏览目录">
                                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 浏览
@@ -197,7 +197,7 @@
                 <h3 class="section-title">日志配置</h3>
                 <div class="form-group-inline">
                     <label class="form-label-inline">日志级别</label>
-                    <select class="form-select-inline" id="log-level">
+                    <select class="form-select-inline" id="log-level" data-path="log.level">
                         <option value="debug">DEBUG - 调试</option>
                         <option value="info">INFO - 信息</option>
                         <option value="warn">WARN - 警告</option>
@@ -208,7 +208,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">日志保留天数</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="log-retention" min="1" max="365" value="30">
+                        <input type="number" class="form-input-inline" id="log-retention" data-path="log.retention_days" min="1" max="365" value="30">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -223,7 +223,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">单文件最大大小</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="log-max-size" min="10" max="1000" value="100" data-step="10">
+                        <input type="number" class="form-input-inline" id="log-max-size" data-path="log.max_size_mb" min="10" max="1000" value="100" data-step="10">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -238,7 +238,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">压缩旧日志</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="log-compress" min="1" max="30" value="7">
+                        <input type="number" class="form-input-inline" id="log-compress" data-path="log.compress_days" min="1" max="30" value="7">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -253,7 +253,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">清理时间</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="log-cleanup-hour" min="0" max="23" value="3">
+                        <input type="number" class="form-input-inline" id="log-cleanup-hour" data-path="log.cleanup_hour" min="0" max="23" value="3">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -275,7 +275,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">自动备份</label>
                     <label class="toggle">
-                        <input type="checkbox" id="backup-enabled">
+                        <input type="checkbox" id="backup-enabled" data-path="backup.auto_enabled">
                         <span class="toggle-slider"></span>
                     </label>
                     <span class="form-hint-text">启用定时自动备份</span>
@@ -297,7 +297,7 @@
                 </div>
                 <div class="form-group-inline">
                     <label class="form-label-inline">备份频率</label>
-                    <select class="form-select-inline" id="backup-schedule">
+                    <select class="form-select-inline" id="backup-schedule" data-path="backup.schedule">
                         <option value="daily">每天</option>
                         <option value="weekly">每周</option>
                         <option value="monthly">每月</option>
@@ -307,7 +307,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">保留数量</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="backup-retention" min="1" max="365" value="3">
+                        <input type="number" class="form-input-inline" id="backup-retention" data-path="backup.retention" min="1" max="365" value="3">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
