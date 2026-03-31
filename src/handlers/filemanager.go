@@ -179,10 +179,10 @@ func (fm *FileManager) RemoveSiteBookmark(siteID string) {
 }
 
 // UpdateBookmarksFromConfig 根据站点配置更新书签
-func (fm *FileManager) UpdateBookmarksFromConfig(sites []config.SiteConfig) {
+func (fm *FileManager) UpdateBookmarksFromConfig(sites []config.SiteConfig, sitesDir string) {
 	for _, site := range sites {
-		if site.Type == "static" && site.Root != "" {
-			fm.AddSiteBookmark(site.ID, site.Root)
+		if site.Type == "static" {
+			fm.AddSiteBookmark(site.ID, filepath.Join(sitesDir, site.ID))
 		}
 	}
 }

@@ -44,20 +44,20 @@ type ServerManager struct {
 	FileManager *FileManager
 }
 
-// ServerManager 创建服务管理器
-func ServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
+// NewServerManager 创建服务管理器
+func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
 	sm := &ServerManager{
 		ConfigManager: cm,
-		AdminPort:     cm.Server.AdminPort,
+		AdminPort:     cm.Server.Admin.Port,
 		FileManager:   NewFileManager(),
-		SitesRouter:   NewVirtualHostRouter(),
+		SitesRouter:   NewVirtualHostRouter(cm.GetSitesDir()),
 		SSLManager:    NewSSLManager("./ssl"),
 	}
 
 	sm.SitesRouter.SetSharedPort(cm.GetSharedPort())
 
 	// 初始化文件管理器书签
-	sm.FileManager.UpdateBookmarksFromConfig(cm.Sites.Sites)
+	sm.FileManager.UpdateBookmarksFromConfig(cm.Sites.Sites, cm.GetSitesDir())
 
 	return sm
 }
@@ -223,11 +223,11 @@ func (m *ServerManager) ReloadSites() error {
 	}
 
 	// 重建虚拟主机路由
-	m.SitesRouter = NewVirtualHostRouter()
+	m.SitesRouter = NewVirtualHostRouter(m.ConfigManager.GetSitesDir())
 	m.SitesRouter.SetSharedPort(m.ConfigManager.GetSharedPort())
 
 	for i := range m.ConfigManager.Sites.Sites {
-		site := &m.ConfigManager.Sites.Sites[i]
+		site := &(m.ConfigManager.Sites.Sites)[i]
 		if site.Enabled {
 			if err := m.SitesRouter.AddHost(site); err != nil {
 				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
@@ -236,7 +236,7 @@ func (m *ServerManager) ReloadSites() error {
 	}
 
 	// 更新文件管理器书签
-	m.FileManager.UpdateBookmarksFromConfig(m.ConfigManager.Sites.Sites)
+	m.FileManager.UpdateBookmarksFromConfig(m.ConfigManager.Sites.Sites, m.ConfigManager.GetSitesDir())
 
 	log.Printf("[Sites] 站点配置已重新加载")
 	return nil
@@ -251,15 +251,25 @@ func (m *ServerManager) StartSitesServer() error {
 		return nil
 	}
 
-	// 初始化虚拟主机路由器
+	// 检查是否有启用的站点
+	hasEnabled := false
 	for i := range m.ConfigManager.Sites.Sites {
-		site := &m.ConfigManager.Sites.Sites[i]
+		site := &(m.ConfigManager.Sites.Sites)[i]
 		if site.Enabled {
+			hasEnabled = true
 			if err := m.SitesRouter.AddHost(site); err != nil {
 				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
 			}
 		}
 	}
+
+	if !hasEnabled {
+		log.Printf("[Sites] 无启用的站点，跳过网站服务器启动")
+		return nil
+	}
+
+	// 获取共享端口
+	sharedPort := m.ConfigManager.GetSharedPort()
 
 	// 检查是否有站点需要 HTTPS
 	hasHTTPS := false
@@ -270,18 +280,8 @@ func (m *ServerManager) StartSitesServer() error {
 		}
 	}
 
-	// 启动 HTTP 服务器
 	if m.SitesHandler == nil {
 		m.SitesHandler = m.SitesRouter
-	}
-
-	// 获取共享端口（大多数站点使用的端口）
-	sharedPort := m.ConfigManager.Server.HTTPPort
-	for _, site := range m.ConfigManager.Sites.Sites {
-		if site.Enabled && site.Port > 0 && site.Port != sharedPort {
-			// 如果有独立端口的站点，需要特殊处理
-			// 暂时简化：只启动共享端口的服务器
-		}
 	}
 
 	m.SitesServer = &http.Server{
@@ -291,7 +291,6 @@ func (m *ServerManager) StartSitesServer() error {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	// 配置 TLS（如果需要）
 	if hasHTTPS && m.sitesTLSCfg != nil {
 		m.SitesServer.TLSConfig = m.sitesTLSCfg
 	}
@@ -300,14 +299,14 @@ func (m *ServerManager) StartSitesServer() error {
 
 	go func() {
 		log.Printf("[Sites] 网站服务器启动在端口 %d", sharedPort)
+		var err error
 		if m.SitesServer.TLSConfig != nil {
-			if err := m.SitesServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				log.Printf("[Sites] HTTPS 服务错误: %v", err)
-			}
+			err = m.SitesServer.ListenAndServeTLS("", "")
 		} else {
-			if err := m.SitesServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("[Sites] HTTP 服务错误: %v", err)
-			}
+			err = m.SitesServer.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			log.Printf("[Sites] 服务错误: %v", err)
 		}
 		m.mu.Lock()
 		m.sitesRunning = false
@@ -350,6 +349,82 @@ func (m *ServerManager) IsSitesRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sitesRunning
+}
+
+// StartSite 启动单个站点
+func (m *ServerManager) StartSite(siteID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	site := m.ConfigManager.GetSiteByID(siteID)
+	if site == nil {
+		return fmt.Errorf("站点不存在")
+	}
+
+	if site.Enabled {
+		return nil // 已经在运行
+	}
+
+	// 更新配置
+	site.Enabled = true
+	site.UpdatedAt = time.Now().Format(time.RFC3339)
+
+	// 添加到路由器
+	if err := m.SitesRouter.AddHost(site); err != nil {
+		site.Enabled = false
+		return fmt.Errorf("添加站点路由失败: %w", err)
+	}
+
+	// 保存配置
+	if m.ConfigManager != nil {
+		m.ConfigManager.Save()
+	}
+
+	log.Printf("[Sites] 站点 %s 已启动", site.Name)
+	return nil
+}
+
+// StopSite 停止单个站点
+func (m *ServerManager) StopSite(siteID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	site := m.ConfigManager.GetSiteByID(siteID)
+	if site == nil {
+		return fmt.Errorf("站点不存在")
+	}
+
+	if !site.Enabled {
+		return nil // 已经停止
+	}
+
+	// 从路由器移除
+	m.SitesRouter.RemoveHost(siteID)
+
+	// 更新配置
+	site.Enabled = false
+	site.UpdatedAt = time.Now().Format(time.RFC3339)
+
+	// 保存配置
+	if m.ConfigManager != nil {
+		m.ConfigManager.Save()
+	}
+
+	log.Printf("[Sites] 站点 %s 已停止", site.Name)
+	return nil
+}
+
+// RestartSite 重启单个站点
+func (m *ServerManager) RestartSite(siteID string) error {
+	// 停止
+	if err := m.StopSite(siteID); err != nil {
+		return err
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// 启动
+	return m.StartSite(siteID)
 }
 
 // ==================== FTP 服务（保持不变）====================

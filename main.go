@@ -26,17 +26,19 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("PixelBeast Server v%s\n", version)
-		fmt.Printf("buildTime: %s\n", buildTime)
+		fmt.Printf("v%s (build: %s)\n", version, buildTime)
 		return
 	}
-
-	printBanner()
 
 	// 加载配置
 	cm, err := config.NewConfigManager(*configDir)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
+	}
+
+	serverName := cm.Server.Name
+	if serverName == "" {
+		serverName = "PixelBeast Server"
 	}
 
 	// 初始化日志
@@ -51,11 +53,11 @@ func main() {
 		log.Printf("警告: 初始化日志失败: %v", err)
 	}
 
-	handlers.LogSystemInfo("像素兽 v%s 启动中...", version)
-	handlers.LogSystemInfo("配置目录: %s", *configDir)
+	fmt.Printf("  🪶 %s v%s\n", serverName, version)
+	handlers.LogSystemInfo("%s v%s 启动中...", serverName, version)
 
 	// 创建服务管理器
-	serverManager = handlers.ServerManager(cm, *configDir)
+	serverManager = handlers.NewServerManager(cm, *configDir)
 
 	// 创建 FTP 服务器
 	ftpCfg := cm.FTP
@@ -73,7 +75,6 @@ func main() {
 
 	// 创建管理面板处理器
 	adminHandler := admin.New(cm, *configDir)
-	adminHandler.SetConfigManager(cm)
 	adminHandler.SetServerManager(serverManager)
 	serverManager.SetAdminHandler(adminHandler)
 
@@ -92,54 +93,28 @@ func main() {
 	if ftpCfg.Enabled {
 		if err := serverManager.StartFTP(); err != nil {
 			handlers.LogSystemError("FTP服务器启动失败: %v", err)
-		} else {
-			handlers.LogSystemInfo("FTP服务器启动在端口 %d", ftpCfg.Port)
 		}
 	}
 
-	handlers.LogSystemInfo("像素兽启动完成")
+	handlers.LogSystemInfo("%s 启动完成", serverName)
 
-	// 优雅关闭
-	setupGracefulShutdown()
-
-	// 等待信号
+	// 等待退出信号
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-}
+	sig := <-sigChan
 
-func printBanner() {
-	fmt.Println()
-	fmt.Println("  🪶 像素兽 PixelBeast v" + version)
-	fmt.Println("  小而强悍，无所不能 - 多站点版")
-	fmt.Println()
-}
+	handlers.LogSystemInfo("收到信号 %v，正在关闭...", sig)
 
-func setupGracefulShutdown() {
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
+	if serverManager.IsFTPRunning() {
+		serverManager.StopFTP()
+	}
+	if serverManager.IsSitesRunning() {
+		serverManager.StopSitesServer()
+	}
+	if serverManager.IsAdminRunning() {
+		serverManager.StopAdminPanel()
+	}
 
-		handlers.LogSystemInfo("正在关闭服务器...")
-
-		// 停止 FTP
-		if serverManager.IsFTPRunning() {
-			serverManager.StopFTP()
-		}
-
-		// 停止网站服务器
-		if serverManager.IsSitesRunning() {
-			serverManager.StopSitesServer()
-		}
-
-		// 停止管理面板
-		if serverManager.IsAdminRunning() {
-			serverManager.StopAdminPanel()
-		}
-
-		handlers.LogSystemInfo("服务器已关闭")
-		handlers.Close()
-		os.Exit(0)
-	}()
+	handlers.LogSystemInfo("%s 已关闭", serverName)
+	handlers.Close()
 }

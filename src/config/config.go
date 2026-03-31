@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,37 +25,24 @@ type ConfigManager struct {
 
 // ServerConfig 服务配置
 type ServerConfig struct {
-	Name      string `json:"name"`
-	AdminPort int    `json:"admin_port"`
-
-	// Admin（密码加密存储）
-	AdminUsername string `json:"admin_username"`
-	AdminPassword string `json:"admin_password"` // 加密后的密码
-	AdminPath     string `json:"admin_path"`     // 安全入口路径
-
-	// 面板域名绑定
-	AdminDomain string `json:"admin_domain"` // 绑定域名，为空则允许所有域名访问
-
-	// 面板 SSL（前端显示，后端暂未实现）
-	AdminSSLEnabled bool `json:"admin_ssl_enabled"`
-
-	// 目录配置
+	Name        string          `json:"name"`
+	Admin       AdminConfig     `json:"admin"`
 	Directories DirectoriesConfig `json:"directories"`
-
-	// 备份配置
-	Backup BackupConfig `json:"backup"`
-
-	// 日志
-	Log LogConfig `json:"log"`
-
-	// 旧字段（迁移后删除）
-	HTTPPort  int    `json:"http_port,omitempty"`
-	HTTPDir   string `json:"http_dir,omitempty"`
-	FTPDir    string `json:"ftp_dir,omitempty"`
-	BackupDir string `json:"backup_dir,omitempty"`
+	Backup      BackupConfig    `json:"backup"`
+	Log         LogConfig       `json:"log"`
 }
 
-// SitesConfig 站点配置
+// AdminConfig 管理面板配置
+type AdminConfig struct {
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"` // 加密后的密码
+	Path        string `json:"path"`     // 安全入口路径
+	Domain      string `json:"domain"`   // 绑定域名，为空则允许所有域名访问
+	SSLEnabled  bool   `json:"ssl_enabled"`
+}
+
+// SitesConfig 站点配置列表
 type SitesConfig struct {
 	Sites []SiteConfig `json:"sites"`
 }
@@ -71,7 +57,6 @@ type SiteConfig struct {
 	// 静态站点
 	Port       int      `json:"port"`
 	Domain     []string `json:"domain"`
-	Root       string   `json:"root"`
 	IndexFiles []string `json:"index_files"`
 	AutoIndex  bool     `json:"auto_index"`
 
@@ -193,33 +178,20 @@ func (cm *ConfigManager) load() error {
 		return err
 	}
 
-		// 确保默认站点目录存在
-		cm.ensureDefaultDirectories()
+	// 确保默认站点目录存在
+	cm.ensureDefaultDirectories()
 
-		return nil
-	}
+	return nil
+}
 
-	// ensureDefaultDirectories 确保关键目录存在
-	func (cm *ConfigManager) ensureDefaultDirectories() {
-		// 站点根目录
-		sitesDir := cm.GetSitesDir()
-		if err := os.MkdirAll(sitesDir, 0755); err != nil {
-			log.Printf("警告: 创建站点目录失败: %v", err)
-		}
-
-		// 默认站点目录
-		for _, site := range cm.Sites.Sites {
-			if site.Root != "" {
-				os.MkdirAll(site.Root, 0755)
-			}
-		}
-
-		// FTP 根目录
-		ftpDir := cm.GetFTPRoot()
-		if ftpDir != "" {
-			os.MkdirAll(ftpDir, 0755)
+// ensureDefaultDirectories 确保站点目录存在
+func (cm *ConfigManager) ensureDefaultDirectories() {
+	for _, site := range cm.Sites.Sites {
+		if site.Type == "static" {
+			os.MkdirAll(cm.GetSiteRoot(&site), 0755)
 		}
 	}
+}
 
 // loadServer 加载服务配置
 func (cm *ConfigManager) loadServer() error {
@@ -228,7 +200,6 @@ func (cm *ConfigManager) loadServer() error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// 创建默认配置
 			cm.Server = cm.defaultServerConfig()
 			return cm.saveServer()
 		}
@@ -241,39 +212,14 @@ func (cm *ConfigManager) loadServer() error {
 	}
 
 	cm.Server = &cfg
-	// 迁移旧字段到新结构
-	cm.migrateConfig()
+	cm.ensureDefaults()
 	return nil
 }
 
-// migrateConfig 迁移旧配置字段到新结构
-func (cm *ConfigManager) migrateConfig() {
+// ensureDefaults 确保必要字段有默认值
+func (cm *ConfigManager) ensureDefaults() {
 	changed := false
 
-	// 迁移 http_port → 无（端口由站点管理，不再需要全局配置）
-
-	// 迁移 http_dir → directories.sites
-	if cm.Server.HTTPDir != "" && cm.Server.Directories.Sites == "" {
-		cm.Server.Directories.Sites = cm.Server.HTTPDir
-		cm.Server.HTTPDir = ""
-		changed = true
-	}
-
-	// 迁移 ftp_dir → directories.ftp
-	if cm.Server.FTPDir != "" && cm.Server.Directories.FTP == "" {
-		cm.Server.Directories.FTP = cm.Server.FTPDir
-		cm.Server.FTPDir = ""
-		changed = true
-	}
-
-	// 迁移 backup_dir → directories.backup
-	if cm.Server.BackupDir != "" && cm.Server.Directories.Backup == "" {
-		cm.Server.Directories.Backup = cm.Server.BackupDir
-		cm.Server.BackupDir = ""
-		changed = true
-	}
-
-	// 确保 directories 有默认值
 	if cm.Server.Directories.Sites == "" {
 		cm.Server.Directories.Sites = "./sites"
 		changed = true
@@ -287,13 +233,8 @@ func (cm *ConfigManager) migrateConfig() {
 		changed = true
 	}
 
-	// 确保 backup 有默认值
 	if cm.Server.Backup.Schedule == "" {
 		cm.Server.Backup.Schedule = "daily"
-		changed = true
-	}
-	if cm.Server.Backup.Retention == 0 {
-		cm.Server.Backup.Retention = 7
 		changed = true
 	}
 	if cm.Server.Backup.Items == nil {
@@ -301,12 +242,8 @@ func (cm *ConfigManager) migrateConfig() {
 		changed = true
 	}
 
-	// 保存迁移后的配置
 	if changed {
 		cm.saveServer()
-		if cm.FTP != nil {
-			cm.saveFTP()
-		}
 	}
 }
 
@@ -324,6 +261,11 @@ func (cm *ConfigManager) GetFTPRoot() string {
 		return cm.Server.Directories.FTP
 	}
 	return "./ftp"
+}
+
+// GetSiteRoot 获取站点根目录（静态站点：SitesDir/site.ID）
+func (cm *ConfigManager) GetSiteRoot(site *SiteConfig) string {
+	return filepath.Join(cm.GetSitesDir(), site.ID)
 }
 
 // GetSitesDir 获取站点默认根目录
@@ -439,11 +381,13 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
 
 	return &ServerConfig{
-		Name:          "PixelBeast Server",
-		AdminPort:     9527,
-		AdminUsername: "admin",
-		AdminPassword: encryptedPassword,
-		AdminPath:     "/admin",
+		Name: "PixelBeast Server",
+		Admin: AdminConfig{
+			Port:     9527,
+			Username: "admin",
+			Password: encryptedPassword,
+			Path:     "/admin",
+		},
 		Directories: DirectoriesConfig{
 			Sites:  "./sites",
 			FTP:    "./ftp",
@@ -476,11 +420,7 @@ func (cm *ConfigManager) defaultFTPConfig() *FTPConfig {
 
 // defaultSitesConfig 默认站点配置
 func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
-	sitesDir := cm.Server.Directories.Sites
-	if sitesDir == "" {
-		sitesDir = "./sites"
-	}
-	return &SitesConfig{
+	cfg := &SitesConfig{
 		Sites: []SiteConfig{
 			{
 				ID:         "default",
@@ -488,13 +428,13 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 				Enabled:    true,
 				Type:       "static",
 				Port:       3380,
-				Root:       sitesDir + "/default",
 				IndexFiles: []string{"index.html", "index.htm"},
 				AutoIndex:  true,
 				CreatedAt:  time.Now().Format("2006-01-02 15:04:05"),
 			},
 		},
 	}
+	return cfg
 }
 
 // ========== 配置重置 ==========
@@ -521,7 +461,7 @@ func (cm *ConfigManager) GetSharedPort() int {
 			return site.Port
 		}
 	}
-	return 3080
+	return 3380
 }
 
 // SetAdminPassword 设置管理员密码（加密存储）
@@ -534,7 +474,7 @@ func (cm *ConfigManager) SetAdminPassword(password string) error {
 		return err
 	}
 
-	cm.Server.AdminPassword = encrypted
+	cm.Server.Admin.Password = encrypted
 	return cm.saveServer()
 }
 
@@ -543,7 +483,7 @@ func (cm *ConfigManager) GetAdminPassword() (string, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	return crypto.DecryptString(cm.Server.AdminPassword, cm.key)
+	return crypto.DecryptString(cm.Server.Admin.Password, cm.key)
 }
 
 // GetKey 获取加密密钥（用于密码加密）
@@ -556,11 +496,11 @@ func (cm *ConfigManager) ValidateAdmin(username, password string) bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	if cm.Server.AdminUsername != username {
+	if cm.Server.Admin.Username != username {
 		return false
 	}
 
-	decrypted, err := crypto.DecryptString(cm.Server.AdminPassword, cm.key)
+	decrypted, err := crypto.DecryptString(cm.Server.Admin.Password, cm.key)
 	if err != nil {
 		return false
 	}

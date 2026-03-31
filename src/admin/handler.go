@@ -66,7 +66,7 @@ type Handler struct {
 
 // New 创建管理面板处理器
 func New(cm *config.ConfigManager, configPath string) *Handler {
-	adminPath := cm.Server.AdminPath
+	adminPath := cm.Server.Admin.Path
 	if adminPath == "" {
 		adminPath = "/admin"
 	}
@@ -116,7 +116,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 域名绑定检查：如果配置了绑定域名，只允许该域名访问
-	if boundDomain := h.ConfigManager.Server.AdminDomain; boundDomain != "" {
+	if boundDomain := h.ConfigManager.Server.Admin.Domain; boundDomain != "" {
 		host := r.Host
 		// 去掉端口
 		if idx := strings.LastIndex(host, ":"); idx != -1 {
@@ -260,6 +260,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.createBackup(w, r)
 	case "/api/backups/delete":
 		h.deleteBackup(w, r)
+	case "/api/backups/download":
+		h.downloadBackup(w, r)
+	case "/api/backups/restore":
+		h.restoreBackup(w, r)
 	// HTTP 文件管理
 	case "/api/files":
 		h.listFiles(w, r)
@@ -364,6 +368,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleSitesList(w, r)
 	case "/api/sites/toggle":
 		h.handleSiteToggle(w, r)
+	case "/api/sites/start":
+		h.handleSiteStart(w, r)
+	case "/api/sites/stop":
+		h.handleSiteStop(w, r)
+	case "/api/sites/restart":
+		h.handleSiteRestart(w, r)
 	case "/api/sites/batch":
 		h.handleSitesBatch(w, r)
 	default:

@@ -148,8 +148,19 @@ class SitesTab extends BaseTab {
                 title: '操作',
                 dataIndex: 'id',
                 className: 'col-actions',
-                render: (value) => `
+                render: (value, row) => {
+                    const isRunning = row.enabled;
+                    return `
                     <div class="site-actions">
+                        <button class="site-action-btn ${isRunning ? 'stop' : 'start'}" data-id="${escapeHtml(value)}" data-action="${isRunning ? 'stop' : 'start'}" title="${isRunning ? '停止' : '启动'}">
+                            ${isRunning
+                                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>'
+                                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
+                            }
+                        </button>
+                        <button class="site-action-btn restart" data-id="${escapeHtml(value)}" data-action="restart" title="重启">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        </button>
                         <button class="site-action-btn edit" data-id="${escapeHtml(value)}" title="编辑">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
@@ -157,7 +168,8 @@ class SitesTab extends BaseTab {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         </button>
                     </div>
-                `
+                    `;
+                }
             }
         ];
     }
@@ -200,6 +212,26 @@ class SitesTab extends BaseTab {
             btn.addEventListener('click', () => {
                 copyToClipboard(btn.dataset.url);
                 this.message.success('链接已复制');
+            });
+        });
+
+        // 启动/停止
+        this.$$('.site-action-btn.start, .site-action-btn.stop').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+                if (action === 'stop') {
+                    this.stopSite(id);
+                } else {
+                    this.startSite(id);
+                }
+            });
+        });
+
+        // 重启
+        this.$$('.site-action-btn.restart').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.restartSite(btn.dataset.id);
             });
         });
 
@@ -265,6 +297,42 @@ class SitesTab extends BaseTab {
             this.filterSites();
         } catch (error) {
             this.toast.error('操作失败: ' + error.message);
+        }
+    }
+
+    async startSite(id) {
+        try {
+            await this.api.post('/api/sites/start', { id });
+            this.toast.success('站点已启动');
+            const site = this.sites.find(s => s.id === id);
+            if (site) site.enabled = true;
+            this.filterSites();
+        } catch (error) {
+            this.toast.error('启动失败: ' + error.message);
+        }
+    }
+
+    async stopSite(id) {
+        try {
+            await this.api.post('/api/sites/stop', { id });
+            this.toast.success('站点已停止');
+            const site = this.sites.find(s => s.id === id);
+            if (site) site.enabled = false;
+            this.filterSites();
+        } catch (error) {
+            this.toast.error('停止失败: ' + error.message);
+        }
+    }
+
+    async restartSite(id) {
+        try {
+            await this.api.post('/api/sites/restart', { id });
+            this.toast.success('站点已重启');
+            const site = this.sites.find(s => s.id === id);
+            if (site) site.enabled = true;
+            this.filterSites();
+        } catch (error) {
+            this.toast.error('重启失败: ' + error.message);
         }
     }
 

@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"pixelbeast/src/config"
@@ -87,6 +84,90 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessMessage(w, "站点状态已更新")
+}
+
+// handleSiteStart 启动单个站点
+func (h *Handler) handleSiteStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "方法不允许")
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "参数错误")
+		return
+	}
+
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+
+	if err := h.ServerManager.StartSite(req.ID); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+
+	SuccessMessage(w, "站点已启动")
+}
+
+// handleSiteStop 停止单个站点
+func (h *Handler) handleSiteStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "方法不允许")
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "参数错误")
+		return
+	}
+
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+
+	if err := h.ServerManager.StopSite(req.ID); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+
+	SuccessMessage(w, "站点已停止")
+}
+
+// handleSiteRestart 重启单个站点
+func (h *Handler) handleSiteRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "方法不允许")
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "参数错误")
+		return
+	}
+
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+
+	if err := h.ServerManager.RestartSite(req.ID); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+
+	SuccessMessage(w, "站点已重启")
 }
 
 // handleSitesBatch 处理批量操作
@@ -199,11 +280,6 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 智能路径转换：静态站点的根目录
-	if site.Type == "static" && site.Root != "" {
-		site.Root = smartPathConversion(site.Root)
-	}
-
 	// 设置默认值
 	if site.IndexFiles == nil {
 		site.IndexFiles = []string{"index.html", "index.htm"}
@@ -230,11 +306,6 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 			InternalServerError(w, "保存配置失败")
 			return
 		}
-	}
-
-	// 创建站点根目录
-	if site.Type == "static" && site.Root != "" {
-		// 目录会在 CreateDefaultDirectories 中创建
 	}
 
 	// 重新加载站点
@@ -265,11 +336,6 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 	if err := json.NewDecoder(r.Body).Decode(&site); err != nil {
 		BadRequest(w, "参数错误")
 		return
-	}
-
-	// 智能路径转换：静态站点的根目录
-	if site.Type == "static" && site.Root != "" {
-		site.Root = smartPathConversion(site.Root)
 	}
 
 	h.mu.Lock()
@@ -348,7 +414,6 @@ func siteToMap(site config.SiteConfig) map[string]interface{} {
 		"type":        site.Type,
 		"port":        site.Port,
 		"domain":      site.Domain,
-		"root":        site.Root,
 		"index_files": site.IndexFiles,
 		"auto_index":  site.AutoIndex,
 		"proxy":       site.Proxy,
@@ -369,39 +434,4 @@ func extractIDFromPath(path, prefix string) string {
 		return ""
 	}
 	return path[len(prefix):]
-}
-
-// smartPathConversion 智能路径转换
-// 如果路径在程序目录内，转换为相对路径 (./xxx)
-// 如果路径在程序目录外，保持绝对路径
-func smartPathConversion(path string) string {
-	if path == "" {
-		return path
-	}
-
-	// 获取程序运行目录
-	programDir, err := os.Getwd()
-	if err != nil {
-		return path
-	}
-
-	// 规范化路径
-	absPath := path
-	if !filepath.IsAbs(path) {
-		absPath = filepath.Join(programDir, path)
-	}
-	absPath = filepath.Clean(absPath)
-	programDir = filepath.Clean(programDir)
-
-	// 检查是否在程序目录内
-	if strings.HasPrefix(absPath, programDir+string(filepath.Separator)) {
-		// 在程序目录内，转换为相对路径
-		relPath, err := filepath.Rel(programDir, absPath)
-		if err == nil {
-			return "./" + relPath
-		}
-	}
-
-	// 不在程序目录内，保持原路径
-	return path
 }

@@ -220,15 +220,29 @@ class SettingsTab extends BaseTab {
                                     <div style="font-size: 14px; color: var(--text, #fafaf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(b.name)}</div>
                                     <div style="font-size: 12px; color: var(--text-muted, #78716c);">${b.modified} · ${this.formatSize(b.size)}</div>
                                 </div>
+                            <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                                <button class="btn btn-sm backup-download-btn" data-name="${this.escapeHtml(b.name)}" title="下载" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                </button>
+                                <button class="btn btn-sm backup-restore-btn" data-name="${this.escapeHtml(b.name)}" title="恢复" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                </button>
+                                <button class="btn btn-sm backup-delete-btn" data-name="${this.escapeHtml(b.name)}" style="color:var(--danger, #ef4444);" title="删除">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
                             </div>
-                            <button class="btn btn-sm backup-delete-btn" data-name="${this.escapeHtml(b.name)}" style="flex-shrink:0;color:var(--danger, #ef4444);" title="删除">
-                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
+                            </div>
                         </div>
                     `).join('')}
                 </div>
             `;
-            // Bind delete events
+            // Bind events
+            container.querySelectorAll('.backup-download-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.downloadBackup(btn.dataset.name));
+            });
+            container.querySelectorAll('.backup-restore-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.restoreBackup(btn.dataset.name));
+            });
             container.querySelectorAll('.backup-delete-btn').forEach(btn => {
                 btn.addEventListener('click', () => this.deleteBackup(btn.dataset.name));
             });
@@ -249,6 +263,28 @@ class SettingsTab extends BaseTab {
         } finally {
             if (btn) btn.disabled = false;
         }
+    }
+
+    downloadBackup(name) {
+        const link = document.createElement('a');
+        link.href = `/api/backups/download?name=${encodeURIComponent(name)}`;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async restoreBackup(name) {
+        this.dialog?.confirm(`确定要从备份 "${name}" 恢复吗？当前配置将被覆盖。`, async () => {
+            try {
+                const data = await this.api.postJSON('/api/backups/restore', { name });
+                this.toast?.success(data?.message || '备份恢复成功');
+                // Reload config after restore
+                await this.onLoad();
+            } catch (error) {
+                this.toast?.error('恢复失败：' + error.message);
+            }
+        });
     }
 
     async deleteBackup(name) {

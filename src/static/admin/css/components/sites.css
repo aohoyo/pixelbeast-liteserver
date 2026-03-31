@@ -211,6 +211,28 @@
     color: var(--primary);
 }
 
+.site-action-btn.start {
+    color: var(--success);
+}
+
+.site-action-btn.start:hover {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+.site-action-btn.stop {
+    color: var(--danger);
+}
+
+.site-action-btn.stop:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.site-action-btn.restart:hover {
+    color: var(--warning);
+}
+
 .site-action-btn.delete:hover {
     color: var(--danger);
 }

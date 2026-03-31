@@ -78,7 +78,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	// 获取服务器状态
 	adminRunning := false
 	sitesRunning := false
-	adminPort := h.ConfigManager.Server.AdminPort
+	adminPort := h.ConfigManager.Server.Admin.Port
 
 	if h.ServerManager != nil {
 		adminRunning = h.ServerManager.IsAdminRunning()
@@ -474,12 +474,12 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := map[string]interface{}{
 		"admin": map[string]interface{}{
 			"name":        h.ConfigManager.Server.Name,
-			"username":    h.ConfigManager.Server.AdminUsername,
+			"username":    h.ConfigManager.Server.Admin.Username,
 			"password":    "", // 不返回密码
-			"port":        h.ConfigManager.Server.AdminPort,
-			"path":        h.ConfigManager.Server.AdminPath,
-			"bind_domain": h.ConfigManager.Server.AdminDomain,
-			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
+			"port":        h.ConfigManager.Server.Admin.Port,
+			"path":        h.ConfigManager.Server.Admin.Path,
+			"bind_domain": h.ConfigManager.Server.Admin.Domain,
+			"ssl_enabled": h.ConfigManager.Server.Admin.SSLEnabled,
 		},
 		"directories": map[string]interface{}{
 			"sites":  h.ConfigManager.Server.Directories.Sites,
@@ -526,22 +526,22 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 			h.ConfigManager.Server.Name = v
 		}
 		if v, ok := admin["username"].(string); ok {
-			h.ConfigManager.Server.AdminUsername = v
+			h.ConfigManager.Server.Admin.Username = v
 		}
 		if v, ok := admin["port"].(float64); ok {
-			h.ConfigManager.Server.AdminPort = int(v)
+			h.ConfigManager.Server.Admin.Port = int(v)
 		}
 		if v, ok := admin["path"].(string); ok {
-			h.ConfigManager.Server.AdminPath = v
+			h.ConfigManager.Server.Admin.Path = v
 		}
 		if v, ok := admin["password"].(string); ok && v != "" {
 			h.ConfigManager.SetAdminPassword(v)
 		}
 		if v, ok := admin["bind_domain"].(string); ok {
-			h.ConfigManager.Server.AdminDomain = v
+			h.ConfigManager.Server.Admin.Domain = v
 		}
 		if v, ok := admin["ssl_enabled"].(bool); ok {
-			h.ConfigManager.Server.AdminSSLEnabled = v
+			h.ConfigManager.Server.Admin.SSLEnabled = v
 		}
 	}
 
@@ -596,9 +596,6 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 				}
 				if v, ok := siteMap["port"].(float64); ok {
 					siteConfig.Port = int(v)
-				}
-				if v, ok := siteMap["root"].(string); ok {
-					siteConfig.Root = v
 				}
 				siteConfigs = append(siteConfigs, siteConfig)
 			}
@@ -672,12 +669,12 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := map[string]interface{}{
 		"admin": map[string]interface{}{
 			"name":        h.ConfigManager.Server.Name,
-			"username":    h.ConfigManager.Server.AdminUsername,
+			"username":    h.ConfigManager.Server.Admin.Username,
 			"password":    "",
-			"port":        h.ConfigManager.Server.AdminPort,
-			"path":        h.ConfigManager.Server.AdminPath,
-			"bind_domain": h.ConfigManager.Server.AdminDomain,
-			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
+			"port":        h.ConfigManager.Server.Admin.Port,
+			"path":        h.ConfigManager.Server.Admin.Path,
+			"bind_domain": h.ConfigManager.Server.Admin.Domain,
+			"ssl_enabled": h.ConfigManager.Server.Admin.SSLEnabled,
 		},
 		"directories": map[string]interface{}{
 			"sites":  h.ConfigManager.Server.Directories.Sites,
@@ -1091,9 +1088,43 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+
+	name, ok := data["name"].(string)
+	if !ok || name == "" {
+		BadRequest(w, "备份文件名不能为空")
+		return
+	}
+
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		BadRequest(w, "无效的备份文件名")
+		return
+	}
+
+	backupDir := h.ConfigManager.GetBackupDir()
+	absPath := filepath.Join(resolvePath(backupDir), name)
+
+	if err := os.Remove(absPath); err != nil {
+		InternalServerError(w, "删除备份失败: "+err.Error())
+		return
+	}
+
+	handlers.LogPanelConfigChange(username, "删除备份 "+name, true)
+	SuccessMessage(w, "备份已删除")
+}
 
 // downloadBackup 下载备份文件
 func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
+	username := h.getSessionUsername(r)
+	clientIP := getClientIP(r)
+
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		BadRequest(w, "缺少备份文件名")
@@ -1109,6 +1140,7 @@ func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "备份文件不存在")
 		return
 	}
+	handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, 0)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, absPath)
@@ -1116,8 +1148,12 @@ func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 
 // restoreBackup 从备份恢复
 func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	username := h.getSessionUsername(r)
 	clientIP := getClientIP(r)
+	defer func() {
+		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
+	}()
 
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
@@ -1218,34 +1254,6 @@ func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "备份恢复成功，重新加载配置生效")
 }
 
-	var data map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		BadRequest(w, "Invalid JSON")
-		return
-	}
-
-	name, ok := data["name"].(string)
-	if !ok || name == "" {
-		BadRequest(w, "备份文件名不能为空")
-		return
-	}
-
-	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
-		BadRequest(w, "无效的备份文件名")
-		return
-	}
-
-	backupDir := h.ConfigManager.GetBackupDir()
-	absPath := filepath.Join(resolvePath(backupDir), name)
-
-	if err := os.Remove(absPath); err != nil {
-		InternalServerError(w, "删除备份失败: "+err.Error())
-		return
-	}
-
-	handlers.LogPanelConfigChange(username, "删除备份 "+name, true)
-	SuccessMessage(w, "备份已删除")
-}
 
 // createTarGz 创建 tar.gz 压缩包
 func createTarGz(outputPath, srcDir, prefix string) error {

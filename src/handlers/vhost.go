@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -23,14 +24,15 @@ type VirtualHostRouter struct {
 	defaultHost *VirtualHost
 	portBased   map[int]*VirtualHost // port -> host
 	sharedPort  int                  // 共享端口（如 8080）
+	sitesDir    string               // 站点根目录
 }
 
 // NewVirtualHostRouter 创建虚拟主机路由器
-func NewVirtualHostRouter() *VirtualHostRouter {
+func NewVirtualHostRouter(sitesDir string) *VirtualHostRouter {
 	return &VirtualHostRouter{
-		hosts:      make(map[string]*VirtualHost),
-		portBased:  make(map[int]*VirtualHost),
-		sharedPort: 3380,
+		hosts:     make(map[string]*VirtualHost),
+		portBased: make(map[int]*VirtualHost),
+		sitesDir:  sitesDir,
 	}
 }
 
@@ -52,7 +54,7 @@ func (r *VirtualHostRouter) AddHost(cfg *config.SiteConfig) error {
 
 	switch cfg.Type {
 	case "static":
-		handler = NewHTTPServer(cfg.Root)
+		handler = NewHTTPServer(filepath.Join(r.sitesDir, cfg.ID))
 	case "proxy":
 		if cfg.Proxy == nil {
 			return fmt.Errorf("proxy type requires proxy config")
