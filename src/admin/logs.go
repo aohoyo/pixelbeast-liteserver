@@ -72,7 +72,7 @@ func (h *Handler) handleLogsList(w http.ResponseWriter, r *http.Request) {
 
 			name := entry.Name()
 			ext := filepath.Ext(name)
-			
+
 			files = append(files, LogFileInfo{
 				Name:       name,
 				Category:   cat,
@@ -112,7 +112,7 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 
 	// 确定日志文件路径
 	var logPath string
-	
+
 	switch category {
 	case "system":
 		logPath = filepath.Join(logDir, "system", "server.log")

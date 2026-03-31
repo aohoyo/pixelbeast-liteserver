@@ -177,11 +177,11 @@
         </div>
     </div>
 
-    <!-- 硬盘 -->
+    <!-- 磁盘 -->
     <div class="metric-card" id="disk-card" data-metric="disk">
         <div class="metric-card-content">
             <div class="metric-left">
-                <span class="metric-title">硬盘</span>
+                <span class="metric-title">磁盘</span>
                 <span class="metric-usage">
                     <span class="usage-used" id="disk-used">--</span>
                     <span class="usage-divider">/</span>
@@ -201,7 +201,7 @@
                 </div>
             </div>
         </div>
-        <!-- 硬盘详情弹窗 -->
+        <!-- 磁盘详情弹窗 -->
         <div class="metric-tooltip" id="disk-tooltip">
             <div class="tooltip-header">
                 <span>检测到当前磁盘</span>
@@ -210,34 +210,10 @@
             </div>
             <div class="tooltip-section">
                 <div class="tooltip-section-title" data-collapsible>
-                    <span>基础信息</span>
+                    <span>磁盘列表</span>
                     <i class="icon icon-chevron-down"></i>
                 </div>
-                <div class="tooltip-section-content">
-                    <div class="tooltip-row">
-                        <span>挂载点:</span>
-                        <span class="tooltip-value" id="tooltip-disk-mount">/</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span>共:</span>
-                        <span class="tooltip-value" id="tooltip-disk-total">--</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span>可用:</span>
-                        <span class="tooltip-value" id="tooltip-disk-free">--</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span>已用:</span>
-                        <span class="tooltip-value" id="tooltip-disk-used">--</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span>文件系统:</span>
-                        <span class="tooltip-value" id="tooltip-disk-fs">--</span>
-                    </div>
-                    <div class="tooltip-row">
-                        <span>类型:</span>
-                        <span class="tooltip-value" id="tooltip-disk-type">--</span>
-                    </div>
+                <div class="tooltip-section-content" id="disk-list">
                 </div>
             </div>
         </div>

@@ -263,8 +263,7 @@ class FtpTab extends BaseTab {
     // ========== 数据操作 ==========
 
     async onLoad() {
-        if (!this.dataTable) return;
-        this.dataTable.setLoading(true);
+        this.dataTable?.setLoading(true);
 
         try {
             const result = await this.api.getJSON('/api/ftp/users');
@@ -272,7 +271,7 @@ class FtpTab extends BaseTab {
             this.users = Array.isArray(result) ? result : (result?.users || []);
             this.filterUsers();
         } finally {
-            this.dataTable.setLoading(false);
+            this.dataTable?.setLoading(false);
         }
     }
 
@@ -294,17 +293,16 @@ class FtpTab extends BaseTab {
 
     async checkServiceStatus() {
         try {
-            // 从统一配置获取 FTP 信息
-            const config = this.state?.get?.('config');
-            const ftpRunning = config?.ftp?.enabled ?? false;
-            const ftpPort = config?.ftp?.port || 2121;
-            
-            this.updateServiceStatus(ftpRunning);
-            
-            // 更新端口输入框
-            const portInput = this.$('#ftp-port-input');
-            if (portInput) {
-                portInput.value = ftpPort;
+            const response = await this.api.get('/api/ftp/status');
+            if (response?.ok) {
+                const data = await this.api.parseJSON(response);
+                if (data) {
+                    this.updateServiceStatus(data.running);
+                    const portInput = this.$('#ftp-port-input');
+                    if (portInput) {
+                        portInput.value = data.port;
+                    }
+                }
             }
         } catch (error) {
             console.error('获取服务状态失败:', error);
@@ -588,14 +586,9 @@ class FtpTab extends BaseTab {
 
     async savePort() {
         const port = parseInt(this.$('#ftp-port-input')?.value) || 2121;
-        
+
         try {
-            // 统一通过 /api/config 保存
-            const config = await this.api.getJSON('/api/config') || {};
-            config.ftp = config.ftp || {};
-            config.ftp.port = port;
-            
-            await this.api.post('/api/config', config);
+            await this.api.post('/api/ftp/port', { port });
             this.message.success('FTP 端口已更新，重启服务生效');
             this.hidePortModal();
         } catch (error) {

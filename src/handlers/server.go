@@ -44,8 +44,8 @@ type ServerManager struct {
 	FileManager *FileManager
 }
 
-// NewServerManager 创建服务管理器
-func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
+// ServerManager 创建服务管理器
+func ServerManager(cm *config.ConfigManager, configPath string) *ServerManager {
 	sm := &ServerManager{
 		ConfigManager: cm,
 		AdminPort:     cm.Server.AdminPort,

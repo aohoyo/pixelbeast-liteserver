@@ -21,6 +21,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/process"
 
 	"pixelbeast/src/config"
 	"pixelbeast/src/handlers"
@@ -30,6 +31,37 @@ var startTime = time.Now()
 
 // cpuHistory 存储 CPU 历史数据用于趋势图
 var cpuHistory []float64
+
+// 后台 CPU 采样
+var (
+	lastCPUPercent float64
+	lastCPUPerCore []float64
+	cpuMu          sync.RWMutex
+)
+
+func init() {
+	go func() {
+		for {
+			// 总体使用率
+			percent, err := cpu.Percent(time.Second, false)
+			cpuMu.Lock()
+			if err == nil && len(percent) > 0 {
+				lastCPUPercent = percent[0]
+			}
+			cpuMu.Unlock()
+
+			// 每核使用率
+			perCore, err := cpu.Percent(0, true)
+			if err == nil && len(perCore) > 0 {
+				cpuMu.Lock()
+				lastCPUPerCore = perCore
+				cpuMu.Unlock()
+			}
+
+			time.Sleep(2 * time.Second)
+		}
+	}()
+}
 
 // ==================== 状态 ====================
 
@@ -46,13 +78,11 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	// 获取服务器状态
 	adminRunning := false
 	sitesRunning := false
-	ftpRunning := h.ConfigManager.FTP.Enabled
 	adminPort := h.ConfigManager.Server.AdminPort
 
 	if h.ServerManager != nil {
 		adminRunning = h.ServerManager.IsAdminRunning()
 		sitesRunning = h.ServerManager.IsSitesRunning()
-		ftpRunning = h.ServerManager.IsFTPRunning()
 	}
 
 	// 构建站点列表
@@ -90,9 +120,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"sites_running":     sitesRunning,
 		"sites_count":       len(h.ConfigManager.Sites.Sites),
 		"sites":             sites,
-		"ftp_running":       ftpRunning,
-		"ftp_port":          h.ConfigManager.FTP.Port,
-							}
+	}
 
 	// 如果有 CSRF token，添加到响应中
 	if csrfToken != "" {
@@ -116,9 +144,18 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	processMem := handlers.GetProcessMemory()
 	memoryMB := float64(processMem) / 1024 / 1024
 
-	// 获取真实的 CPU 信息
-	cpuPercent := getRealCPUPercent()
-	cpuCores := runtime.NumCPU()
+	// 获取真实的 CPU 信息（从后台采样读取，不阻塞）
+	cpuMu.RLock()
+	cpuPercent := lastCPUPercent
+	cpuMu.RUnlock()
+	cpuCores, _ := cpu.Counts(false)
+	if cpuCores == 0 {
+		cpuCores = runtime.NumCPU()
+	}
+	cpuThreads, _ := cpu.Counts(true)
+	if cpuThreads == 0 {
+		cpuThreads = cpuCores
+	}
 	cpuModel := getCPUModel()
 
 	// 更新 CPU 历史记录
@@ -128,10 +165,6 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 获取 FTP 服务状态
-	ftpRunning := h.ConfigManager.FTP.Enabled
-	if h.ServerManager != nil {
-		ftpRunning = h.ServerManager.IsFTPRunning()
-	}
 
 	// 获取真实的内存信息
 	memInfo, _ := mem.VirtualMemory()
@@ -152,34 +185,46 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		memBuffCacheMB = float64(memInfo.Buffers+memInfo.Cached) / 1024 / 1024
 	}
 
-	// 获取真实的硬盘信息（获取项目所在盘符/目录）
+	// 获取所有磁盘分区信息
 	programDir, _ := os.Getwd()
-	diskPath := "/"
-	
-	// Windows 下获取项目所在盘符
-	if runtime.GOOS == "windows" {
-		// Windows 下使用项目目录作为磁盘路径
-		// disk.Usage 会自动识别盘符
-		diskPath = programDir
-	} else {
-		// Linux/macOS 下获取项目所在挂载点
-		diskPath = programDir
+	partitions, _ := disk.Partitions(false)
+	type diskEntry struct {
+		Mount   string  `json:"mount"`
+		Device  string  `json:"device"`
+		Fstype  string  `json:"fstype"`
+		TotalGB float64 `json:"total_gb"`
+		UsedGB  float64 `json:"used_gb"`
+		FreeGB  float64 `json:"free_gb"`
+		Percent float64 `json:"percent"`
 	}
-	
-	diskInfo, _ := disk.Usage(diskPath)
-	diskPercent := 0.0
-	diskUsedGB := 0.0
-	diskTotalGB := 0.0
-	diskFreeGB := 0.0
-	diskFs := ""
-	diskMount := diskPath
-	if diskInfo != nil {
-		diskPercent = diskInfo.UsedPercent
-		diskUsedGB = float64(diskInfo.Used) / 1024 / 1024 / 1024
-		diskTotalGB = float64(diskInfo.Total) / 1024 / 1024 / 1024
-		diskFreeGB = float64(diskInfo.Free) / 1024 / 1024 / 1024
-		diskFs = diskInfo.Fstype
-		diskMount = diskInfo.Path
+	var disks []diskEntry
+	var primaryDisk *diskEntry
+
+	for _, p := range partitions {
+		usage, err := disk.Usage(p.Mountpoint)
+		if err != nil || usage == nil || usage.Total == 0 {
+			continue
+		}
+		disks = append(disks, diskEntry{
+			Mount:   p.Mountpoint,
+			Device:  p.Device,
+			Fstype:  p.Fstype,
+			TotalGB: float64(usage.Total) / 1024 / 1024 / 1024,
+			UsedGB:  float64(usage.Used) / 1024 / 1024 / 1024,
+			FreeGB:  float64(usage.Free) / 1024 / 1024 / 1024,
+			Percent: usage.UsedPercent,
+		})
+	}
+	// 找到程序所在磁盘（最长匹配挂载点）
+	bestLen := 0
+	for i := range disks {
+		if strings.HasPrefix(programDir, disks[i].Mount) && len(disks[i].Mount) > bestLen {
+			primaryDisk = &disks[i]
+			bestLen = len(disks[i].Mount)
+		}
+	}
+	if primaryDisk == nil && len(disks) > 0 {
+		primaryDisk = &disks[0]
 	}
 
 	// 获取真实的负载信息
@@ -191,63 +236,114 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		load15m = loadAvg.Load15
 	}
 
+	// 获取进程数量（活跃/总数）
+	var processActive int
+	allPids, _ := process.Pids()
+	for _, pid := range allPids {
+		p, err := process.NewProcess(pid)
+		if err != nil {
+			continue
+		}
+		statuses, _ := p.Status()
+		for _, s := range statuses {
+			if s == "R" {
+				processActive++
+				break
+			}
+		}
+	}
+	processTotal := len(allPids)
+
+	// 读取每核 CPU 使用率
+	cpuMu.RLock()
+	cpuPerCore := make([]float64, len(lastCPUPerCore))
+	copy(cpuPerCore, lastCPUPerCore)
+	cpuMu.RUnlock()
 	// 构建状态数据
 	statusData := map[string]interface{}{
 		// CPU
-		"cpu_percent":   cpuPercent,
-		"cpu_cores":     cpuCores,
-		"cpu_threads":   cpuCores * 2,
-		"cpu_model":     cpuModel,
-		"cpu_history":   cpuHistory,
+		"cpu_percent":  cpuPercent,
+		"cpu_cores":    cpuCores,
+		"cpu_threads":  cpuThreads,
+		"cpu_model":    cpuModel,
+		"cpu_history":  cpuHistory,
+		"cpu_per_core": cpuPerCore,
 
 		// 内存
-		"memory_percent":      memPercent,
-		"memory_used_gb":      memUsedGB,
-		"memory_total_gb":     memTotalGB,
-		"memory_free_gb":      memFreeGB,
-		"memory_available_gb": memAvailableGB,
-		"memory_shared_mb":    memSharedMB,
+		"memory_percent":       memPercent,
+		"memory_used_gb":       memUsedGB,
+		"memory_total_gb":      memTotalGB,
+		"memory_free_gb":       memFreeGB,
+		"memory_available_gb":  memAvailableGB,
+		"memory_shared_mb":     memSharedMB,
 		"memory_buff_cache_mb": memBuffCacheMB,
 
-		// 硬盘
-		"disk_percent":    diskPercent,
-		"disk_used_gb":    diskUsedGB,
-		"disk_total_gb":   diskTotalGB,
-		"disk_free_gb":    diskFreeGB,
-		"disk_mount":      diskMount,
-		"disk_filesystem": diskFs,
-		"disk_type":       getDiskType(),
+		// 磁盘（所有磁盘合计）
+		"disk_percent": func() float64 {
+			var total, used float64
+			for _, d := range disks {
+				total += d.TotalGB
+				used += d.UsedGB
+			}
+			if total > 0 {
+				return used / total * 100
+			}
+			return 0
+		}(),
+		"disk_used_gb": func() float64 {
+			var sum float64
+			for _, d := range disks {
+				sum += d.UsedGB
+			}
+			return sum
+		}(),
+		"disk_total_gb": func() float64 {
+			var sum float64
+			for _, d := range disks {
+				sum += d.TotalGB
+			}
+			return sum
+		}(),
+		"disk_free_gb": func() float64 {
+			var sum float64
+			for _, d := range disks {
+				sum += d.FreeGB
+			}
+			return sum
+		}(),
+		"disk_mount": func() string {
+			if primaryDisk != nil {
+				return primaryDisk.Mount
+			}
+			return "/"
+		}(),
+		"disk_filesystem": func() string {
+			if primaryDisk != nil {
+				return primaryDisk.Fstype
+			}
+			return ""
+		}(),
+		"disk_type": getDiskType(),
+		"disks":     disks,
 
 		// 负载
 		"load_avg":       []float64{load1m, load5m, load15m},
-		"process_active": getProcessCount(),
-		"process_total":  getProcessCount() + 50, // 估算值
+		"process_active": processActive,
+		"process_total":  processTotal,
 
 		// 运行时间
 		"server_start_time": startTime.UnixMilli(),
 
 		// FTP 状态
-		"ftp_running": ftpRunning,
-		"ftp_port":    h.ConfigManager.FTP.Port,
 
 		// 保留原有字段
 		"memory_mb":  memoryMB,
 		"goroutines": runtime.NumGoroutine(),
-	"os":         runtime.GOOS,
+		"os":         runtime.GOOS,
 		"arch":       runtime.GOARCH,
 	}
 
 	Success(w, statusData)
-}
-
-// getRealCPUPercent 获取真实 CPU 使用率
-func getRealCPUPercent() float64 {
-	// 间隔 500ms 采样（更实时，但波动稍大）
-	percent, err := cpu.Percent(500*time.Millisecond, false)
-	if err != nil || len(percent) == 0 {
-		return getSimulatedCPUPercent()
-	}
-	return percent[0]
 }
 
 // getCPUModel 获取 CPU 型号（跨平台）
@@ -265,37 +361,13 @@ func getCPUModel() string {
 	return runtime.GOARCH
 }
 
-// getDiskType 获取硬盘类型
+// getDiskType 获取磁盘类型
 func getDiskType() string {
-	// gopsutil 不能直接获取硬盘类型（SSD/HDD）
+	// gopsutil 不能直接获取磁盘类型（SSD/HDD）
 	// 可以通过检测是否为旋转磁盘来判断
 	// 这里返回简化版本
 	return "--"
 }
-
-// getProcessCount 获取进程数量（简化版）
-func getProcessCount() int {
-	// 使用 gopsutil 获取进程列表
-	procs, err := cpu.Counts(false)
-	if err != nil {
-		return runtime.NumCPU()
-	}
-	return procs
-}
-
-// getSimulatedCPUPercent 返回模拟的 CPU 使用率（作为降级方案）
-func getSimulatedCPUPercent() float64 {
-	// 基于时间产生波动的模拟数据
-	now := time.Now().Unix()
-	base := 25.0
-	fluctuation := float64(now%30) * 1.5
-	result := base + fluctuation
-	if result > 80 {
-		result = 80
-	}
-	return result
-}
-
 func (h *Handler) freeMemory(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	username := h.getSessionUsername(r)
@@ -401,10 +473,11 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 	// 构建前端期望的格式
 	cfg := map[string]interface{}{
 		"admin": map[string]interface{}{
-			"username": h.ConfigManager.Server.AdminUsername,
-			"password": "", // 不返回密码
-			"port":     h.ConfigManager.Server.AdminPort,
-			"path":     h.ConfigManager.Server.AdminPath,
+			"name":        h.ConfigManager.Server.Name,
+			"username":    h.ConfigManager.Server.AdminUsername,
+			"password":    "", // 不返回密码
+			"port":        h.ConfigManager.Server.AdminPort,
+			"path":        h.ConfigManager.Server.AdminPath,
 			"bind_domain": h.ConfigManager.Server.AdminDomain,
 			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
 		},
@@ -413,12 +486,6 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 			"ftp":    h.ConfigManager.Server.Directories.FTP,
 			"backup": h.ConfigManager.Server.Directories.Backup,
 		},
-		"ftp": map[string]interface{}{
-			"enabled": h.ConfigManager.FTP.Enabled,
-			"port":    h.ConfigManager.FTP.Port,
-			"users":   h.ConfigManager.FTP.Users,
-		},
-		"sites": h.ConfigManager.Sites.Sites,
 		"log": map[string]interface{}{
 			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
 			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
@@ -455,6 +522,9 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 解析 admin 配置
 	if admin, ok := data["admin"].(map[string]interface{}); ok {
+		if v, ok := admin["name"].(string); ok {
+			h.ConfigManager.Server.Name = v
+		}
 		if v, ok := admin["username"].(string); ok {
 			h.ConfigManager.Server.AdminUsername = v
 		}
@@ -471,7 +541,7 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 			h.ConfigManager.Server.AdminDomain = v
 		}
 		if v, ok := admin["ssl_enabled"].(bool); ok {
-		h.ConfigManager.Server.AdminSSLEnabled = v
+			h.ConfigManager.Server.AdminSSLEnabled = v
 		}
 	}
 
@@ -506,19 +576,6 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			h.ConfigManager.Server.Backup.Items = itemStrs
-		}
-	}
-
-	// 解析 ftp 配置
-	if ftp, ok := data["ftp"].(map[string]interface{}); ok {
-		if v, ok := ftp["enabled"].(bool); ok {
-			h.ConfigManager.FTP.Enabled = v
-		}
-		if v, ok := ftp["port"].(float64); ok {
-			h.ConfigManager.FTP.Port = int(v)
-		}
-		if v, ok := ftp["root"].(string); ok {
-			h.ConfigManager.Server.Directories.FTP = v
 		}
 	}
 
@@ -614,10 +671,11 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	// 返回重置后的完整配置（复用 getConfig 逻辑）
 	cfg := map[string]interface{}{
 		"admin": map[string]interface{}{
-			"username": h.ConfigManager.Server.AdminUsername,
-			"password": "",
-			"port":     h.ConfigManager.Server.AdminPort,
-			"path":     h.ConfigManager.Server.AdminPath,
+			"name":        h.ConfigManager.Server.Name,
+			"username":    h.ConfigManager.Server.AdminUsername,
+			"password":    "",
+			"port":        h.ConfigManager.Server.AdminPort,
+			"path":        h.ConfigManager.Server.AdminPath,
 			"bind_domain": h.ConfigManager.Server.AdminDomain,
 			"ssl_enabled": h.ConfigManager.Server.AdminSSLEnabled,
 		},
@@ -626,12 +684,6 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 			"ftp":    h.ConfigManager.Server.Directories.FTP,
 			"backup": h.ConfigManager.Server.Directories.Backup,
 		},
-		"ftp": map[string]interface{}{
-			"enabled": h.ConfigManager.FTP.Enabled,
-			"port":    h.ConfigManager.FTP.Port,
-			"users":   h.ConfigManager.FTP.Users,
-		},
-		"sites": h.ConfigManager.Sites.Sites,
 		"log": map[string]interface{}{
 			"retention_days": h.ConfigManager.Server.Log.RetentionDays,
 			"max_size_mb":    h.ConfigManager.Server.Log.MaxSizeMB,
@@ -718,7 +770,6 @@ func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
 	os.WriteFile(logPath, []byte{}, 0644)
 	SuccessMessage(w, "日志已清空")
 }
-
 
 // syncSystemTime 通过 NTP 校正后设置系统时间，同时返回当前时间数据
 func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
@@ -934,7 +985,6 @@ func queryNTP(server string) (*time.Time, error) {
 	return &t, nil
 }
 
-
 // ==================== 备份管理 ====================
 
 // listBackups 列出备份文件
@@ -1041,8 +1091,132 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
+
+// downloadBackup 下载备份文件
+func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		BadRequest(w, "缺少备份文件名")
 		return
 	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		BadRequest(w, "无效的备份文件名")
+		return
+	}
+	backupDir := h.ConfigManager.GetBackupDir()
+	absPath := filepath.Join(resolvePath(backupDir), name)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		BadRequest(w, "备份文件不存在")
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, absPath)
+}
+
+// restoreBackup 从备份恢复
+func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
+	username := h.getSessionUsername(r)
+	clientIP := getClientIP(r)
+
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if req.Name == "" {
+		BadRequest(w, "备份文件名不能为空")
+		return
+	}
+	if strings.Contains(req.Name, "/") || strings.Contains(req.Name, "\\") || strings.Contains(req.Name, "..") {
+		BadRequest(w, "无效的备份文件名")
+		return
+	}
+
+	backupDir := h.ConfigManager.GetBackupDir()
+	absPath := filepath.Join(resolvePath(backupDir), req.Name)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		BadRequest(w, "备份文件不存在")
+		return
+	}
+
+	configDir := h.ConfigManager.ConfigDir()
+
+	tmpDir, err := os.MkdirTemp("", "pixelbeast-restore-*")
+	if err != nil {
+		InternalServerError(w, "创建临时目录失败")
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	f, err := os.Open(absPath)
+	if err != nil {
+		InternalServerError(w, "打开备份文件失败")
+		return
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		InternalServerError(w, "解压失败")
+		return
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			InternalServerError(w, "读取备份失败")
+			return
+		}
+		if strings.HasPrefix(header.Name, "/") || strings.Contains(header.Name, "..") {
+			continue
+		}
+		target := filepath.Join(tmpDir, header.Name)
+		if header.Typeflag == tar.TypeDir {
+			os.MkdirAll(target, os.FileMode(header.Mode))
+			continue
+		}
+		if header.Typeflag == tar.TypeReg {
+			os.MkdirAll(filepath.Dir(target), 0755)
+			out, err := os.Create(target)
+			if err != nil {
+				continue
+			}
+			io.Copy(out, tr)
+			out.Close()
+		}
+	}
+
+	filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(tmpDir, path)
+		dst := filepath.Join(configDir, rel)
+		os.MkdirAll(filepath.Dir(dst), 0755)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		os.WriteFile(dst, data, info.Mode())
+		return nil
+	})
+
+	handlers.LogPanelConfigChange(username, "从备份恢复 "+req.Name, true)
+	SuccessMessage(w, "备份恢复成功，重新加载配置生效")
+}
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {

@@ -275,12 +275,6 @@ async function loadInitialData() {
                     hostname: data.hostname
                 });
 
-                state.batch({
-                    'services': {
-                        ftp: { running: data.ftp_running, port: data.ftp_port }
-                    }
-                });
-
                 globalEvents.emit('status:loaded', data);
             }
         }

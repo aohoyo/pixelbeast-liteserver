@@ -31,7 +31,7 @@ export default class StateManager {
 
             // 服务状态
             services: {
-                http: { running: true, port: 1880 },
+                http: { running: true, port: 3380 },
                 ftp: { running: true, port: 2121 }
             },
 
@@ -228,7 +228,7 @@ export default class StateManager {
                 currentTab: 'status',
                 user: null,
                 config: null,
-                services: { http: { running: true, port: 1880 }, ftp: { running: true, port: 2121 } },
+                services: { http: { running: true, port: 3380 }, ftp: { running: true, port: 2121 } },
                 paths: { http: '/', ftp: '/' },
                 loading: {},
                 errors: {}

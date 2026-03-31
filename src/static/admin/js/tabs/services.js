@@ -16,7 +16,11 @@ class ServicesTab extends BaseTab {
         this.bindEvents();
         
         // 监听服务状态更新
-        this.events.on('status:loaded', (data) => {
+            this.events.on('status:loaded', (data) => {
+            this.updateUI(data);
+        });
+        // FTP 稡块单独触发状态刷新
+        this.events.on('ftp:status:loaded', (data) => {
             this.updateUI(data);
         });
     }
@@ -29,10 +33,21 @@ class ServicesTab extends BaseTab {
     }
 
     async onLoad() {
-        const response = await this.api.get('/api/status');
+        const response = await this.api.get('/api/system/status');
         if (response?.ok) {
             const data = await this.api.parseJSON(response);
-            this.updateUI(data);
+            if (data) {
+                this.updateUI(data);
+                globalEvents.emit('status:loaded', data);
+            }
+        }
+        // FTP 稡块独立获取状态
+        const ftpResponse = await this.api.get('/api/ftp/status');
+        if (ftpResponse?.ok) {
+            const ftpData = await this.api.parseJSON(ftpResponse);
+            if (ftpData) {
+                this.updateUI({ ftp_running: ftpData.running, ftp_port: ftpData.port });
+            }
         }
     }
 

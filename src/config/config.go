@@ -26,7 +26,8 @@ type ConfigManager struct {
 
 // ServerConfig 服务配置
 type ServerConfig struct {
-	AdminPort int `json:"admin_port"`
+	Name      string `json:"name"`
+	AdminPort int    `json:"admin_port"`
 
 	// Admin（密码加密存储）
 	AdminUsername string `json:"admin_username"`
@@ -108,9 +109,6 @@ type FTPConfig struct {
 	Enabled bool      `json:"enabled"`
 	Port    int       `json:"port"`
 	Users   []FTPUser `json:"users"`
-
-	// 旧字段（迁移后删除）
-	Root string `json:"root,omitempty"`
 }
 
 // LogConfig 日志配置
@@ -265,13 +263,6 @@ func (cm *ConfigManager) migrateConfig() {
 	if cm.Server.FTPDir != "" && cm.Server.Directories.FTP == "" {
 		cm.Server.Directories.FTP = cm.Server.FTPDir
 		cm.Server.FTPDir = ""
-		changed = true
-	}
-
-	// 迁移 ftp.root → directories.ftp
-	if cm.FTP != nil && cm.FTP.Root != "" && cm.Server.Directories.FTP == "" {
-		cm.Server.Directories.FTP = cm.FTP.Root
-		cm.FTP.Root = ""
 		changed = true
 	}
 
@@ -448,6 +439,7 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
 
 	return &ServerConfig{
+		Name:          "PixelBeast Server",
 		AdminPort:     9527,
 		AdminUsername: "admin",
 		AdminPassword: encryptedPassword,
@@ -460,7 +452,7 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 		Backup: BackupConfig{
 			AutoEnabled: true,
 			Schedule:    "daily",
-			Retention:   7,
+			Retention:   3,
 			Items:       []string{"config", "sites", "ftp"},
 		},
 		Log: LogConfig{
@@ -495,7 +487,7 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 				Name:       "默认站点",
 				Enabled:    true,
 				Type:       "static",
-				Port:       3080,
+				Port:       3380,
 				Root:       sitesDir + "/default",
 				IndexFiles: []string{"index.html", "index.htm"},
 				AutoIndex:  true,

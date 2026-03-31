@@ -17,14 +17,14 @@ type Response struct {
 
 // 常用响应码
 const (
-	CodeSuccess           = 200    // 成功
-	CodeBadRequest       = 400    // 请求参数错误
-	CodeUnauthorized     = 401    // 未认证
-	CodeForbidden        = 403    // 禁止访问
-	CodeNotFound         = 404    // 资源不存在
-	CodeMethodNotAllowed = 405    // 方法不允许
-	CodeTooManyRequests  = 429    // 请求过多
-	CodeInternalError    = 500    // 内部错误
+	CodeSuccess          = 200 // 成功
+	CodeBadRequest       = 400 // 请求参数错误
+	CodeUnauthorized     = 401 // 未认证
+	CodeForbidden        = 403 // 禁止访问
+	CodeNotFound         = 404 // 资源不存在
+	CodeMethodNotAllowed = 405 // 方法不允许
+	CodeTooManyRequests  = 429 // 请求过多
+	CodeInternalError    = 500 // 内部错误
 )
 
 // ==================== 响应函数 ====================

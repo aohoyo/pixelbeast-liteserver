@@ -21,10 +21,10 @@ func (h *Handler) compressFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Path     string   `json:"path"`     // 源目录
-		Files    []string `json:"files"`    // 要压缩的文件列表
-		Target   string   `json:"target"`   // 目标文件名（不含扩展名）
-		Format   string   `json:"format"`   // zip 或 tar.gz
+		Path   string   `json:"path"`   // 源目录
+		Files  []string `json:"files"`  // 要压缩的文件列表
+		Target string   `json:"target"` // 目标文件名（不含扩展名）
+		Format string   `json:"format"` // zip 或 tar.gz
 	}
 	if err := parseJSONBody(r, &req); err != nil {
 		BadRequest(w, "Invalid JSON: "+err.Error())

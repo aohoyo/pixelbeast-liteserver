@@ -30,7 +30,7 @@ func NewVirtualHostRouter() *VirtualHostRouter {
 	return &VirtualHostRouter{
 		hosts:      make(map[string]*VirtualHost),
 		portBased:  make(map[int]*VirtualHost),
-		sharedPort: 3080,
+		sharedPort: 3380,
 	}
 }
 

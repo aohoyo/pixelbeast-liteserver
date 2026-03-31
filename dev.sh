@@ -65,7 +65,7 @@ sleep 3
 ADMIN_PORT=$(grep -o '"admin_port":[[:space:]]*[0-9]*' config/server.json 2>/dev/null | grep -o '[0-9]*$')
 HTTP_PORT=$(grep -o '"http_port":[[:space:]]*[0-9]*' config/server.json 2>/dev/null | grep -o '[0-9]*$')
 ADMIN_PORT=${ADMIN_PORT:-9527}
-HTTP_PORT=${HTTP_PORT:-3080}
+HTTP_PORT=${HTTP_PORT:-3380}
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

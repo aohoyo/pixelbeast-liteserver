@@ -13,8 +13,21 @@ import (
 	"pixelbeast/src/config"
 )
 
-// ==================== FTP 服务控制 ====================
+// ==================== FTP 状态 ====================
 
+func (h *Handler) getFtpStatus(w http.ResponseWriter, r *http.Request) {
+	ftpRunning := h.ConfigManager.FTP.Enabled
+	ftpPort := h.ConfigManager.FTP.Port
+	if h.ServerManager != nil {
+		ftpRunning = h.ServerManager.IsFTPRunning()
+	}
+	Success(w, map[string]interface{}{
+		"running": ftpRunning,
+		"port":    ftpPort,
+	})
+}
+
+// ==================== FTP 服务控制 ====================
 func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 	if h.ServerManager == nil {
 		Error(w, http.StatusOK, "服务管理器未初始化")
@@ -80,6 +93,23 @@ func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SuccessMessage(w, "配置已重载")
+}
+
+func (h *Handler) saveFtpPort(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+	var data struct {
+		Port int `json:"port"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil || data.Port < 1 || data.Port > 65535 {
+		BadRequest(w, "端口无效，范围 1-65535")
+		return
+	}
+	h.ConfigManager.FTP.Port = data.Port
+	h.ConfigManager.Save()
+	SuccessMessage(w, "FTP 端口已更新，重启服务生效")
 }
 
 // ==================== FTP 文件管理 ====================
@@ -536,7 +566,7 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 		// 安全检查：确保路径在 FTP 根目录下
 		absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 		absUserPath, _ := filepath.Abs(userRootPath)
-		
+
 		if strings.HasPrefix(absUserPath, absRoot) {
 			if err := os.RemoveAll(absUserPath); err != nil {
 				// 记录错误但继续删除用户
@@ -608,7 +638,7 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Action   string   `json:"action"`   // enable, disable, delete
+		Action    string   `json:"action"` // enable, disable, delete
 		Usernames []string `json:"usernames"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -650,7 +680,7 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
-				if err := h.ConfigManager.Save(); err != nil {
+		if err := h.ConfigManager.Save(); err != nil {
 			InternalServerError(w, "保存配置失败: "+err.Error())
 			return
 		}

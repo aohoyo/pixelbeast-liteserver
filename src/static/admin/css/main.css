@@ -400,6 +400,105 @@
     flex-direction: column;
     gap: var(--space-xs);
 }
+.core-usage-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.8125rem;
+}
+.core-usage-label {
+    color: var(--text-muted);
+    min-width: 24px;
+    text-align: right;
+}
+.core-usage-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.core-usage-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--primary);
+    transition: width 0.3s;
+}
+.core-usage-bar-fill.warning {
+    background: var(--warning);
+}
+.core-usage-bar-fill.danger {
+    background: var(--danger);
+}
+.core-usage-value {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ==================== 磁盘列表 ==================== */
+
+.disk-item {
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+.disk-item:last-child {
+    border-bottom: none;
+}
+.disk-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-xs);
+}
+.disk-item-mount {
+    color: var(--text);
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+.disk-primary-badge {
+    display: inline-block;
+    font-size: 0.625rem;
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    color: #fff;
+    vertical-align: middle;
+    margin-left: 4px;
+    font-weight: 600;
+}
+.disk-item-percent {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+.disk-item-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: var(--space-xs);
+}
+.disk-item-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--primary);
+    transition: width 0.3s;
+}
+.disk-item-bar-fill.warning {
+    background: var(--warning);
+}
+.disk-item-bar-fill.danger {
+    background: var(--danger);
+}
+.disk-item-detail {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
 
 /* ==================== 服务状态 ==================== */
 

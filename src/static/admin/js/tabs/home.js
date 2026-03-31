@@ -1,7 +1,7 @@
 /**
  * 首页模块 - 系统监控仪表盘（宝塔风格）
  *
- * 显示系统状态：CPU、内存、硬盘、负载
+ * 显示系统状态：CPU、内存、磁盘、负载
  */
 
 import { BaseTab } from './BaseTab.js';
@@ -116,7 +116,7 @@ class HomeTab extends BaseTab {
     updateLoad(data) {
         const load1m = data.load_avg?.[0] || 0;
         const cores = data.cpu_cores || 4;
-        const percent = Math.round((load1m / cores) * 100);
+        const percent = Math.min(Math.round((load1m / cores) * 100), 100);
         const status = percent < 50 ? { text: '运行流畅', cls: 'good' }
                       : percent < 80 ? { text: `运行达到${percent}%`, cls: 'warning' }
                       : { text: '负载较高', cls: 'danger' };
@@ -151,6 +151,20 @@ class HomeTab extends BaseTab {
         this.setText('#tooltip-cpu-status', `占用${Math.round(percent)}%`);
         this.setText('#tooltip-cpu-info', `1 / ${cores} / ${data.cpu_threads || cores * 2}`);
         this.setText('#tooltip-cpu-model span', cpuModel);
+
+        // 渲染核心使用率
+        const coreList = this.$('#core-usage-list');
+        if (coreList && Array.isArray(data.cpu_per_core) && data.cpu_per_core.length > 0) {
+            coreList.innerHTML = data.cpu_per_core.map((v, i) => {
+                const p = Math.round(v);
+                const cls = p > 80 ? 'danger' : p > 50 ? 'warning' : '';
+                return `<div class="core-usage-item">
+                    <span class="core-usage-label">${i}</span>
+                    <div class="core-usage-bar"><div class="core-usage-bar-fill ${cls}" style="width:${p}%"></div></div>
+                    <span class="core-usage-value">${p}%</span>
+                </div>`;
+            }).join('');
+        }
     }
 
     updateMemory(data) {
@@ -178,13 +192,31 @@ class HomeTab extends BaseTab {
         this.updateRingChart('disk', percent);
         this.setText('#disk-used', formatStorage(used));
         this.setText('#disk-total', formatStorage(total));
-        this.setText('#tooltip-disk-status', `容量占用${percent}%`);
-        this.setText('#tooltip-disk-mount', data.disk_mount || '/');
-        this.setText('#tooltip-disk-total', formatStorage(total));
-        this.setText('#tooltip-disk-free', formatStorage(data.disk_free_gb || 0));
-        this.setText('#tooltip-disk-used', formatStorage(used));
-        this.setText('#tooltip-disk-fs', data.disk_filesystem || '--');
-        this.setText('#tooltip-disk-type', data.disk_type || '--');
+        this.setText('#tooltip-disk-status', `容量占用${Math.round(percent)}%`);
+
+        // 渲染磁盘列表
+        const diskList = this.$('#disk-list');
+        if (diskList && Array.isArray(data.disks) && data.disks.length > 0) {
+            diskList.innerHTML = data.disks.map(d => {
+                const p = Math.round(d.percent || 0);
+                const barCls = p > 80 ? 'danger' : p > 50 ? 'warning' : '';
+                const primary = d.mount === (data.disk_mount || '/') ? ' <span class="disk-primary-badge">主</span>' : '';
+                return `
+                    <div class="disk-item">
+                        <div class="disk-item-header">
+                            <span class="disk-item-mount">${d.mount}${primary}</span>
+                            <span class="disk-item-percent">${p}%</span>
+                        </div>
+                        <div class="disk-item-bar">
+                            <div class="disk-item-bar-fill ${barCls}" style="width:${p}%"></div>
+                        </div>
+                        <div class="disk-item-detail">
+                            <span>${formatStorage(d.used_gb || 0)} / ${formatStorage(d.total_gb || 0)}</span>
+                            <span>${d.fstype || '--'} · ${d.device || '--'}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
     }
 
     updateStatusBar(data) {

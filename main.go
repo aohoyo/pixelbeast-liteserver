@@ -26,8 +26,8 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("像素兽 (PixelBeast) v%s\n", version)
-		fmt.Printf("构建时间: %s\n", buildTime)
+		fmt.Printf("PixelBeast Server v%s\n", version)
+		fmt.Printf("buildTime: %s\n", buildTime)
 		return
 	}
 
@@ -55,7 +55,7 @@ func main() {
 	handlers.LogSystemInfo("配置目录: %s", *configDir)
 
 	// 创建服务管理器
-	serverManager = handlers.NewServerManager(cm, *configDir)
+	serverManager = handlers.ServerManager(cm, *configDir)
 
 	// 创建 FTP 服务器
 	ftpCfg := cm.FTP

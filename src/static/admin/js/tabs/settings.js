@@ -96,6 +96,7 @@ class SettingsTab extends BaseTab {
 
         // 创建备份按钮
         this.$('#btn-create-backup')?.addEventListener('click', () => this.createBackup());
+        this.$('#btn-refresh-backup')?.addEventListener('click', () => this.loadBackups());
 
         // 监听配置变化
         this.$$('.settings-content input, .settings-content select').forEach(input => {
@@ -115,6 +116,12 @@ class SettingsTab extends BaseTab {
         this.$$('.tab-pane').forEach(pane => {
             pane.classList.toggle('active', pane.id === `tab-${tabName}`);
         });
+
+        // 备份列表延迟加载
+        if (tabName === 'backup' && !this._backupLoaded) {
+            this.loadBackups();
+            this._backupLoaded = true;
+        }
     }
 
     async onLoad() {
@@ -123,7 +130,6 @@ class SettingsTab extends BaseTab {
             this.config = config;
             this.originalConfig = JSON.parse(JSON.stringify(this.config));
             this.render();
-            this.loadBackups();
             console.log('[Settings] 配置加载成功', this.config);
         } catch (error) {
             console.error('[Settings] 加载配置失败:', error);
@@ -137,7 +143,7 @@ class SettingsTab extends BaseTab {
         const { admin, directories, log, backup } = this.config;
 
         // 基础设置
-        this.setValue('#server-name', 'PixelBeast Server');
+        this.setValue('#server-name', admin?.name || 'PixelBeast Server');
         this.setValue('#timezone', 'Asia/Shanghai');
 
         // 目录设置
@@ -167,12 +173,7 @@ class SettingsTab extends BaseTab {
         this.setChecked('#backup-item-sites', items.includes('sites'));
         this.setChecked('#backup-item-ftp', items.includes('ftp'));
         this.setValue('#backup-schedule', backup?.schedule || 'daily');
-        this.setValue('#backup-retention', backup?.retention || 7);
-
-        // FTP 配置
-        const ftp = this.config.ftp || {};
-        this.setChecked('#ftp-enabled', ftp.enabled ?? false);
-        this.setValue('#ftp-port', ftp.port || 2121);
+        this.setValue('#backup-retention', backup?.retention || 3);
 
         this.hasChanges = false;
     }
@@ -300,10 +301,11 @@ class SettingsTab extends BaseTab {
                 ...(this.isChecked('#backup-item-ftp') ? ['ftp'] : []),
             ],
             schedule: this.getValue('#backup-schedule') || 'daily',
-            retention: this.getInt('#backup-retention', 7),
+            retention: this.getInt('#backup-retention', 3),
         };
 
         // Admin
+        config.admin.name = this.getValue('#server-name') || 'PixelBeast Server';
         config.admin.port = this.getInt('#admin-port', 9527);
         config.admin.path = this.getValue('#admin-path') || '/admin';
         config.admin.username = this.getValue('#admin-username') || 'admin';
@@ -322,11 +324,6 @@ class SettingsTab extends BaseTab {
         config.log.max_size_mb = this.getInt('#log-max-size', 100);
         config.log.compress_days = this.getInt('#log-compress', 7);
         config.log.cleanup_hour = this.getInt('#log-cleanup-hour', 3);
-
-        // Backup
-        // FTP
-        config.ftp.enabled = this.isChecked('#ftp-enabled');
-        config.ftp.port = this.getInt('#ftp-port', 2121);
 
         return config;
     }

@@ -29,7 +29,6 @@
     <div class="settings-tabs">
         <button class="tab-btn active" data-tab="basic">基础设置</button>
         <button class="tab-btn" data-tab="directories">目录设置</button>
-        <button class="tab-btn" data-tab="ftp">FTP 服务</button>
         <button class="tab-btn" data-tab="log">日志配置</button>
         <button class="tab-btn" data-tab="backup">备份设置</button>
     </div>
@@ -93,7 +92,7 @@
                 </div>
             </div>
             <div class="settings-section">
-                <h3 class="section-title">管理面板配置</h3>
+                <h3 class="section-title">面板设置</h3>
                 <div class="form-group-inline">
                     <label class="form-label-inline">管理端口</label>
                     <div class="number-input-wrapper">
@@ -132,9 +131,6 @@
                     </div>
                     <span class="form-hint-text">留空表示不修改密码</span>
                 </div>
-            </div>
-            <div class="settings-section">
-                <h3 class="section-title">面板域名</h3>
                 <div class="form-group-inline">
                     <label class="form-label-inline">绑定域名</label>
                     <input type="text" class="form-input-inline" id="admin-bind-domain" placeholder="留空表示允许所有域名访问">
@@ -191,36 +187,6 @@
                         </div>
                     </div>
                     <span class="form-hint-text">备份文件存放位置</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- FTP 服务 -->
-        <div class="tab-pane" id="tab-ftp">
-            <div class="settings-section">
-                <h3 class="section-title">FTP 配置</h3>
-                <div class="form-group-inline">
-                    <label class="form-label-inline">启用服务</label>
-                    <label class="toggle">
-                        <input type="checkbox" id="ftp-enabled">
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span class="form-hint-text">开启后允许通过 FTP 管理文件</span>
-                </div>
-                <div class="form-group-inline">
-                    <label class="form-label-inline">FTP 端口</label>
-                    <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="ftp-port" min="1" max="65535" value="2121">
-                        <div class="number-input-controls">
-                            <button type="button" class="number-input-btn" data-action="up">
-                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
-                            </button>
-                            <button type="button" class="number-input-btn" data-action="down">
-                                <svg class="icon" viewBox="0 0 12 12"><path d="M6 8l4-4h-8z" fill="currentColor"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <span class="form-hint-text">FTP 服务监听端口</span>
                 </div>
             </div>
         </div>
@@ -341,7 +307,7 @@
                 <div class="form-group-inline">
                     <label class="form-label-inline">保留数量</label>
                     <div class="number-input-wrapper">
-                        <input type="number" class="form-input-inline" id="backup-retention" min="1" max="365" value="7">
+                        <input type="number" class="form-input-inline" id="backup-retention" min="1" max="365" value="3">
                         <div class="number-input-controls">
                             <button type="button" class="number-input-btn" data-action="up">
                                 <svg class="icon" viewBox="0 0 12 12"><path d="M6 4l-4 4h8z" fill="currentColor"/></svg>
@@ -357,10 +323,16 @@
             <div class="settings-section">
                 <div class="section-title" style="display: flex; align-items: center; justify-content: space-between;">
                     <h3>备份列表</h3>
-                    <button class="btn btn-primary btn-sm" id="btn-create-backup" style="display: flex; align-items: center; gap: 6px;">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        立即备份
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm" id="btn-refresh-backup" style="display: flex; align-items: center; gap: 6px;">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            刷新
+                        </button>
+                        <button class="btn btn-primary btn-sm" id="btn-create-backup" style="display: flex; align-items: center; gap: 6px;">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            立即备份
+                        </button>
+                    </div>
                 </div>
                 <div id="backup-list" style="margin-top: 8px;">
                     <div class="backup-empty" style="text-align: center; padding: 32px; color: var(--text-muted); font-size: 14px;">暂无备份文件</div>

@@ -52,14 +52,14 @@ type PasswordValidator interface {
 
 // Handler 管理面板处理器
 type Handler struct {
-	ConfigManager    *config.ConfigManager // 配置管理器
-	ServerManager    *handlers.ServerManager
+	ConfigManager     *config.ConfigManager // 配置管理器
+	ServerManager     *handlers.ServerManager
 	passwordValidator PasswordValidator // 密码验证器（支持加密密码）
-	adminPath        string              // 安全入口路径
-	sessions         map[string]*Session
-	loginAttempts    map[string]*LoginAttempt
-	csrfTokens       map[string]*CSRFToken
-	mu               sync.RWMutex
+	adminPath         string            // 安全入口路径
+	sessions          map[string]*Session
+	loginAttempts     map[string]*LoginAttempt
+	csrfTokens        map[string]*CSRFToken
+	mu                sync.RWMutex
 }
 
 // ==================== 构造函数 ====================
@@ -208,10 +208,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
 		remoteAddr = remoteAddr[:idx]
 	}
-	
+
 	// 使用包装 ResponseWriter 来捕获状态码
 	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-	
+
 	// 处理请求（在 defer 中记录日志）
 	defer func() {
 		duration := time.Since(startTime)
@@ -355,6 +355,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.toggleFtpUserStatus(w, r)
 	case "/api/ftp/users/batch":
 		h.batchFtpUsers(w, r)
+	case "/api/ftp/status":
+		h.getFtpStatus(w, r)
+	case "/api/ftp/port":
+		h.saveFtpPort(w, r)
 	// 站点管理
 	case "/api/sites":
 		h.handleSitesList(w, r)
@@ -520,14 +524,24 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data, _ := fs.ReadFile(staticFS, "views/login.html")
+	name := h.ConfigManager.Server.Name
+	if name == "" {
+		name = "PixelBeast Server"
+	}
+	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	w.Write([]byte(html))
 }
 
 func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	data, _ := fs.ReadFile(staticFS, "index.html")
+	name := h.ConfigManager.Server.Name
+	if name == "" {
+		name = "PixelBeast Server"
+	}
+	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	w.Write([]byte(html))
 }
 
 func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
@@ -622,11 +636,11 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 		TooManyRequests(w, msg)
 		return
 	}
-	
+
 	// 解析请求体（支持 JSON 和表单）
 	var username, password string
 	contentType := r.Header.Get("Content-Type")
-	
+
 	if contentType == "application/json" {
 		var req struct {
 			Username string `json:"username"`
@@ -641,7 +655,7 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 		username = r.FormValue("username")
 		password = r.FormValue("password")
 	}
-	
+
 	// 验证密码
 	valid := false
 	if h.passwordValidator != nil {
@@ -649,7 +663,7 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 	} else {
 		valid = h.ConfigManager.ValidateAdmin(username, password)
 	}
-	
+
 	if !valid {
 		h.recordLoginAttempt(clientIP, false)
 		handlers.LogPanelAuth("登录", username, clientIP, false, "用户名或密码错误")
