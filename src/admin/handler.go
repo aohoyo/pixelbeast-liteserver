@@ -187,7 +187,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/logout":
 		h.logoutAPI(w, r)
 		return
-	case "/favicon.svg", "/favicon.ico":
+	case "/favicon.ico":
 		h.serveFavicon(w, r)
 		return
 	}
