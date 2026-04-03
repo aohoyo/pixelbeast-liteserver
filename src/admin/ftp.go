@@ -660,6 +660,11 @@ func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 同步 FTP 服务器，使状态变更立即生效
+	if h.ServerManager != nil {
+		h.ServerManager.SyncFTPConfig()
+	}
+
 	statusText := "已禁用"
 	if req.Enabled {
 		statusText = "已启用"
@@ -720,6 +725,11 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 			InternalServerError(w, "保存配置失败: "+err.Error())
 			return
 		}
+	}
+
+	// 同步 FTP 服务器，使状态变更立即生效
+	if h.ServerManager != nil {
+		h.ServerManager.SyncFTPConfig()
 	}
 
 	SuccessMessage(w, "批量操作完成")

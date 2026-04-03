@@ -42,6 +42,13 @@ type FTPServer struct {
 	userConns    map[string]int // 每用户当前连接数
 }
 
+// SetValidator 更新密码验证器（配置重载后同步）
+func (s *FTPServer) SetValidator(v PasswordValidator) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.validator = v
+}
+
 // NewFTPServer 创建FTP服务器
 func NewFTPServer(cfg *config.FTPConfig, rootDir string) (*FTPServer, error) {
 	return NewFTPServerWithValidator(cfg, nil, rootDir)
@@ -276,11 +283,20 @@ func (c *FTPClient) handleCommand(cmd, args string) {
 	}
 }
 
-// checkLogin 检查登录状态
+// checkLogin 检查登录状态（同时验证用户是否仍处于启用状态）
 func (c *FTPClient) checkLogin() bool {
 	if !c.loggedIn {
 		c.sendMessage("530 Please login with USER and PASS")
 		return false
+	}
+	// 实时检查用户是否被禁用
+	if c.server.validator != nil {
+		userCfg := c.server.validator.GetFTPUserConfig(c.username)
+		if userCfg == nil {
+			c.sendMessage("530 Account has been disabled")
+			c.conn.Close()
+			return false
+		}
 	}
 	return true
 }

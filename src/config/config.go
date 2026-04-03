@@ -392,7 +392,8 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
 
 	return &ServerConfig{
-		Name: "PixelBeast Server",
+		Name:     "PixelBeast Server",
+		Timezone: "Asia/Shanghai",
 		Admin: AdminConfig{
 			Port:     9527,
 			Username: "admin",

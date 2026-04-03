@@ -53,8 +53,7 @@ func main() {
 		log.Printf("警告: 初始化日志失败: %v", err)
 	}
 
-	fmt.Printf("  🪶 %s v%s\n", serverName, version)
-	handlers.LogSystemInfo("%s v%s 启动中...", serverName, version)
+	handlers.LogSystemInfo("🪶 %s v%s 启动中...", serverName, version)
 
 	// 创建服务管理器
 	serverManager = handlers.NewServerManager(cm, *configDir)

@@ -1,52 +1,33 @@
 # 像素兽 - Air 热重载配置
-# npm run dev 会自动运行 air
 
 root = "."
-testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  # 要监视的命令
   cmd = "go build -o ./pixelbeast"
-  # 构建的二进制文件路径
   bin = "./pixelbeast"
-  # 命令行参数
-  args = ["-config", "pixelbeast.json"]
-  # 要包含的文件扩展名
+  args = ["-config", "config"]
   include_ext = ["go", "html", "css", "js"]
-  # 要忽略的文件扩展名
   exclude_ext = ["_test.go"]
-  # 要包含的目录
-  include_dir = ["src", "embed.go"]
-  # 要忽略的目录
-  exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs"]
-  # 要忽略的文件
-  exclude_file = []
-  # 延迟时间（毫秒）
+  include_dir = ["src"]
+  exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs", "node_modules"]
   delay = 1000
-  # 停止旧进程时发送中断信号
-  stop_on_root = false
-  # 发送中断信号前的延迟
-  send_interrupt = false
-  # 发送中断信号后的延迟
-  kill_delay = 0
+  stop_on_root = true
+  send_interrupt = true
+  kill_delay = 500
 
 [log]
-  # 显示日志时间
   time = true
-  # 只显示主要日志（跳过警告）
   main_only = false
 
 [color]
-  # 自定义每个部分显示的颜色
   main = "magenta"
   watcher = "cyan"
   build = "yellow"
   runner = "green"
 
 [misc]
-  # 清除每次运行的间隔
-  clean_on_exit = false
+  clean_on_exit = true
 
 [screen]
   clear_on_rebuild = false
