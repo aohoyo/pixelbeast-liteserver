@@ -56,6 +56,7 @@ type Handler struct {
 	ServerManager     *handlers.ServerManager
 	passwordValidator PasswordValidator // 密码验证器（支持加密密码）
 	adminPath         string            // 安全入口路径
+	Version           string            // 版本号
 	sessions          map[string]*Session
 	loginAttempts     map[string]*LoginAttempt
 	csrfTokens        map[string]*CSRFToken
@@ -541,6 +542,7 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		name = "PixelBeast Server"
 	}
 	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
+	html = strings.ReplaceAll(html, "{{VERSION}}", h.Version)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
 }
@@ -552,6 +554,7 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 		name = "PixelBeast Server"
 	}
 	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
+	html = strings.ReplaceAll(html, "{{VERSION}}", h.Version)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
 }
