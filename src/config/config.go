@@ -451,14 +451,12 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 
 // ========== 配置重置 ==========
 
-// ResetToDefaults 重置所有配置为默认值
+// ResetToDefaults 重置服务配置为默认值（保留站点和FTP用户数据）
 func (cm *ConfigManager) ResetToDefaults() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	cm.Server = cm.defaultServerConfig()
-	cm.Sites = cm.defaultSitesConfig()
-	cm.FTP = cm.defaultFTPConfig()
 }
 
 // ========== Admin 密码管理 ==========
