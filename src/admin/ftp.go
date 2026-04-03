@@ -44,6 +44,11 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+
+	// 用户主动切换时保存配置
+	h.ConfigManager.FTP.Enabled = h.ServerManager.IsFTPRunning()
+	h.ConfigManager.Save()
+
 	SuccessMessage(w, msg)
 }
 
@@ -56,6 +61,8 @@ func (h *Handler) startFTP(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	h.ConfigManager.FTP.Enabled = true
+	h.ConfigManager.Save()
 	SuccessMessage(w, "FTP服务已启动")
 }
 
@@ -68,6 +75,8 @@ func (h *Handler) stopFTP(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	h.ConfigManager.FTP.Enabled = false
+	h.ConfigManager.Save()
 	SuccessMessage(w, "FTP服务已停止")
 }
 

@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "3.1.0"
+	version   = "3.1.1"
 	buildTime = "unknown"
 )
 
@@ -74,7 +74,8 @@ func main() {
 
 	// 创建管理面板处理器
 	adminHandler := admin.New(cm, *configDir)
-	adminHandler.Version = version	adminHandler.SetServerManager(serverManager)
+	adminHandler.Version = version
+	adminHandler.SetServerManager(serverManager)
 	serverManager.SetAdminHandler(adminHandler)
 
 	// 启动管理面板服务器

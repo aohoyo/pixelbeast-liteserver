@@ -467,13 +467,6 @@ func (m *ServerManager) StartFTP() error {
 	}
 
 	m.FTPRunning = true
-	m.ConfigManager.FTP.Enabled = true
-
-	// 使用 ConfigManager 保存
-	if m.ConfigManager != nil {
-		m.ConfigManager.FTP.Enabled = true
-		m.ConfigManager.Save()
-	}
 
 	log.Printf("[FTP] 服务已启动")
 	return nil
@@ -493,13 +486,6 @@ func (m *ServerManager) StopFTP() error {
 	}
 
 	m.FTPRunning = false
-	m.ConfigManager.FTP.Enabled = false
-
-	// 使用 ConfigManager 保存
-	if m.ConfigManager != nil {
-		m.ConfigManager.FTP.Enabled = false
-		m.ConfigManager.Save()
-	}
 
 	log.Printf("[FTP] 服务已停止")
 	return nil
