@@ -1,5 +1,62 @@
 /* ==================== 站点管理 ==================== */
 
+/* 站点服务控制 */
+.site-service-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.site-service-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.site-service-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+}
+
+.site-service-status.running {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+.site-service-status.stopped {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+/* 切换按钮图标显示 */
+#site-service-toggle .start-icon,
+#site-service-toggle .stop-icon {
+    display: none;
+}
+
+#site-service-toggle.stopped .start-icon {
+    display: block;
+}
+
+#site-service-toggle.running .stop-icon {
+    display: block;
+}
+
+#site-service-toggle.running {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+
+#site-service-toggle.stopped {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+}
+
 /* 主容器 - 直接作为 card 的 flex 子元素 */
 .site-container {
     display: flex;
@@ -80,23 +137,32 @@
     color: #3b82f6;
 }
 
-/* 状态 */
-.site-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+/* 状态按钮 */
+.site-status-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
 }
 
-.site-status-text {
-    font-size: 0.875rem;
+.site-status-btn.active {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
 }
 
-.site-status-text.running {
-    color: var(--success);
+.site-status-btn:not(.active) {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
 }
 
-.site-status-text.stopped {
-    color: var(--text-muted);
+.site-status-btn:hover {
+    opacity: 0.8;
 }
 
 /* 端口 */
@@ -135,7 +201,18 @@
     color: var(--text-muted);
 }
 
-.site-root code,
+.site-root-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+}
+
+.site-root-link:hover {
+    text-decoration: underline;
+    color: var(--primary);
+}
+
 .site-proxy code {
     font-family: monospace;
     color: var(--text-secondary);
@@ -189,57 +266,61 @@
 /* 操作按钮 */
 .site-actions {
     display: flex;
-    gap: var(--space-xs);
+    gap: 8px;
 }
 
-.site-action-btn {
+.site-action-text {
     background: none;
     border: none;
-    padding: 6px;
+    font-size: 13px;
     cursor: pointer;
-    color: var(--text-muted);
+    padding: 4px 8px;
     border-radius: var(--radius);
     transition: all var(--transition);
 }
 
-.site-action-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-}
-
-.site-action-btn.edit:hover {
+.site-action-text.edit {
     color: var(--primary);
 }
 
-.site-action-btn.start {
-    color: var(--success);
+.site-action-text.edit:hover {
+    background: var(--primary-alpha);
 }
 
-.site-action-btn.start:hover {
-    background: rgba(34, 197, 94, 0.1);
-    color: var(--success);
-}
-
-.site-action-btn.stop {
+.site-action-text.delete {
     color: var(--danger);
 }
 
-.site-action-btn.stop:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--danger);
+.site-action-text.delete:hover {
+    background: var(--danger-alpha);
 }
 
-.site-action-btn.restart:hover {
+/* 删除确认弹窗 */
+.site-delete-warning {
+    text-align: center;
+    padding: var(--space-md) 0;
+}
+
+.site-delete-warning .icon {
+    width: 48px;
+    height: 48px;
     color: var(--warning);
+    margin-bottom: var(--space-md);
 }
 
-.site-action-btn.delete:hover {
-    color: var(--danger);
+.site-delete-warning p {
+    color: var(--text);
+    font-size: 15px;
+    margin-bottom: var(--space-sm);
 }
 
-.site-action-btn svg {
-    width: 16px;
-    height: 16px;
+.site-delete-warning strong {
+    color: var(--primary);
+}
+
+.site-delete-warning .option-hint {
+    color: var(--text-muted);
+    font-size: 13px;
 }
 
 /* 站点表单 */

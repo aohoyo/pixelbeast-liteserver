@@ -14,11 +14,11 @@ import (
 
 // ProxyHandler 反向代理处理器
 type ProxyHandler struct {
-	proxy      *httputil.ReverseProxy
-	target     *url.URL
+	proxy       *httputil.ReverseProxy
+	target      *url.URL
 	stripPrefix string
-	wsEnabled  bool
-	timeout    time.Duration
+	wsEnabled   bool
+	timeout     time.Duration
 }
 
 // NewProxyHandler 创建反向代理处理器

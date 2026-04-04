@@ -247,6 +247,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.executeCleanup(w, r)
 	case "/api/system/time/sync":
 		h.syncSystemTime(w, r)
+	case "/api/system/restart":
+		h.restartServer(w, r)
+	case "/api/system/check-update":
+		h.checkUpdate(w, r)
 	// 配置
 	case "/api/config":
 		h.getConfig(w, r)
@@ -377,6 +381,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleSiteRestart(w, r)
 	case "/api/sites/batch":
 		h.handleSitesBatch(w, r)
+	case "/api/sites/status":
+		h.getSitesStatus(w, r)
+	case "/api/service/sites/toggle":
+		h.toggleSitesService(w, r)
+	case "/api/service/sites/start":
+		h.startSitesService(w, r)
+	case "/api/service/sites/stop":
+		h.stopSitesService(w, r)
+	case "/api/service/sites/restart":
+		h.restartSitesService(w, r)
+	case "/api/service/sites/reload":
+		h.reloadSitesConfig(w, r)
 	default:
 		// 处理带 ID 的站点路由
 		if strings.HasPrefix(actualPath, "/api/sites/") {
@@ -615,7 +631,7 @@ func (h *Handler) serveImages(w http.ResponseWriter, r *http.Request) {
 	ext := strings.ToLower(file[strings.LastIndex(file, ".")+1:])
 	switch ext {
 	case "svg":
-		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Content-Type", "image/x-icon")
 	case "png":
 		w.Header().Set("Content-Type", "image/png")
 	case "jpg", "jpeg":

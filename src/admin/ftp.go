@@ -834,11 +834,11 @@ func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username
 // updateFtpUserConfig 更新 FTP 用户配置（速度限制、连接数等）
 func (h *Handler) updateFtpUserConfig(w http.ResponseWriter, r *http.Request, username string) {
 	var req struct {
-		SpeedLimit    int64 `json:"speedLimit"`
+		SpeedLimit     int64 `json:"speedLimit"`
 		MaxConnections int   `json:"maxConnections"`
-		Bandwidth     int64 `json:"bandwidth"`
-		MaxFiles      int   `json:"maxFiles"`
-		MaxFileSize   int64 `json:"maxFileSize"`
+		Bandwidth      int64 `json:"bandwidth"`
+		MaxFiles       int   `json:"maxFiles"`
+		MaxFileSize    int64 `json:"maxFileSize"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "Invalid JSON")

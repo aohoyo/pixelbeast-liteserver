@@ -81,12 +81,99 @@
     transform: rotate(90deg);
 }
 
+/* ==================== 流量 & 磁盘IO 折线图 ==================== */
+
+.chart-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+@media (max-width: 768px) {
+    .chart-row { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    position: relative;
+    cursor: pointer;
+    overflow: visible;
+}
+.chart-card:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+}
+.chart-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+    gap: var(--space-sm);
+}
+.chart-card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.chart-header-stats {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.chart-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.chart-stat-label {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+.chart-stat-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+.chart-stat-divider {
+    color: var(--border);
+    font-size: 0.7rem;
+    margin: 0 2px;
+}
+.chart-stat.sent .chart-stat-value { color: #3b82f6; }
+.chart-stat.recv .chart-stat-value { color: #22c55e; }
+.chart-stat.write .chart-stat-value { color: #f97316; }
+.chart-stat.read .chart-stat-value { color: #a78bfa; }
+.chart-stat.muted .chart-stat-value { color: var(--text-secondary); }
+.chart-card-body {
+    height: 100px;
+    position: relative;
+}
+.chart-card-body canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.chart-icon-arrow {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
 /* 指标卡片网格 */
 .metrics-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-lg);
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-lg);
     position: relative;
     overflow: visible;
 }
@@ -437,6 +524,40 @@
     text-align: right;
 }
 
+/* ==================== 系统状态栏 ==================== */
+
+.system-status-bar {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-xl);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.status-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--font-mono);
+}
+
 /* ==================== 磁盘列表 ==================== */
 
 .disk-item {
@@ -501,6 +622,28 @@
 }
 
 /* ==================== 服务状态 ==================== */
+
+.services-panel {
+    margin-bottom: var(--space-lg);
+}
+
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+}
+
+@media (max-width: 1200px) {
+    .services-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .services-grid { grid-template-columns: 1fr; }
+}
+
+.admin-icon {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.08));
+}
 
 .services-status-section {
     margin-bottom: var(--space-lg);

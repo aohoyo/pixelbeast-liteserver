@@ -17,9 +17,9 @@ import (
 // SSLManager SSL 管理器
 type SSLManager struct {
 	mu          sync.RWMutex
-	certs       map[string]*tls.Certificate // domain -> cert
+	certs       map[string]*tls.Certificate  // domain -> cert
 	configs     map[string]*config.SSLConfig // domain -> config
-	certDir     string                      // 证书存储目录
+	certDir     string                       // 证书存储目录
 	autoRenew   bool
 	renewTicker *time.Ticker
 }

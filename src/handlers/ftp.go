@@ -32,14 +32,14 @@ type PasswordValidator interface {
 
 // FTPServer 简易FTP服务器
 type FTPServer struct {
-	Config       *config.FTPConfig
-	validator    PasswordValidator // 密码验证器（支持加密密码）
-	listener     net.Listener
-	clients      map[net.Conn]bool
-	mu           sync.Mutex
-	running      bool
-	rootDir      string
-	userConns    map[string]int // 每用户当前连接数
+	Config    *config.FTPConfig
+	validator PasswordValidator // 密码验证器（支持加密密码）
+	listener  net.Listener
+	clients   map[net.Conn]bool
+	mu        sync.Mutex
+	running   bool
+	rootDir   string
+	userConns map[string]int // 每用户当前连接数
 }
 
 // SetValidator 更新密码验证器（配置重载后同步）
@@ -177,16 +177,16 @@ func (s *FTPServer) handleClient(conn net.Conn) {
 
 // FTPClient FTP客户端
 type FTPClient struct {
-	server         *FTPServer
-	conn           net.Conn
-	reader         *bufio.Reader
-	rootDir        string
-	cwd            string
-	loggedIn       bool
-	username       string
-	dataConn       net.Conn
-	dataPort       string
-	passive        bool
+	server          *FTPServer
+	conn            net.Conn
+	reader          *bufio.Reader
+	rootDir         string
+	cwd             string
+	loggedIn        bool
+	username        string
+	dataConn        net.Conn
+	dataPort        string
+	passive         bool
 	passiveListener net.Listener
 	transferMu      sync.Mutex
 	utf8Enabled     bool // UTF-8 编码支持
@@ -450,7 +450,6 @@ func (c *FTPClient) handlePASS(password string) {
 	c.sendMessage("230 Login successful, welcome " + c.username)
 	LogFTPLogin(c.username, c.conn.RemoteAddr().String(), true, "登录成功")
 }
-
 
 // handleCWD 处理CWD命令
 func (c *FTPClient) handleCWD(path string) {

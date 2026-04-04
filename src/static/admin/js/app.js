@@ -164,6 +164,12 @@ function initEventListeners() {
     // 登出按钮
     const logoutBtn = document.getElementById('logout-btn');
     logoutBtn?.addEventListener('click', logout);
+
+    // 头部按钮：更新检查 & 重启
+    const updateBtn = document.getElementById('header-update-btn');
+    const restartBtn = document.getElementById('header-restart-btn');
+    updateBtn?.addEventListener('click', checkForUpdate);
+    restartBtn?.addEventListener('click', restartServer);
 }
 
 /**
@@ -368,4 +374,51 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
+}
+
+async function checkForUpdate() {
+    const btn = document.getElementById('header-update-btn');
+    if (!btn) return;
+
+    btn.classList.add('spinning');
+
+    try {
+        const resp = await api.getJSON('/api/system/check-update');
+        if (!resp) return;
+
+        if (resp.has_update) {
+            const ver = resp.latest_version || '';
+            const dlUrl = resp.download_url || '';
+            const changelog = resp.changelog || '暂无更新日志';
+
+            dialog.alert(`
+                <div style="text-align:left;margin-bottom:12px">
+                    <p style="font-size:0.9rem;color:var(--text-secondary)">发现新版本</p>
+                    <p style="font-size:1.25rem;font-weight:700;color:var(--primary)">${escapeHtml(ver)}</p>
+                    <p style="font-size:0.8rem;color:var(--text-secondary);white-space:pre-line;max-height:200px;overflow-y:auto">${escapeHtml(changelog)}</p>
+                    ${dlUrl ? `<a href="${escapeHtml(dlUrl)}" target="_blank" class="btn" style="margin-top:8px;display:inline-block">下载更新</a>` : ''}
+                </div>
+            `, '更新');
+        } else {
+            toast.success(resp.message || '已是最新版本');
+        }
+    } catch (error) {
+        toast.error('更新失败: ' + error.message);
+    } finally {
+        btn.classList.remove('spinning');
+    }
+}
+
+async function restartServer() {
+    dialog.confirm('确定要重启服务吗？重启期间会短暂断开连接。', async () => {
+        try {
+            await api.post('/api/system/restart');
+            toast.success('服务正在重启...');
+            setTimeout(() => {
+                window.location.reload();
+            }, 3000);
+        } catch (error) {
+            toast.error('重启失败: ' + error.message);
+        }
+    });
 }

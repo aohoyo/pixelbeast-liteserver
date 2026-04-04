@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	modpsapi                = syscall.NewLazyDLL("psapi.dll")
+	modpsapi                 = syscall.NewLazyDLL("psapi.dll")
 	procGetProcessMemoryInfo = modpsapi.NewProc("GetProcessMemoryInfo")
 )
 

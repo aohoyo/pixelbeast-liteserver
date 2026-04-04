@@ -18,6 +18,9 @@ class HomeTab extends BaseTab {
         this.serverStartTime = null;
         this.timers = { uptime: null, refresh: null, sync: null };
         this.currentData = {};
+        this.netHistory = { sent: [], recv: [] };
+        this.diskIOHistory = { write: [], read: [] };
+        this.NET_HISTORY_MAX = 30;
     }
 
     onInit() {
@@ -93,7 +96,12 @@ class HomeTab extends BaseTab {
         this.updateCPU(data);
         this.updateMemory(data);
         this.updateDisk(data);
+        this.updateNetwork(data);
+        this.updateDiskIO(data);
         this.updateStatusBar(data);
+
+        // 更新服务状态
+        this.updateServices();
     }
 
     // ========== 更新显示 ==========
@@ -182,6 +190,10 @@ class HomeTab extends BaseTab {
         this.setText('#tooltip-mem-shared', (data.memory_shared_mb || 0) + ' MB');
         this.setText('#tooltip-mem-available', formatStorage(data.memory_available_gb || 0));
         this.setText('#tooltip-mem-buff-cache', data.memory_buff_cache_mb || '--');
+        this.setText('#tooltip-mem-swap',
+            data.swap_total_gb > 0
+                ? `${formatStorage(data.swap_used_gb)} / ${formatStorage(data.swap_total_gb)} (${Math.round(data.swap_percent || 0)}%)`
+                : '未启用');
     }
 
     updateDisk(data) {
@@ -217,6 +229,145 @@ class HomeTab extends BaseTab {
                     </div>`;
             }).join('');
         }
+    }
+
+    updateNetwork(data) {
+        const sentRate = data.net_sent_rate_kb || 0;
+        const recvRate = data.net_recv_rate_kb || 0;
+        const totalSent = data.net_total_sent_gb || 0;
+        const totalRecv = data.net_total_recv_gb || 0;
+
+        const formatRate = (kb) => {
+            if (kb >= 1048576) return (kb / 1048576).toFixed(2) + ' GB/s';
+            if (kb >= 1024) return (kb / 1024).toFixed(1) + ' MB/s';
+            if (kb >= 1) return kb.toFixed(1) + ' KB/s';
+            return '0 B/s';
+        };
+
+        const formatTotal = (gb) => {
+            if (gb >= 1024) return (gb / 1024).toFixed(1) + ' TB';
+            if (gb >= 1) return gb.toFixed(2) + ' GB';
+            return (gb * 1024).toFixed(0) + ' MB';
+        };
+
+        this.setText('#network-sent-rate', formatRate(sentRate));
+        this.setText('#network-recv-rate', formatRate(recvRate));
+        this.setText('#network-total-sent', formatTotal(totalSent));
+        this.setText('#network-total-recv', formatTotal(totalRecv));
+
+        // 记录历史
+        this.netHistory.sent.push(sentRate);
+        this.netHistory.recv.push(recvRate);
+        if (this.netHistory.sent.length > this.NET_HISTORY_MAX) {
+            this.netHistory.sent.shift();
+            this.netHistory.recv.shift();
+        }
+
+        // 绘制折线图
+        this.drawChart('network-canvas', this.netHistory.sent, this.netHistory.recv,
+            '#3b82f6', 'rgba(59,130,246,0.15)', '#22c55e', 'rgba(34,197,94,0.15)');
+    }
+
+    drawChart(canvasId, data1, data2, color1, fill1, color2, fill2) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        // 设置 canvas 实际像素尺寸
+        const rect = canvas.parentElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            canvas.width = rect.width * (window.devicePixelRatio || 1);
+            canvas.height = rect.height * (window.devicePixelRatio || 1);
+        }
+
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        ctx.clearRect(0, 0, W, H);
+        if (data1.length < 2) return;
+
+        const maxVal = Math.max(...data1, ...data2, 1) * 1.2;
+        const stepX = W / (this.NET_HISTORY_MAX - 1);
+
+        const drawLine = (data, stroke, fill) => {
+            ctx.beginPath();
+            data.forEach((v, i) => {
+                const x = i * stepX;
+                const y = H - (v / maxVal) * H;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1.5 * (window.devicePixelRatio || 1);
+            ctx.stroke();
+
+            ctx.lineTo((data.length - 1) * stepX, H);
+            ctx.lineTo(0, H);
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, fill);
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.fill();
+        };
+
+        drawLine(data2, color2, fill2);
+        drawLine(data1, color1, fill1);
+    }
+
+    updateDiskIO(data) {
+        const writeRate = data.diskio_speed_write_kb || 0;
+        const readRate = data.diskio_speed_read_kb || 0;
+        const iops = data.diskio_iops || 0;
+        const latency = data.diskio_latency_ms || 0;
+
+        const formatRate = (kb) => {
+            if (kb >= 1048576) return (kb / 1048576).toFixed(2) + ' GB/s';
+            if (kb >= 1024) return (kb / 1024).toFixed(1) + ' MB/s';
+            if (kb >= 1) return kb.toFixed(1) + ' KB/s';
+            return (kb * 1024).toFixed(0) + ' B/s';
+        };
+
+        this.setText('#diskio-read-rate', formatRate(readRate));
+        this.setText('#diskio-write-rate', formatRate(writeRate));
+        this.setText('#diskio-iops', iops > 0 ? iops.toFixed(0) : '--');
+        this.setText('#diskio-latency', latency > 0 ? latency.toFixed(1) + ' ms' : '--');
+
+        // 记录历史
+        this.diskIOHistory.write.push(writeRate);
+        this.diskIOHistory.read.push(readRate);
+        if (this.diskIOHistory.write.length > this.NET_HISTORY_MAX) {
+            this.diskIOHistory.write.shift();
+            this.diskIOHistory.read.shift();
+        }
+
+        // 绘制折线图
+        this.drawChart('diskio-canvas', this.diskIOHistory.write, this.diskIOHistory.read,
+            '#f97316', 'rgba(249,115,22,0.15)', '#a78bfa', 'rgba(167,139,250,0.15)');
+    }
+
+    async updateServices() {
+        const status = await this.api.getJSON('/api/status');
+        if (!status) return;
+
+        this.updateServiceCard('admin', status.admin_running, `端口 :${status.admin_port}`);
+        this.updateServiceCard('sites', status.sites_running,
+            status.sites_count > 0 ? `${status.sites_count} 个站点` : '无站点');
+        this.updateServiceCard('ftp', status.ftp_running,
+            status.ftp_port ? `端口 :${status.ftp_port}` : '未配置');
+    }
+
+    updateServiceCard(service, running, detail) {
+        const card = this.$(`#service-${service}`);
+        const statusEl = card?.querySelector('.status-text');
+        const portEl = card?.querySelector('.service-status-port');
+
+        if (card) {
+            card.classList.remove('running', 'stopped');
+            card.classList.add(running ? 'running' : 'stopped');
+        }
+        if (statusEl) statusEl.textContent = running ? '运行中' : '已停止';
+        if (portEl) portEl.innerHTML = detail;
     }
 
     updateStatusBar(data) {

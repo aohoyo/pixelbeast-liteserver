@@ -6,6 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
+import { DirectoryPicker } from '../components/directory-picker.js';
 import { escapeHtml, copyToClipboard } from '../core/utils.js';
 
 class SitesTab extends BaseTab {
@@ -14,12 +15,31 @@ class SitesTab extends BaseTab {
         this.dataTable = null;
         this.sites = [];
         this.editingSite = null;
+        this.directoryPicker = null;
+        this.deleteTargetId = null;
     }
 
     onInit() {
         console.log('初始化站点管理...');
+        this.initDirectoryPicker();
         this.initDataTable();
         this.bindEvents();
+        this.checkServiceStatus();
+    }
+
+    initDirectoryPicker() {
+        const container = this.$('#site-root-picker');
+        if (!container) return;
+
+        this.directoryPicker = new DirectoryPicker({
+            container,
+            api: this.api,
+            apiPath: '/api/files',
+            placeholder: './sites/mysite',
+            onChange: (path) => {
+                console.log('Selected site root:', path);
+            }
+        });
     }
 
     // ========== DataTable ==========
@@ -88,13 +108,7 @@ class SitesTab extends BaseTab {
                 dataIndex: 'enabled',
                 className: 'col-status',
                 render: (value, row) => `
-                    <div class="site-status">
-                        <label class="switch">
-                            <input type="checkbox" class="site-status-toggle" data-id="${escapeHtml(row.id)}" ${value ? 'checked' : ''}>
-                            <span class="slider"></span>
-                        </label>
-                        <span class="site-status-text ${value ? 'running' : 'stopped'}">${value ? '运行中' : '已停止'}</span>
-                    </div>
+                    <button class="site-status-btn ${value ? 'active' : ''}" data-id="${escapeHtml(row.id)}">${value ? '运行中' : '已停止'}</button>
                 `
             },
             {
@@ -118,7 +132,7 @@ class SitesTab extends BaseTab {
                 className: 'col-root',
                 render: (value, row) => {
                     if (row.type === 'static') {
-                        return `<div class="site-root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><code>${escapeHtml(value || '-')}</code></div>`;
+                        return `<div class="site-root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><a class="site-root-link" href="#" data-browse-path="${escapeHtml(value || '.')}" title="在文件管理中打开">${escapeHtml(value || '-')}</a></div>`;
                     }
                     return `<div class="site-proxy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><code>${escapeHtml(row.proxy?.target || '-')}</code></div>`;
                 }
@@ -148,28 +162,7 @@ class SitesTab extends BaseTab {
                 title: '操作',
                 dataIndex: 'id',
                 className: 'col-actions',
-                render: (value, row) => {
-                    const isRunning = row.enabled;
-                    return `
-                    <div class="site-actions">
-                        <button class="site-action-btn ${isRunning ? 'stop' : 'start'}" data-id="${escapeHtml(value)}" data-action="${isRunning ? 'stop' : 'start'}" title="${isRunning ? '停止' : '启动'}">
-                            ${isRunning
-                                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>'
-                                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
-                            }
-                        </button>
-                        <button class="site-action-btn restart" data-id="${escapeHtml(value)}" data-action="restart" title="重启">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                        </button>
-                        <button class="site-action-btn edit" data-id="${escapeHtml(value)}" title="编辑">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button class="site-action-btn delete" data-id="${escapeHtml(value)}" title="删除">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        </button>
-                    </div>
-                    `;
-                }
+                render: (value) => `<div class="site-actions"><button class="site-action-text edit" data-id="${escapeHtml(value)}">编辑</button><button class="site-action-text delete" data-id="${escapeHtml(value)}">删除</button></div>`
             }
         ];
     }
@@ -177,6 +170,11 @@ class SitesTab extends BaseTab {
     // ========== 事件绑定 ==========
 
     bindEvents() {
+        // 服务控制
+        this.$('#site-service-toggle')?.addEventListener('click', () => this.toggleService());
+        this.$('#site-service-restart')?.addEventListener('click', () => this.restartService());
+        this.$('#site-service-reload')?.addEventListener('click', () => this.reloadConfig());
+
         // 添加、刷新、搜索、过滤
         this.$('#add-site-btn')?.addEventListener('click', () => { this.editingSite = null; this.showEditor(); });
         this.$('#sites-refresh-btn')?.addEventListener('click', () => this.refresh());
@@ -197,13 +195,35 @@ class SitesTab extends BaseTab {
         this.$('#site-modal-confirm')?.addEventListener('click', () => this.saveSite());
         this.$('#site-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
+
+        // 删除确认弹窗
+        this.$('#site-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.$('#site-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.$('#site-delete-confirm')?.addEventListener('click', () => this.confirmDelete());
+        this.$('#site-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
     }
 
     bindRowEvents() {
-        // 状态开关
-        this.$$('.site-status-toggle').forEach(toggle => {
-            toggle.addEventListener('change', (e) => {
-                this.toggleStatus(e.target.dataset.id, e.target.checked);
+        // 根目录链接（跳转文件管理）
+        this.$$('.site-root-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const path = link.dataset.browsePath || '.';
+                if (path && window.app?.switchTab) {
+                    window.app.switchTab('files');
+                    setTimeout(() => {
+                        this.events.emit('files:navigate', path);
+                    }, 150);
+                }
+            });
+        });
+
+        // 状态按钮
+        this.$$('.site-status-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.id;
+                const isActive = btn.classList.contains('active');
+                this.toggleStatus(id, !isActive);
             });
         });
 
@@ -215,28 +235,8 @@ class SitesTab extends BaseTab {
             });
         });
 
-        // 启动/停止
-        this.$$('.site-action-btn.start, .site-action-btn.stop').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const action = btn.dataset.action;
-                const id = btn.dataset.id;
-                if (action === 'stop') {
-                    this.stopSite(id);
-                } else {
-                    this.startSite(id);
-                }
-            });
-        });
-
-        // 重启
-        this.$$('.site-action-btn.restart').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.restartSite(btn.dataset.id);
-            });
-        });
-
         // 编辑
-        this.$$('.site-action-btn.edit').forEach(btn => {
+        this.$$('.site-action-text.edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editingSite = this.sites.find(s => s.id === btn.dataset.id);
                 this.showEditor();
@@ -244,12 +244,9 @@ class SitesTab extends BaseTab {
         });
 
         // 删除
-        this.$$('.site-action-btn.delete').forEach(btn => {
+        this.$$('.site-action-text.delete').forEach(btn => {
             btn.addEventListener('click', () => {
-                const site = this.sites.find(s => s.id === btn.dataset.id);
-                if (confirm(`确定要删除站点 "${site?.name}" 吗？`)) {
-                    this.deleteSite(btn.dataset.id);
-                }
+                this.showDeleteConfirm(btn.dataset.id);
             });
         });
     }
@@ -290,8 +287,13 @@ class SitesTab extends BaseTab {
 
     async toggleStatus(id, enabled) {
         try {
-            await this.api.post('/api/sites/toggle', { id, enabled });
-            this.toast.success(`站点已${enabled ? '启用' : '禁用'}`);
+            if (enabled) {
+                await this.api.post('/api/sites/start', { id });
+                this.toast.success('站点已启动');
+            } else {
+                await this.api.post('/api/sites/stop', { id });
+                this.toast.success('站点已停止');
+            }
             const site = this.sites.find(s => s.id === id);
             if (site) site.enabled = enabled;
             this.filterSites();
@@ -300,45 +302,128 @@ class SitesTab extends BaseTab {
         }
     }
 
-    async startSite(id) {
+    // ========== 服务控制 ==========
+
+    async checkServiceStatus() {
         try {
-            await this.api.post('/api/sites/start', { id });
-            this.toast.success('站点已启动');
-            const site = this.sites.find(s => s.id === id);
-            if (site) site.enabled = true;
-            this.filterSites();
+            const data = await this.api.getJSON('/api/sites/status');
+            if (data) {
+                this.updateServiceStatus(data.running);
+            }
         } catch (error) {
-            this.toast.error('启动失败: ' + error.message);
+            console.error('获取站点服务状态失败:', error);
         }
     }
 
-    async stopSite(id) {
+    async toggleService() {
+        const btn = this.$('#site-service-toggle');
+        const isRunning = btn?.classList.contains('running');
+
         try {
-            await this.api.post('/api/sites/stop', { id });
-            this.toast.success('站点已停止');
-            const site = this.sites.find(s => s.id === id);
-            if (site) site.enabled = false;
-            this.filterSites();
+            if (isRunning) {
+                await this.api.post('/api/service/sites/stop');
+                this.toast.success('站点服务已停止');
+                this.updateServiceStatus(false);
+            } else {
+                await this.api.post('/api/service/sites/start');
+                this.toast.success('站点服务已启动');
+                this.updateServiceStatus(true);
+            }
         } catch (error) {
-            this.toast.error('停止失败: ' + error.message);
+            this.toast.error('操作失败: ' + error.message);
         }
     }
 
-    async restartSite(id) {
+    async restartService() {
         try {
-            await this.api.post('/api/sites/restart', { id });
-            this.toast.success('站点已重启');
-            const site = this.sites.find(s => s.id === id);
-            if (site) site.enabled = true;
-            this.filterSites();
+            await this.api.post('/api/service/sites/restart');
+            this.toast.success('站点服务已重启');
+            this.updateServiceStatus(true);
         } catch (error) {
             this.toast.error('重启失败: ' + error.message);
         }
     }
 
+    async reloadConfig() {
+        try {
+            await this.api.post('/api/service/sites/reload');
+            this.toast.success('站点配置已重载');
+            await this.refresh();
+        } catch (error) {
+            this.toast.error('重载失败: ' + error.message);
+        }
+    }
+
+    updateServiceStatus(running) {
+        const statusEl = this.$('#site-service-status');
+        const toggleBtn = this.$('#site-service-toggle');
+
+        if (statusEl) {
+            statusEl.textContent = running ? '运行中' : '已停止';
+            statusEl.classList.toggle('running', running);
+            statusEl.classList.toggle('stopped', !running);
+        }
+
+        if (toggleBtn) {
+            toggleBtn.classList.toggle('running', running);
+            toggleBtn.classList.toggle('stopped', !running);
+            const textSpan = toggleBtn.querySelector('.btn-text');
+            if (textSpan) {
+                textSpan.textContent = running ? '停止' : '启动';
+            }
+        }
+    }
+
+    showDeleteConfirm(id) {
+        const site = this.sites.find(s => s.id === id);
+        if (!site) return;
+        this.deleteTargetId = id;
+        this.$('#site-delete-name').textContent = site.name;
+        this.$('#site-delete-modal')?.classList.add('active');
+    }
+
+    hideDeleteConfirm() {
+        this.$('#site-delete-modal')?.classList.remove('active');
+        this.deleteTargetId = null;
+    }
+
+    async confirmDelete() {
+        if (!this.deleteTargetId) return;
+
+        if (this.deleteTargetId === 'batch') {
+            // 批量删除
+            const keys = this._batchDeleteKeys || [];
+            this.hideDeleteConfirm();
+            if (keys.length === 0) return;
+
+            try {
+                const response = await this.api.post('/api/sites/batch', { action: 'delete', ids: keys });
+                if (!response || !response.ok) {
+                    throw new Error(response ? `HTTP ${response.status}` : '请求失败');
+                }
+                this.api.clearCache('/api/sites');
+                this.message.success(`已删除 ${keys.length} 个站点`);
+                this.dataTable.clearSelection();
+                await this.refresh();
+            } catch (error) {
+                this.message.error('删除失败: ' + error.message);
+            }
+            this._batchDeleteKeys = null;
+        } else {
+            // 单个删除
+            const id = this.deleteTargetId;
+            this.hideDeleteConfirm();
+            await this.deleteSite(id);
+        }
+    }
+
     async deleteSite(id) {
         try {
-            await this.api.delete(`/api/sites/${id}`);
+            const response = await this.api.delete(`/api/sites/${id}`);
+            if (!response || !response.ok) {
+                throw new Error(response ? `HTTP ${response.status}` : '请求失败');
+            }
+            this.api.clearCache('/api/sites');
             this.message.success('站点已删除');
             await this.refresh();
         } catch (error) {
@@ -364,7 +449,18 @@ class SitesTab extends BaseTab {
 
     async batchDelete() {
         const keys = this.dataTable?.getSelectedKeys() || [];
-        if (keys.length === 0 || !confirm(`确定要删除选中的 ${keys.length} 个站点吗？`)) return;
+        if (keys.length === 0) return;
+
+        // 显示批量删除确认弹窗
+        this.deleteTargetId = 'batch';
+        this.$('#site-delete-name').textContent = `${keys.length} 个站点`;
+        this.$('#site-delete-modal')?.classList.add('active');
+        this._batchDeleteKeys = keys;
+    }
+
+    async confirmBatchDelete() {
+        const keys = this._batchDeleteKeys;
+        if (!keys?.length) return;
 
         try {
             await this.api.post('/api/sites/batch', { action: 'delete', ids: keys });
@@ -389,8 +485,11 @@ class SitesTab extends BaseTab {
             this.$('#site-form-type').value = this.editingSite.type || 'static';
             this.$('#site-form-port').value = this.editingSite.port || '';
             this.$('#site-form-domain').value = (this.editingSite.domain || []).join(', ');
-            this.$('#site-form-root').value = this.editingSite.root || '';
             this.$('#site-form-proxy').value = this.editingSite.proxy?.target || '';
+            // 根目录使用 DirectoryPicker
+            if (this.directoryPicker) {
+                this.directoryPicker.setValue(this.editingSite.root || './sites/default');
+            }
             // 首页文件 & 目录浏览
             const indexFiles = this.editingSite.index_files || ['index.html', 'index.htm'];
             this.$('#site-form-index-files').value = indexFiles.join(', ');
@@ -399,6 +498,10 @@ class SitesTab extends BaseTab {
         } else {
             title.textContent = '添加网站';
             this.$('#site-form')?.reset();
+            // 根目录默认值
+            if (this.directoryPicker) {
+                this.directoryPicker.setValue('./sites/default');
+            }
             // 新建默认值
             this.$('#site-form-index-files').value = 'index.html, index.htm';
             const autoIndex = this.$('#site-form-auto-index');
@@ -427,7 +530,7 @@ class SitesTab extends BaseTab {
         const type = this.$('#site-form-type')?.value;
         const port = parseInt(this.$('#site-form-port')?.value) || 0;
         const domainStr = this.$('#site-form-domain')?.value.trim();
-        const root = this.$('#site-form-root')?.value.trim();
+        const root = this.directoryPicker?.getValue?.() || this.$('#site-form-root')?.value.trim();
         const proxyTarget = this.$('#site-form-proxy')?.value.trim();
 
         if (!name) { this.message.error('请输入站点名称'); return; }

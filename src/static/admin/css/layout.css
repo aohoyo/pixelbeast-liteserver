@@ -49,6 +49,57 @@
     font-weight: 600;
 }
 
+.header-version {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    background: var(--primary-alpha);
+    color: var(--primary);
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.header-btn {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: all var(--transition);
+}
+
+.header-btn:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.header-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.header-btn.spinning svg {
+    animation: spin 1s linear infinite;
+}
+
+.header-btn span {
+    line-height: 1;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .header-icon {
     color: var(--text-muted);
     cursor: pointer;

@@ -25,22 +25,22 @@ type ConfigManager struct {
 
 // ServerConfig 服务配置
 type ServerConfig struct {
-	Name        string          `json:"name"`
-	Timezone    string          `json:"timezone"`
-	Admin       AdminConfig     `json:"admin"`
+	Name        string            `json:"name"`
+	Timezone    string            `json:"timezone"`
+	Admin       AdminConfig       `json:"admin"`
 	Directories DirectoriesConfig `json:"directories"`
-	Backup      BackupConfig    `json:"backup"`
-	Log         LogConfig       `json:"log"`
+	Backup      BackupConfig      `json:"backup"`
+	Log         LogConfig         `json:"log"`
 }
 
 // AdminConfig 管理面板配置
 type AdminConfig struct {
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	Password    string `json:"password"` // 加密后的密码
-	Path        string `json:"path"`     // 安全入口路径
-	Domain      string `json:"domain"`   // 绑定域名，为空则允许所有域名访问
-	SSLEnabled  bool   `json:"ssl_enabled"`
+	Port       int    `json:"port"`
+	Username   string `json:"username"`
+	Password   string `json:"password"` // 加密后的密码
+	Path       string `json:"path"`     // 安全入口路径
+	Domain     string `json:"domain"`   // 绑定域名，为空则允许所有域名访问
+	SSLEnabled bool   `json:"ssl_enabled"`
 }
 
 // SitesConfig 站点配置列表
@@ -50,10 +50,10 @@ type SitesConfig struct {
 
 // SiteConfig 站点配置
 type SiteConfig struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Enabled   bool     `json:"enabled"`
-	Type      string   `json:"type"` // static, proxy
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Type    string `json:"type"` // static, proxy
 
 	// 静态站点
 	Port       int      `json:"port"`
@@ -116,28 +116,28 @@ type DirectoriesConfig struct {
 
 // BackupConfig 备份配置
 type BackupConfig struct {
-	AutoEnabled bool     `json:"auto_enabled"`           // 自动备份
-	Schedule    string   `json:"schedule"`               // daily, weekly, monthly
-	Retention   int      `json:"retention"`              // 保留份数
-	Items       []string `json:"items"`                  // 备份内容：config, sites, ftp
+	AutoEnabled bool     `json:"auto_enabled"` // 自动备份
+	Schedule    string   `json:"schedule"`     // daily, weekly, monthly
+	Retention   int      `json:"retention"`    // 保留份数
+	Items       []string `json:"items"`        // 备份内容：config, sites, ftp
 }
 
 // FTPUser FTP 用户
 type FTPUser struct {
-	Username  string `json:"username"`
-	Password  string `json:"password"` // 加密后的密码
-	RootPath  string `json:"root_path"`
-	Status    string `json:"status"` // enabled, disabled
-	Quota     int64  `json:"quota"`  // 容量限制（MB）
-	UsedSpace int64  `json:"used_space"`
-	ExpiryDays int   `json:"expiry_days"`
-	ExpiryDate string `json:"expiry_date"`
-	Remark        string `json:"remark"`
-	SpeedLimit    int64  `json:"speed_limit"`      // 下载速度限制 KB/s, 0=无限制
-	Bandwidth     int64  `json:"bandwidth"`         // 上传速度限制 KB/s, 0=无限制
-	MaxConnections int   `json:"max_connections"`   // 最大连接数, 0=无限制
-	MaxFiles      int    `json:"max_files"`          // 最大文件数量, 0=无限制
-	MaxFileSize   int64  `json:"max_file_size"`      // 单文件大小限制 MB, 0=无限制
+	Username       string `json:"username"`
+	Password       string `json:"password"` // 加密后的密码
+	RootPath       string `json:"root_path"`
+	Status         string `json:"status"` // enabled, disabled
+	Quota          int64  `json:"quota"`  // 容量限制（MB）
+	UsedSpace      int64  `json:"used_space"`
+	ExpiryDays     int    `json:"expiry_days"`
+	ExpiryDate     string `json:"expiry_date"`
+	Remark         string `json:"remark"`
+	SpeedLimit     int64  `json:"speed_limit"`     // 下载速度限制 KB/s, 0=无限制
+	Bandwidth      int64  `json:"bandwidth"`       // 上传速度限制 KB/s, 0=无限制
+	MaxConnections int    `json:"max_connections"` // 最大连接数, 0=无限制
+	MaxFiles       int    `json:"max_files"`       // 最大文件数量, 0=无限制
+	MaxFileSize    int64  `json:"max_file_size"`   // 单文件大小限制 MB, 0=无限制
 }
 
 // NewConfigManager 创建配置管理器
@@ -257,7 +257,6 @@ func (cm *ConfigManager) ensureDefaults() {
 		cm.saveServer()
 	}
 }
-
 
 // ========== 辅助方法 ==========
 

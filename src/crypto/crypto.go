@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	ErrInvalidKey      = errors.New("invalid key size")
+	ErrInvalidKey        = errors.New("invalid key size")
 	ErrInvalidCiphertext = errors.New("invalid ciphertext")
-	ErrKeyNotFound     = errors.New("key file not found")
+	ErrKeyNotFound       = errors.New("key file not found")
 )
 
 // KeySize AES-256 需要 32 字节密钥
@@ -71,7 +71,7 @@ func Decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 
 	// 提取 nonce 和密文
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	
+
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return nil, err
@@ -106,17 +106,17 @@ func LoadKey(path string) ([]byte, error) {
 		}
 		return nil, err
 	}
-	
+
 	// 支持 hex 编码的密钥
 	key, err := hex.DecodeString(string(data))
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(key) != KeySize {
 		return nil, ErrInvalidKey
 	}
-	
+
 	return key, nil
 }
 
@@ -125,16 +125,16 @@ func SaveKey(path string, key []byte) error {
 	if len(key) != KeySize {
 		return ErrInvalidKey
 	}
-	
+
 	// 确保目录存在
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	
+
 	// 保存为 hex 编码
 	data := []byte(hex.EncodeToString(key))
-	
+
 	// 权限 600，只有所有者可读写
 	return os.WriteFile(path, data, 0600)
 }
@@ -145,21 +145,21 @@ func EnsureKey(path string) ([]byte, error) {
 	if err == nil {
 		return key, nil
 	}
-	
+
 	if errors.Is(err, ErrKeyNotFound) {
 		// 生成新密钥
 		key, err = GenerateKey()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if err := SaveKey(path, key); err != nil {
 			return nil, err
 		}
-		
+
 		return key, nil
 	}
-	
+
 	return nil, err
 }
 
@@ -178,11 +178,11 @@ func DecryptString(ciphertextHex string, key []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	plaintext, err := Decrypt(ciphertext, key)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(plaintext), nil
 }

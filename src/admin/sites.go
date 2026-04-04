@@ -23,7 +23,7 @@ func (h *Handler) handleSitesList(w http.ResponseWriter, r *http.Request) {
 // handleSitesDetail 处理站点详情
 func (h *Handler) handleSitesDetail(w http.ResponseWriter, r *http.Request) {
 	// 从路径提取站点 ID
-	id := extractIDFromPath(r.URL.Path, "/admin/api/sites/")
+	id := extractIDFromPath(r.URL.Path, "/api/sites/")
 	if id == "" {
 		BadRequest(w, "缺少站点 ID")
 		return
@@ -170,6 +170,94 @@ func (h *Handler) handleSiteRestart(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "站点已重启")
 }
 
+// getSitesStatus 获取站点服务状态
+func (h *Handler) getSitesStatus(w http.ResponseWriter, r *http.Request) {
+	sitesRunning := false
+	sitesPort := 0
+	if h.ServerManager != nil {
+		sitesRunning = h.ServerManager.IsSitesRunning()
+	}
+	if h.ConfigManager != nil {
+		sitesPort = h.ConfigManager.GetSharedPort()
+	}
+	Success(w, map[string]interface{}{
+		"running": sitesRunning,
+		"port":    sitesPort,
+	})
+}
+
+// toggleSitesService 切换站点服务
+func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	var err error
+	var msg string
+	if h.ServerManager.IsSitesRunning() {
+		err, msg = h.ServerManager.StopSitesServer(), "站点服务已停止"
+	} else {
+		err, msg = h.ServerManager.StartSitesServer(), "站点服务已启动"
+	}
+	if err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, msg)
+}
+
+// startSitesService 启动站点服务
+func (h *Handler) startSitesService(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	if err := h.ServerManager.StartSitesServer(); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, "站点服务已启动")
+}
+
+// stopSitesService 停止站点服务
+func (h *Handler) stopSitesService(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	if err := h.ServerManager.StopSitesServer(); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, "站点服务已停止")
+}
+
+// restartSitesService 重启站点服务
+func (h *Handler) restartSitesService(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	if err := h.ServerManager.RestartSitesServer(); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, "站点服务已重启")
+}
+
+// reloadSitesConfig 重载站点配置
+func (h *Handler) reloadSitesConfig(w http.ResponseWriter, r *http.Request) {
+	if h.ServerManager == nil {
+		Error(w, http.StatusOK, "服务管理器未初始化")
+		return
+	}
+	if err := h.ServerManager.ReloadSites(); err != nil {
+		Error(w, http.StatusOK, err.Error())
+		return
+	}
+	SuccessMessage(w, "站点配置已重载")
+}
+
 // handleSitesBatch 处理批量操作
 func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -248,8 +336,10 @@ func (h *Handler) listSites(w http.ResponseWriter, r *http.Request) {
 	defer h.mu.RUnlock()
 
 	sites := make([]map[string]interface{}, 0)
-	for _, site := range h.ConfigManager.Sites.Sites {
-		sites = append(sites, siteToMap(site))
+	for i := range h.ConfigManager.Sites.Sites {
+		m := siteToMap(h.ConfigManager.Sites.Sites[i])
+		m["root"] = h.ConfigManager.GetSiteRoot(&h.ConfigManager.Sites.Sites[i])
+		sites = append(sites, m)
 	}
 
 	Success(w, sites)

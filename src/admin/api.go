@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
+	psnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 
 	"pixelbeast/src/config"
@@ -37,6 +39,36 @@ var (
 	lastCPUPercent float64
 	lastCPUPerCore []float64
 	cpuMu          sync.RWMutex
+)
+
+// 后台网络采样
+var (
+	netSpeedSentKB float64
+	netSpeedRecvKB float64
+	netTotalSentGB float64
+	netTotalRecvGB float64
+	lastNetSent    uint64
+	lastNetRecv    uint64
+	lastNetTime    time.Time
+	netMu          sync.RWMutex
+)
+
+// 后台磁盘IO采样
+var (
+	diskIOSpeedWriteKB float64
+	diskIOSpeedReadKB  float64
+	diskIOIOPS         float64
+	diskIOLatencyMs    float64
+	diskIOTotalWriteGB float64
+	diskIOTotalReadGB  float64
+	lastDiskWrite      uint64
+	lastDiskRead       uint64
+	lastDiskWriteCount uint64
+	lastDiskReadCount  uint64
+	lastDiskReadTime   uint64
+	lastDiskWriteTime  uint64
+	lastDiskIOTime     time.Time
+	diskIOMu           sync.RWMutex
 )
 
 func init() {
@@ -56,6 +88,74 @@ func init() {
 				cpuMu.Lock()
 				lastCPUPerCore = perCore
 				cpuMu.Unlock()
+			}
+
+			time.Sleep(2 * time.Second)
+		}
+	}()
+
+	// 网络 & 磁盘IO 采样
+	go func() {
+		for {
+			// 网络速率
+			counters, err := psnet.IOCounters(false)
+			if err == nil && len(counters) > 0 {
+				c := counters[0]
+				now := time.Now()
+				netMu.Lock()
+				if !lastNetTime.IsZero() {
+					elapsed := now.Sub(lastNetTime).Seconds()
+					if elapsed > 0 {
+						netSpeedSentKB = float64(c.BytesSent-lastNetSent) / 1024 / elapsed
+						netSpeedRecvKB = float64(c.BytesRecv-lastNetRecv) / 1024 / elapsed
+					}
+				}
+				lastNetSent = c.BytesSent
+				lastNetRecv = c.BytesRecv
+				lastNetTime = now
+				netTotalSentGB = float64(c.BytesSent) / 1024 / 1024 / 1024
+				netTotalRecvGB = float64(c.BytesRecv) / 1024 / 1024 / 1024
+				netMu.Unlock()
+			}
+
+			// 磁盘IO速率
+			ioCounters, err := disk.IOCounters()
+			if err == nil && len(ioCounters) > 0 {
+				// 固定选取第一个设备（按名称排序，确保每次一致）
+				var keys []string
+				for k := range ioCounters {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				c := ioCounters[keys[0]]
+
+				now := time.Now()
+				diskIOMu.Lock()
+				if !lastDiskIOTime.IsZero() {
+					elapsed := now.Sub(lastDiskIOTime).Seconds()
+					if elapsed > 0 {
+						diskIOSpeedWriteKB = float64(c.WriteBytes-lastDiskWrite) / 1024 / elapsed
+						diskIOSpeedReadKB = float64(c.ReadBytes-lastDiskRead) / 1024 / elapsed
+						diskIOIOPS = float64((c.WriteCount-lastDiskWriteCount)+(c.ReadCount-lastDiskReadCount)) / elapsed
+						totalOps := (c.WriteCount - lastDiskWriteCount) + (c.ReadCount - lastDiskReadCount)
+						if totalOps > 0 {
+							totalTime := (c.WriteTime - lastDiskWriteTime) + (c.ReadTime - lastDiskReadTime)
+							diskIOLatencyMs = float64(totalTime) / float64(totalOps)
+						} else {
+							diskIOLatencyMs = 0
+						}
+					}
+				}
+				lastDiskWrite = c.WriteBytes
+				lastDiskRead = c.ReadBytes
+				lastDiskWriteCount = c.WriteCount
+				lastDiskReadCount = c.ReadCount
+				lastDiskWriteTime = c.WriteTime
+				lastDiskReadTime = c.ReadTime
+				lastDiskIOTime = now
+				diskIOTotalWriteGB = float64(c.WriteBytes) / 1024 / 1024 / 1024
+				diskIOTotalReadGB = float64(c.ReadBytes) / 1024 / 1024 / 1024
+				diskIOMu.Unlock()
 			}
 
 			time.Sleep(2 * time.Second)
@@ -334,6 +434,20 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		// 运行时间
 		"server_start_time": startTime.UnixMilli(),
 
+		// 网络
+		"net_sent_rate_kb":  netSpeedSentKB,
+		"net_recv_rate_kb":  netSpeedRecvKB,
+		"net_total_sent_gb": netTotalSentGB,
+		"net_total_recv_gb": netTotalRecvGB,
+
+		// 磁盘IO
+		"diskio_speed_write_kb": diskIOSpeedWriteKB,
+		"diskio_speed_read_kb":  diskIOSpeedReadKB,
+		"diskio_total_write_gb": diskIOTotalWriteGB,
+		"diskio_total_read_gb":  diskIOTotalReadGB,
+		"diskio_iops":           diskIOIOPS,
+		"diskio_latency_ms":     diskIOLatencyMs,
+
 		// FTP 状态
 
 		// 保留原有字段
@@ -476,7 +590,6 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 	Success(w, cfg)
 }
 
-
 func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 	username := h.getSessionUsername(r)
 	if r.Method != http.MethodPost {
@@ -544,7 +657,6 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 		h.ConfigManager.Sites.Sites = siteConfigs
 	}
 
-
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
 		InternalServerError(w, err.Error())
@@ -584,7 +696,6 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg.Admin.Password = ""
 	Success(w, cfg)
 }
-
 
 // ==================== 日志 ====================
 
@@ -1210,7 +1321,6 @@ func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, "备份恢复成功，重新加载配置生效")
 }
 
-
 // createTarGz 创建 tar.gz 压缩包
 func createTarGz(outputPath, srcDir, prefix string) error {
 	f, err := os.Create(outputPath)
@@ -1264,5 +1374,76 @@ func createTarGz(outputPath, srcDir, prefix string) error {
 		}
 
 		return nil
+	})
+}
+
+// ==================== 系统操作 ====================
+
+// restartServer 重启服务进程
+func (h *Handler) restartServer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	SuccessMessage(w, "服务正在重启...")
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		exec.Command(os.Args[0], os.Args[1:]...).Start()
+		os.Exit(0)
+	}()
+}
+
+// checkUpdate 检查 GitHub 最新版本
+func (h *Handler) checkUpdate(w http.ResponseWriter, r *http.Request) {
+	currentVersion := h.Version
+	if currentVersion == "" {
+		currentVersion = "v0.0.0"
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/aohoyo/pixelbeast-liteserver/releases/latest")
+	if err != nil {
+		Success(w, map[string]interface{}{
+			"current_version": currentVersion,
+			"latest_version":  "",
+			"has_update":      false,
+			"message":         "无法连接更新服务器",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Body    string `json:"body"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		Success(w, map[string]interface{}{
+			"current_version": currentVersion,
+			"latest_version":  "",
+			"has_update":      false,
+			"message":         "解析更新信息失败",
+		})
+		return
+	}
+
+	latestVersion := release.TagName
+	hasUpdate := latestVersion != currentVersion && latestVersion != ""
+
+	Success(w, map[string]interface{}{
+		"current_version": currentVersion,
+		"latest_version":  latestVersion,
+		"has_update":      hasUpdate,
+		"changelog":       release.Body,
+		"download_url":    release.HTMLURL,
+		"message": func() string {
+			if hasUpdate {
+				return "发现新版本: " + latestVersion
+			}
+			return "已是最新版本"
+		}(),
 	})
 }
