@@ -98,7 +98,6 @@ class HomeTab extends BaseTab {
         this.updateDisk(data);
         this.updateNetwork(data);
         this.updateDiskIO(data);
-        this.updateStatusBar(data);
 
         // 更新服务状态
         this.updateServices();
@@ -368,12 +367,6 @@ class HomeTab extends BaseTab {
         }
         if (statusEl) statusEl.textContent = running ? '运行中' : '已停止';
         if (portEl) portEl.innerHTML = detail;
-    }
-
-    updateStatusBar(data) {
-        this.setText('#status-memory', data.memory_mb?.toFixed(1) + ' MB');
-        this.setText('#status-goroutines', data.goroutines);
-        this.setText('#status-sysinfo', `${data.os} / ${data.arch}`);
     }
 
     updateUptime() {

@@ -406,3 +406,38 @@
     font-weight: 400;
     line-height: 1.4;
 }
+
+/* ==================== Directory Picker (内联) ==================== */
+
+.directory-picker {
+    width: 100%;
+}
+
+.directory-picker-input {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.directory-picker-input .form-input-inline {
+    flex: 1;
+    background: var(--bg);
+    min-width: 0;
+}
+
+.directory-picker-input .form-input-inline:hover {
+    border-color: var(--primary);
+}
+
+.directory-picker-btn {
+    padding: 8px 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.directory-picker-btn .icon {
+    width: 18px;
+    height: 18px;
+}

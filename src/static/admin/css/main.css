@@ -11,6 +11,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
     margin-bottom: var(--space-lg);
     gap: var(--space-lg);
 }
@@ -87,7 +88,7 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-lg);
-    margin-bottom: var(--space-lg);
+    height: 360px;
 }
 
 @media (max-width: 768px) {
@@ -102,6 +103,9 @@
     position: relative;
     cursor: pointer;
     overflow: visible;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 .chart-card:hover {
     border-color: var(--primary);
@@ -155,7 +159,8 @@
 .chart-stat.read .chart-stat-value { color: #a78bfa; }
 .chart-stat.muted .chart-stat-value { color: var(--text-secondary); }
 .chart-card-body {
-    height: 100px;
+    flex: 1;
+    min-height: 0;
     position: relative;
 }
 .chart-card-body canvas {
@@ -176,6 +181,7 @@
     margin-bottom: var(--space-lg);
     position: relative;
     overflow: visible;
+    flex-shrink: 0;
 }
 
 @media (max-width: 1400px) {
@@ -196,7 +202,8 @@
     position: relative;
     cursor: pointer;
     overflow: visible;
-    min-height: 120px;
+    height: 120px;
+    box-sizing: border-box;
 }
 
 .metric-card:hover {
@@ -524,40 +531,6 @@
     text-align: right;
 }
 
-/* ==================== 系统状态栏 ==================== */
-
-.system-status-bar {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-xl);
-    padding: var(--space-md) var(--space-lg);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-lg);
-}
-
-.status-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.status-label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.status-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text);
-    font-family: var(--font-mono);
-}
-
 /* ==================== 磁盘列表 ==================== */
 
 .disk-item {
@@ -625,6 +598,7 @@
 
 .services-panel {
     margin-bottom: var(--space-lg);
+    flex-shrink: 0;
 }
 
 .services-grid {
@@ -671,6 +645,11 @@
     padding: var(--space-lg);
     transition: all var(--transition);
     cursor: pointer;
+    height: 120px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .service-status-card:hover {
@@ -1582,10 +1561,6 @@ pre {
 
     .status-bar-left {
         gap: var(--space-sm);
-    }
-
-    .status-item .icon {
-        display: none;
     }
 }
 

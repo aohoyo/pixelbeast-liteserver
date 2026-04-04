@@ -1,61 +1,4 @@
-/* ==================== FTP 用户管理 ==================== */
-
-/* FTP 服务控制 */
-.ftp-service-control {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.ftp-service-label {
-    font-size: 13px;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.ftp-service-status {
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--bg-elevated);
-    color: var(--text-muted);
-}
-
-.ftp-service-status.running {
-    background: rgba(34, 197, 94, 0.1);
-    color: var(--success);
-}
-
-.ftp-service-status.stopped {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--danger);
-}
-
-/* 切换按钮图标显示 */
-#ftp-service-toggle .start-icon,
-#ftp-service-toggle .stop-icon {
-    display: none;
-}
-
-#ftp-service-toggle.stopped .start-icon {
-    display: block;
-}
-
-#ftp-service-toggle.running .stop-icon {
-    display: block;
-}
-
-#ftp-service-toggle.running {
-    background: var(--danger);
-    border-color: var(--danger);
-    color: white;
-}
-
-#ftp-service-toggle.stopped {
-    background: var(--success);
-    border-color: var(--success);
-    color: white;
-}
+/* ==================== FTP 用户管理（特有样式） ==================== */
 
 /* 下拉选择框 */
 .toolbar-filter select {
@@ -78,37 +21,6 @@
     border-color: var(--primary);
 }
 
-/* 主容器 */
-.ftp-container {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    padding: var(--space-lg);
-}
-
-.ftp-container .toolbar {
-    flex-shrink: 0;
-}
-
-.ftp-container .table-wrapper {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.ftp-container .table-wrapper .dt-container {
-    height: 100%;
-}
-
-.ftp-container .table-wrapper .dt-table-wrapper {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-}
-
 /* 用户信息 */
 .ftp-user-info {
     display: flex;
@@ -127,6 +39,7 @@
     justify-content: center;
     font-weight: 600;
     font-size: 0.875rem;
+    flex-shrink: 0;
 }
 
 .ftp-user-name {
@@ -143,120 +56,7 @@
 .ftp-password-text {
     color: var(--text-muted);
     font-family: var(--font-mono);
-}
-
-.ftp-password-copy {
-    background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    color: var(--text-muted);
-    border-radius: var(--radius);
-    transition: all var(--transition);
-}
-
-.ftp-password-copy:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-}
-
-.ftp-password-copy .icon {
-    width: 16px;
-    height: 16px;
-}
-
-/* 状态 */
-.ftp-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
-
-.ftp-status-text {
     font-size: 0.875rem;
-}
-
-.ftp-status-text.enabled {
-    color: var(--success);
-}
-
-.ftp-status-text.disabled {
-    color: var(--text-muted);
-}
-
-/* 快速链接（合并重复定义） */
-.ftp-quick-link {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 200px;
-}
-
-.ftp-link-text {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--primary);
-    font-size: 13px;
-    font-family: var(--font-mono);
-}
-
-.ftp-link-text:hover {
-    text-decoration: underline;
-}
-
-.ftp-link-copy {
-    flex-shrink: 0;
-    padding: 4px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    border-radius: var(--radius);
-    transition: all var(--transition);
-}
-
-.ftp-link-copy:hover {
-    background: var(--bg-hover);
-    color: var(--primary);
-}
-
-.ftp-link-copy .icon {
-    width: 16px;
-    height: 16px;
-}
-
-/* 根目录 */
-.ftp-root-path {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-    font-size: 0.875rem;
-}
-
-.ftp-root-path .icon {
-    width: 16px;
-    height: 16px;
-    color: var(--text-muted);
-}
-
-.ftp-root-path code {
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-}
-
-.ftp-root-link {
-    color: var(--primary);
-    text-decoration: none;
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
-}
-
-.ftp-root-link:hover {
-    text-decoration: underline;
-    color: var(--primary);
 }
 
 /* 有效期 */
@@ -331,75 +131,6 @@
     color: var(--text-secondary);
 }
 
-/* 操作按钮（合并重复定义） */
-.ftp-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.ftp-action-btn {
-    background: none;
-    border: none;
-    padding: 6px;
-    cursor: pointer;
-    color: var(--text-muted);
-    border-radius: var(--radius);
-    transition: all var(--transition);
-}
-
-.ftp-action-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-}
-
-.ftp-action-btn.edit:hover {
-    color: var(--primary);
-}
-
-.ftp-action-btn.delete:hover {
-    color: var(--danger);
-}
-
-.ftp-action-btn .icon {
-    width: 16px;
-    height: 16px;
-}
-
-/* 操作按钮文字样式 */
-.ftp-action-text {
-    background: none;
-    border: none;
-    font-size: 13px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: var(--radius);
-    transition: all var(--transition);
-}
-
-.ftp-action-text.edit {
-    color: var(--primary);
-}
-
-.ftp-action-text.edit:hover {
-    background: var(--primary-alpha);
-}
-
-.ftp-action-text.config {
-    color: var(--info);
-}
-
-.ftp-action-text.config:hover {
-    background: var(--info-alpha);
-}
-
-.ftp-action-text.delete {
-    color: var(--danger);
-}
-
-.ftp-action-text.delete:hover {
-    background: var(--danger-alpha);
-}
-
 /* 密码输入组 */
 .ftp-password-input-group {
     display: flex;
@@ -441,34 +172,6 @@
 .password-toggle-btn .icon {
     width: 18px;
     height: 18px;
-}
-
-/* 状态按钮 */
-.ftp-status-btn {
-    padding: 4px 12px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text-secondary);
-    font-size: 12px;
-    cursor: pointer;
-    transition: all var(--transition);
-}
-
-.ftp-status-btn.active {
-    background: var(--success);
-    border-color: var(--success);
-    color: white;
-}
-
-.ftp-status-btn:not(.active) {
-    background: var(--danger);
-    border-color: var(--danger);
-    color: white;
-}
-
-.ftp-status-btn:hover {
-    opacity: 0.8;
 }
 
 /* 配置弹窗 */
@@ -513,34 +216,7 @@
     margin-bottom: var(--space-md);
 }
 
-/* 删除确认弹窗 */
-.ftp-delete-warning {
-    text-align: center;
-    padding: var(--space-lg) 0;
-}
-
-.ftp-delete-warning .icon {
-    width: 48px;
-    height: 48px;
-    color: var(--warning);
-    margin-bottom: var(--space-md);
-}
-
-.ftp-delete-warning p {
-    color: var(--text);
-    font-size: 15px;
-    margin-bottom: var(--space-sm);
-}
-
-.ftp-delete-warning strong {
-    color: var(--primary);
-}
-
-.ftp-delete-hint {
-    color: var(--text-muted);
-    font-size: 13px;
-}
-
+/* 删除选项 */
 .ftp-delete-option {
     margin-top: var(--space-md);
     padding: var(--space-md);

@@ -9,14 +9,14 @@
         </div>
     </div>
 
-    <div class="site-container">
+    <div class="service-tab-container">
         <!-- 工具栏 -->
         <div class="toolbar">
             <div class="toolbar-left">
                 <!-- 站点服务控制 -->
-                <div class="site-service-control">
-                    <span class="site-service-label">站点服务</span>
-                    <button class="btn btn-sm" id="site-service-toggle">
+                <div class="service-control">
+                    <span class="service-label">站点服务</span>
+                    <button class="btn btn-sm service-toggle" id="site-service-toggle">
                         <svg class="icon start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         <svg class="icon stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>
                         <span class="btn-text">启动</span>
@@ -27,7 +27,7 @@
                     <button class="btn btn-sm" id="site-service-reload">
                         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 10"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 14"></path></svg> 重载配置
                     </button>
-                    <span class="site-service-status" id="site-service-status">已停止</span>
+                    <span class="service-status" id="site-service-status">已停止</span>
                 </div>
             </div>
             <div class="toolbar-right">
@@ -60,15 +60,13 @@
 
         <!-- 数据表格 -->
         <div class="table-wrapper" id="sites-table-container"></div>
-        
+
         <!-- 分页 -->
         <div class="table-footer">
             <div id="sites-pagination"></div>
         </div>
     </div>
 </div>
-
-<!-- 添加/编辑站点弹窗 -->
 <div class="modal" id="site-modal">
     <div class="modal-overlay"></div>
     <div class="modal-container" style="width: 560px; max-width: 90vw;">
@@ -108,7 +106,12 @@
                 <div id="site-static-fields">
                     <div class="form-group">
                         <label class="form-label">根目录</label>
-                        <div id="site-root-picker"></div>
+                        <div class="dir-input-wrapper">
+                            <input type="text" class="form-input" id="site-form-root" placeholder="./sites/default" />
+                            <button type="button" class="btn btn-secondary dir-browse-btn" data-dir="site-form-root">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">首页文件</label>
@@ -151,7 +154,7 @@
             <button class="modal-close" id="site-delete-modal-close">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="site-delete-warning">
+            <div class="delete-warning">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"></circle>
                     <line x1="12" y1="8" x2="12" y2="12"></line>

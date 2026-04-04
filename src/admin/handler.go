@@ -581,7 +581,7 @@ func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Content-Type", "image/x-icon")
 	w.Write(data)
 }
 
@@ -631,7 +631,7 @@ func (h *Handler) serveImages(w http.ResponseWriter, r *http.Request) {
 	ext := strings.ToLower(file[strings.LastIndex(file, ".")+1:])
 	switch ext {
 	case "svg":
-		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Content-Type", "image/svg+xml")
 	case "png":
 		w.Header().Set("Content-Type", "image/png")
 	case "jpg", "jpeg":

@@ -6,7 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { DirectoryPicker } from '../components/directory-picker.js';
+import { openFileBrowser } from '../components/file-browser/index.js';
 import { escapeHtml, copyToClipboard } from '../core/utils.js';
 
 class SitesTab extends BaseTab {
@@ -15,31 +15,14 @@ class SitesTab extends BaseTab {
         this.dataTable = null;
         this.sites = [];
         this.editingSite = null;
-        this.directoryPicker = null;
         this.deleteTargetId = null;
     }
 
     onInit() {
         console.log('初始化站点管理...');
-        this.initDirectoryPicker();
         this.initDataTable();
         this.bindEvents();
         this.checkServiceStatus();
-    }
-
-    initDirectoryPicker() {
-        const container = this.$('#site-root-picker');
-        if (!container) return;
-
-        this.directoryPicker = new DirectoryPicker({
-            container,
-            api: this.api,
-            apiPath: '/api/files',
-            placeholder: './sites/mysite',
-            onChange: (path) => {
-                console.log('Selected site root:', path);
-            }
-        });
     }
 
     // ========== DataTable ==========
@@ -108,7 +91,7 @@ class SitesTab extends BaseTab {
                 dataIndex: 'enabled',
                 className: 'col-status',
                 render: (value, row) => `
-                    <button class="site-status-btn ${value ? 'active' : ''}" data-id="${escapeHtml(row.id)}">${value ? '运行中' : '已停止'}</button>
+                    <button class="status-btn ${value ? 'active' : ''}" data-id="${escapeHtml(row.id)}">${value ? '运行中' : '已停止'}</button>
                 `
             },
             {
@@ -126,43 +109,40 @@ class SitesTab extends BaseTab {
                     return `<span class="site-domain">${value.map(d => escapeHtml(d)).join(', ')}</span>`;
                 }
             },
-            {
-                title: '根目录/代理目标',
-                dataIndex: 'root',
-                className: 'col-root',
-                render: (value, row) => {
-                    if (row.type === 'static') {
-                        return `<div class="site-root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><a class="site-root-link" href="#" data-browse-path="${escapeHtml(value || '.')}" title="在文件管理中打开">${escapeHtml(value || '-')}</a></div>`;
-                    }
-                    return `<div class="site-proxy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><code>${escapeHtml(row.proxy?.target || '-')}</code></div>`;
-                }
-            },
-            {
+                        {
                 title: '快速链接',
                 dataIndex: 'id',
                 className: 'col-link',
                 render: (value, row) => {
-                    let url = row.port > 0 ? `http://nas.banayou.com:${row.port}` :
+                    let url = row.port > 0 ? `http://${window.location.hostname}:${row.port}` :
                               (row.domain?.length > 0 ? `http://${row.domain[0]}` : '');
                     if (!url) return '-';
                     return `
-                        <div class="site-quick-link">
-                            <span class="site-link-text" title="${escapeHtml(url)}">${escapeHtml(url)}</span>
-                            <button class="site-link-copy" data-url="${escapeHtml(url)}" title="复制链接">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <div class="quick-link">
+                            <a class="quick-link-text" href="${escapeHtml(url)}" target="_blank" title="点击打开">${escapeHtml(url)}</a>
+                            <button class="quick-link-copy" data-link="${escapeHtml(url)}" title="复制链接">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             </button>
-                            <a href="${escapeHtml(url)}" target="_blank" class="site-link-open" title="打开">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                            </a>
                         </div>
                     `;
+                }
+            },
+            {
+                title: '根目录',
+                dataIndex: 'root',
+                className: 'col-root',
+                render: (value, row) => {
+                    if (row.type === 'static') {
+                        return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><a class="root-link" href="#" data-browse-path="${escapeHtml(value || '.')}" title="在文件管理中打开">${escapeHtml(value || '-')}</a></div>`;
+                    }
+                    return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><code>${escapeHtml(row.proxy?.target || '-')}</code></div>`;
                 }
             },
             {
                 title: '操作',
                 dataIndex: 'id',
                 className: 'col-actions',
-                render: (value) => `<div class="site-actions"><button class="site-action-text edit" data-id="${escapeHtml(value)}">编辑</button><button class="site-action-text delete" data-id="${escapeHtml(value)}">删除</button></div>`
+                render: (value) => `<div class="actions"><button class="action-text edit" data-id="${escapeHtml(value)}">编辑</button><button class="action-text delete" data-id="${escapeHtml(value)}">删除</button></div>`
             }
         ];
     }
@@ -196,6 +176,10 @@ class SitesTab extends BaseTab {
         this.$('#site-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
 
+        // 目录浏览按钮
+        this.$$('.dir-browse-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+        });
         // 删除确认弹窗
         this.$('#site-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
         this.$('#site-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
@@ -203,9 +187,28 @@ class SitesTab extends BaseTab {
         this.$('#site-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
     }
 
+    async openDirPicker(inputId) {
+        const input = this.$(`#${inputId}`);
+        if (!input) return;
+        try {
+            const selected = await openFileBrowser({
+                title: '选择目录',
+                selectMode: 'folder',
+                root: input.value || '.',
+                api: this.api,
+            });
+            if (selected) {
+                input.value = selected;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } catch (e) {
+            // 用户取消
+        }
+    }
+
     bindRowEvents() {
         // 根目录链接（跳转文件管理）
-        this.$$('.site-root-link').forEach(link => {
+        this.$$('.root-link[data-browse-path]').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const path = link.dataset.browsePath || '.';
@@ -219,7 +222,7 @@ class SitesTab extends BaseTab {
         });
 
         // 状态按钮
-        this.$$('.site-status-btn').forEach(btn => {
+        this.$$('.status-btn[data-id]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = btn.dataset.id;
                 const isActive = btn.classList.contains('active');
@@ -228,15 +231,15 @@ class SitesTab extends BaseTab {
         });
 
         // 复制链接
-        this.$$('.site-link-copy').forEach(btn => {
+        this.$$('.quick-link-copy').forEach(btn => {
             btn.addEventListener('click', () => {
-                copyToClipboard(btn.dataset.url);
+                copyToClipboard(btn.dataset.link);
                 this.message.success('链接已复制');
             });
         });
 
         // 编辑
-        this.$$('.site-action-text.edit').forEach(btn => {
+        this.$$('.action-text.edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editingSite = this.sites.find(s => s.id === btn.dataset.id);
                 this.showEditor();
@@ -244,7 +247,7 @@ class SitesTab extends BaseTab {
         });
 
         // 删除
-        this.$$('.site-action-text.delete').forEach(btn => {
+        this.$$('.action-text.delete').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.showDeleteConfirm(btn.dataset.id);
             });
@@ -486,10 +489,7 @@ class SitesTab extends BaseTab {
             this.$('#site-form-port').value = this.editingSite.port || '';
             this.$('#site-form-domain').value = (this.editingSite.domain || []).join(', ');
             this.$('#site-form-proxy').value = this.editingSite.proxy?.target || '';
-            // 根目录使用 DirectoryPicker
-            if (this.directoryPicker) {
-                this.directoryPicker.setValue(this.editingSite.root || './sites/default');
-            }
+            this.$('#site-form-root').value = this.editingSite.root || './sites/default';
             // 首页文件 & 目录浏览
             const indexFiles = this.editingSite.index_files || ['index.html', 'index.htm'];
             this.$('#site-form-index-files').value = indexFiles.join(', ');
@@ -498,10 +498,7 @@ class SitesTab extends BaseTab {
         } else {
             title.textContent = '添加网站';
             this.$('#site-form')?.reset();
-            // 根目录默认值
-            if (this.directoryPicker) {
-                this.directoryPicker.setValue('./sites/default');
-            }
+            this.$('#site-form-root').value = './sites/default';
             // 新建默认值
             this.$('#site-form-index-files').value = 'index.html, index.htm';
             const autoIndex = this.$('#site-form-auto-index');
@@ -530,7 +527,7 @@ class SitesTab extends BaseTab {
         const type = this.$('#site-form-type')?.value;
         const port = parseInt(this.$('#site-form-port')?.value) || 0;
         const domainStr = this.$('#site-form-domain')?.value.trim();
-        const root = this.directoryPicker?.getValue?.() || this.$('#site-form-root')?.value.trim();
+        const root = this.$('#site-form-root')?.value.trim();
         const proxyTarget = this.$('#site-form-proxy')?.value.trim();
 
         if (!name) { this.message.error('请输入站点名称'); return; }

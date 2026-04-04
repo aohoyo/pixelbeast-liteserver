@@ -60,6 +60,73 @@
     font-family: var(--font-mono);
 }
 
+/* 顶部栏 OS 信息 */
+.header-os {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: default;
+    transition: all var(--transition);
+}
+
+.header-os:hover {
+    color: var(--text);
+    border-color: var(--primary);
+}
+
+.header-os-name {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+
+.header-os-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.header-os-detail {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 220px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-sm) 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 200;
+}
+
+.header-os:hover .header-os-detail {
+    display: block;
+}
+
+.os-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+}
+
+.os-detail-row span:first-child {
+    color: var(--text-muted);
+}
+
+.os-detail-row span:last-child {
+    color: var(--text);
+    font-weight: 500;
+    font-family: var(--font-mono);
+}
+
 .header-btn {
     height: 32px;
     padding: 0 10px;

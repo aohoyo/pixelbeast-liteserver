@@ -1,0 +1,292 @@
+/* ==================== 服务标签页共用样式（站点/FTP） ==================== */
+
+/* 服务控制 */
+.service-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.service-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.service-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+}
+
+.service-status.running {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+.service-status.stopped {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+/* 切换按钮图标显示 */
+.service-toggle .start-icon,
+.service-toggle .stop-icon {
+    display: none;
+}
+
+.service-toggle.stopped .start-icon {
+    display: block;
+}
+
+.service-toggle.running .stop-icon {
+    display: block;
+}
+
+.service-toggle.running {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+
+.service-toggle.stopped {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+}
+
+/* 主容器 */
+.service-tab-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: var(--space-lg);
+}
+
+.service-tab-container .toolbar {
+    flex-shrink: 0;
+}
+
+.service-tab-container .table-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.service-tab-container .table-wrapper .dt-container {
+    height: 100%;
+}
+
+.service-tab-container .table-wrapper .dt-table-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* 状态按钮 */
+.status-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.status-btn.active {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+}
+
+.status-btn:not(.active) {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+
+.status-btn:hover {
+    opacity: 0.8;
+}
+
+/* 快速链接 */
+.quick-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    max-width: 400px;
+}
+
+.quick-link-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--primary);
+    font-size: 13px;
+    font-family: var(--font-mono);
+    text-decoration: none;
+}
+
+.quick-link-text:hover {
+    text-decoration: underline;
+}
+
+.quick-link-copy,
+.quick-link-open {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.quick-link-copy:hover,
+.quick-link-open:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+}
+
+.quick-link-copy svg,
+.quick-link-open svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 复制按钮（通用） */
+.copy-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.copy-btn:hover {
+    background: var(--bg-hover);
+    color: var(--primary);
+}
+
+.copy-btn svg,
+.copy-btn .icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* 根目录路径（通用） */
+.root-path {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.875rem;
+}
+
+.root-path .icon {
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.root-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.root-link:hover {
+    text-decoration: underline;
+    color: var(--primary);
+}
+
+/* 操作按钮 */
+.actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-text {
+    background: none;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    transition: all var(--transition);
+}
+
+.action-text.edit {
+    color: var(--primary);
+}
+
+.action-text.edit:hover {
+    background: var(--primary-alpha);
+}
+
+.action-text.config {
+    color: var(--info);
+}
+
+.action-text.config:hover {
+    background: var(--info-alpha);
+}
+
+.action-text.delete {
+    color: var(--danger);
+}
+
+.action-text.delete:hover {
+    background: var(--danger-alpha);
+}
+
+/* 删除确认弹窗 */
+.delete-warning {
+    text-align: center;
+    padding: var(--space-lg) 0;
+}
+
+.delete-warning .icon {
+    width: 48px;
+    height: 48px;
+    color: var(--warning);
+    margin-bottom: var(--space-md);
+}
+
+.delete-warning p {
+    color: var(--text);
+    font-size: 15px;
+    margin-bottom: var(--space-sm);
+}
+
+.delete-warning strong {
+    color: var(--primary);
+}
+
+.delete-warning .option-hint {
+    color: var(--text-muted);
+    font-size: 13px;
+}

@@ -213,6 +213,10 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"go_version":        runtime.Version(),
 		"os":                runtime.GOOS,
 		"arch":              runtime.GOARCH,
+		"os_name":           getOSName(),
+		"os_name_short":     getOSShortName(),
+		"kernel":            getKernelVersion(),
+		"hostname":          getHostname(),
 		"server_start_time": startTime.UnixMilli(),
 		"uptime":            time.Since(startTime).Milliseconds(),
 		"admin_running":     adminRunning,
@@ -455,6 +459,10 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"goroutines": runtime.NumGoroutine(),
 		"os":         runtime.GOOS,
 		"arch":       runtime.GOARCH,
+		"os_name":    getOSName(),
+		"os_name_short": getOSShortName(),
+		"kernel":     getKernelVersion(),
+		"hostname":   getHostname(),
 	}
 
 	Success(w, statusData)
@@ -473,6 +481,194 @@ func getCPUModel() string {
 		}
 	}
 	return runtime.GOARCH
+}
+
+// getOSName 获取完整操作系统名称（如 Debian GNU/Linux 12 (bookworm)）
+var osNameCache string
+var osNameOnce sync.Once
+
+// getOSShortName 获取简短操作系统名称（如 Debian 12）
+var osNameShortCache string
+var osNameShortOnce sync.Once
+
+func getOSName() string {
+	osNameOnce.Do(func() {
+		switch runtime.GOOS {
+		case "linux":
+			osNameCache = readLinuxDistro()
+		case "darwin":
+			osNameCache = readMacOSName()
+		case "windows":
+			osNameCache = readWindowsName()
+		default:
+			osNameCache = runtime.GOOS
+		}
+	})
+	return osNameCache
+}
+
+func readLinuxDistro() string {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return "Linux"
+	}
+	lines := strings.Split(string(data), "\n")
+	var name, version string
+	for _, line := range lines {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		val := strings.Trim(parts[1], "\"'")
+		switch parts[0] {
+		case "PRETTY_NAME":
+			if val != "" {
+				return val
+			}
+		case "NAME":
+			name = val
+		case "VERSION":
+			version = val
+		case "VERSION_ID":
+			if version == "" {
+				version = val
+			}
+		}
+	}
+	if name != "" {
+		if version != "" {
+			return name + " " + version
+		}
+		return name
+	}
+	return "Linux"
+}
+
+func getOSShortName() string {
+	osNameShortOnce.Do(func() {
+		switch runtime.GOOS {
+		case "linux":
+			osNameShortCache = readLinuxDistroShort()
+		case "darwin":
+			osNameShortCache = readMacOSNameShort()
+		case "windows":
+			osNameShortCache = "Windows"
+		default:
+			osNameShortCache = runtime.GOOS
+		}
+	})
+	return osNameShortCache
+}
+
+func readLinuxDistroShort() string {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return "Linux"
+	}
+	lines := strings.Split(string(data), "\n")
+	var id, versionID string
+	for _, line := range lines {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		val := strings.Trim(parts[1], "\"'")
+		switch parts[0] {
+		case "ID":
+			id = strings.ToLower(val)
+		case "VERSION_ID":
+			versionID = val
+		}
+	}
+
+	nameMap := map[string]string{
+		"debian":              "Debian",
+		"ubuntu":              "Ubuntu",
+		"centos":              "CentOS",
+		"fedora":              "Fedora",
+		"arch":                "Arch",
+		"opensuse-leap":       "openSUSE",
+		"opensuse-tumbleweed": "openSUSE",
+		"alpine":              "Alpine",
+		"raspbian":            "Raspbian",
+		"linuxmint":           "Linux Mint",
+		"manjaro":             "Manjaro",
+		"amzn":                "Amazon Linux",
+		"rocky":               "Rocky Linux",
+		"almalinux":           "AlmaLinux",
+		"gentoo":              "Gentoo",
+		"void":                "Void Linux",
+		"nixos":               "NixOS",
+	}
+
+	name := id
+	if mapped, ok := nameMap[id]; ok {
+		name = mapped
+	} else if len(id) > 0 {
+		name = strings.ToUpper(id[:1]) + id[1:]
+	}
+
+	if versionID != "" {
+		return name + " " + versionID
+	}
+	return name
+}
+
+func readMacOSNameShort() string {
+	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	if err != nil {
+		return "macOS"
+	}
+	ver := strings.TrimSpace(string(out))
+	// 只取主版本号，如 "14.2.1" → "macOS 14"
+	parts := strings.SplitN(ver, ".", 2)
+	if len(parts) > 0 {
+		return "macOS " + parts[0]
+	}
+	return "macOS"
+}
+
+func readMacOSName() string {
+	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	if err != nil {
+		return "macOS"
+	}
+	return "macOS " + strings.TrimSpace(string(out))
+}
+
+func readWindowsName() string {
+	out, err := exec.Command("cmd", "/c", "ver").Output()
+	if err != nil {
+		return "Windows"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// getKernelVersion 获取内核版本
+func getKernelVersion() string {
+	switch runtime.GOOS {
+	case "windows":
+		out, err := exec.Command("cmd", "/c", "ver").Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	default:
+		out, err := exec.Command("uname", "-r").Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+}
+
+// getHostname 获取主机名
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return hostname
 }
 
 // getDiskType 获取磁盘类型

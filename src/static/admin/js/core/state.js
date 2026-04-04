@@ -62,6 +62,9 @@ export default class StateManager {
             os: os,
             arch: sysInfo.arch || 'amd64',
             hostname: sysInfo.hostname || '',
+            osName: sysInfo.osName || '',
+            osNameShort: sysInfo.osNameShort || '',
+            kernel: sysInfo.kernel || '',
             isWindows: os === 'windows',
             isLinux: os === 'linux',
             isMac: os === 'darwin'

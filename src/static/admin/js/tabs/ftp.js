@@ -6,7 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { DirectoryPicker } from '../components/directory-picker.js';
+import { openFileBrowser } from '../components/file-browser/index.js';
 import { escapeHtml, formatDate, copyToClipboard } from '../core/utils.js';
 
 class FtpTab extends BaseTab {
@@ -15,39 +15,36 @@ class FtpTab extends BaseTab {
         this.dataTable = null;
         this.users = [];
         this.editingUser = null;
-        this.directoryPicker = null;
+        this.ftpPort = 2121;
     }
 
     onInit() {
         console.log('初始化 FTP 用户管理面板...');
-        this.initDirectoryPicker();
         this.initDataTable();
         this.initNumberInputs();
         this.bindEvents();
-        this.checkServiceStatus(); // 检查服务状态
+        this.checkServiceStatus();
     }
 
-    // ========== DirectoryPicker ==========
+    // ========== 目录选择 ==========
 
-    initDirectoryPicker() {
-        const container = this.$('#ftp-root-picker');
-        if (!container) return;
-
-        // 从配置获取FTP根目录作为默认值
-        const defaultFtpRoot = this.state?.get?.('config')?.ftp?.root || './ftp';
-        
-        this.directoryPicker = new DirectoryPicker({
-            container,
-            api: this.api,
-            apiPath: '/api/files',  // 使用通用文件API，可以浏览整个文件系统
-            placeholder: defaultFtpRoot,
-            onChange: (path) => {
-                console.log('Selected FTP root:', path);
+    async openDirPicker(inputId) {
+        const input = this.$(`#${inputId}`);
+        if (!input) return;
+        try {
+            const selected = await openFileBrowser({
+                title: '选择目录',
+                selectMode: 'folder',
+                root: input.value || '.',
+                api: this.api,
+            });
+            if (selected) {
+                input.value = selected;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
             }
-        });
-        
-        // 设置默认值
-        this.directoryPicker.setValue(defaultFtpRoot);
+        } catch (e) {
+            // 用户取消
+        }
     }
 
     // ========== DataTable ==========
@@ -139,13 +136,13 @@ class FtpTab extends BaseTab {
                 title: '密码',
                 dataIndex: 'password',
                 className: 'col-password',
-                render: (value) => `<div class="ftp-password"><span class="ftp-password-text">••••••••</span><button class="ftp-password-copy" data-password="${escapeHtml(value)}" title="复制密码"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`
+                render: (value) => `<div class="ftp-password"><span class="ftp-password-text">••••••••</span><button class="copy-btn" data-password="${escapeHtml(value)}" title="复制密码"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`
             },
             {
                 title: '状态',
                 dataIndex: 'status',
                 className: 'col-status',
-                render: (value, row) => `<button class="ftp-status-btn ${value === 'enabled' ? 'active' : ''}" data-username="${escapeHtml(row.username)}">${value === 'enabled' ? '已启用' : '已停止'}</button>`
+                render: (value, row) => `<button class="status-btn ${value === 'enabled' ? 'active' : ''}" data-username="${escapeHtml(row.username)}">${value === 'enabled' ? '运行中' : '已停止'}</button>`
             },
             {
                 title: '快速链接',
@@ -153,21 +150,22 @@ class FtpTab extends BaseTab {
                 className: 'col-link',
                 render: (value, row) => {
                     const password = row.password || '';
-                    const link = `ftp://${value}:${password}@${window.location.hostname}:2121`;
-                    return `<div class="ftp-quick-link"><a class="ftp-link-text" href="${escapeHtml(link)}" target="_blank" title="点击打开">${escapeHtml(link)}</a><button class="ftp-link-copy" data-link="${escapeHtml(link)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
+                    const port = this.ftpPort || 2121;
+                    const link = `ftp://${value}:${password}@${window.location.hostname}:${port}`;
+                    return `<div class="quick-link"><a class="quick-link-text" href="${escapeHtml(link)}" target="_blank" title="点击打开">${escapeHtml(link)}</a><button class="quick-link-copy" data-link="${escapeHtml(link)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
                 }
             },
             {
                 title: '根目录',
                 dataIndex: 'rootPath',
                 className: 'col-root',
-                render: (value) => `<div class="ftp-root-path"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><a class="ftp-root-link" href="#" data-browse-path="${escapeHtml(value || '/')}" title="在文件管理中打开">${escapeHtml(value || '/')}</a></div>`
+                render: (value) => `<div class="root-path"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg><a class="root-link" href="#" data-browse-path="${escapeHtml(value || '/')}" title="在文件管理中打开">${escapeHtml(value || '/')}</a></div>`
             },
             {
                 title: '操作',
                 dataIndex: 'username',
                 className: 'col-actions',
-                render: (value) => `<div class="ftp-actions"><button class="ftp-action-text config" data-username="${escapeHtml(value)}">配置</button><button class="ftp-action-text edit" data-username="${escapeHtml(value)}">编辑</button><button class="ftp-action-text delete" data-username="${escapeHtml(value)}">删除</button></div>`
+                render: (value) => `<div class="actions"><button class="action-text config" data-username="${escapeHtml(value)}">配置</button><button class="action-text edit" data-username="${escapeHtml(value)}">编辑</button><button class="action-text delete" data-username="${escapeHtml(value)}">删除</button></div>`
             }
         ];
     }
@@ -201,6 +199,11 @@ class FtpTab extends BaseTab {
         this.$('#ftp-modal-close')?.addEventListener('click', () => this.hideEditor());
         this.$('#ftp-modal-confirm')?.addEventListener('click', () => this.saveUser());
         this.$('#ftp-user-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
+
+        // 目录浏览按钮
+        this.$$('.dir-browse-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+        });
 
         // 生成随机密码
         this.$('#ftp-generate-password')?.addEventListener('click', () => {
@@ -251,16 +254,16 @@ class FtpTab extends BaseTab {
 
     bindRowEvents() {
         // 状态按钮
-        this.$$('.ftp-status-btn').forEach(btn => {
+        this.$$('.status-btn[data-username]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const username = btn.dataset.username;
-                const isEnabled = btn.classList.contains('active');
-                this.toggleStatus(username, !isEnabled);
+                const isActive = btn.classList.contains('active');
+                this.toggleStatus(username, !isActive);
             });
         });
 
         // 复制密码
-        this.$$('.ftp-password-copy').forEach(btn => {
+        this.$$('.copy-btn[data-password]').forEach(btn => {
             btn.addEventListener('click', () => {
                 copyToClipboard(btn.dataset.password);
                 this.message.success('密码已复制');
@@ -268,7 +271,7 @@ class FtpTab extends BaseTab {
         });
 
         // 复制链接
-        this.$$('.ftp-link-copy').forEach(btn => {
+        this.$$('.quick-link-copy').forEach(btn => {
             btn.addEventListener('click', () => {
                 copyToClipboard(btn.dataset.link);
                 this.message.success('链接已复制');
@@ -276,7 +279,7 @@ class FtpTab extends BaseTab {
         });
 
         // 编辑
-        this.$$('.ftp-action-text.edit').forEach(btn => {
+        this.$$('.action-text.edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editingUser = this.users.find(u => u.username === btn.dataset.username);
                 this.showEditor();
@@ -284,7 +287,7 @@ class FtpTab extends BaseTab {
         });
 
         // 配置
-        this.$$('.ftp-action-text.config').forEach(btn => {
+        this.$$('.action-text.config').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editingUser = this.users.find(u => u.username === btn.dataset.username);
                 this.showConfigModal();
@@ -292,14 +295,14 @@ class FtpTab extends BaseTab {
         });
 
         // 删除按钮
-        this.$$('.ftp-action-text.delete').forEach(btn => {
+        this.$$('.action-text.delete').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.showDeleteConfirm(btn.dataset.username);
             });
         });
 
         // 根目录跳转文件管理
-        this.$$('.ftp-root-link').forEach(link => {
+        this.$$('.root-link[data-browse-path]').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const path = link.dataset.browsePath;
@@ -351,6 +354,7 @@ class FtpTab extends BaseTab {
                 const data = await this.api.parseJSON(response);
                 if (data) {
                     this.updateServiceStatus(data.running);
+                    this.ftpPort = data.port || 2121;
                     const portInput = this.$('#ftp-port-input');
                     if (portInput) {
                         portInput.value = data.port;
@@ -550,7 +554,7 @@ class FtpTab extends BaseTab {
             this.$('#ftp-form-username').disabled = true;  // 编辑时禁用用户名
             this.$('#ftp-form-password').value = this.editingUser.password || '';
             this.$('#ftp-form-password').type = 'text';  // 编辑时显示密码
-            this.directoryPicker?.setValue(this.editingUser.rootPath || '/');
+            this.$('#ftp-form-root').value = this.editingUser.rootPath || '/';
             this.$('#ftp-form-quota').value = this.editingUser.quota || '';
             this.$('#ftp-form-expiry').value = this.editingUser.expiryDays || '';
             this.$('#ftp-form-status').value = this.editingUser.status || 'enabled';
@@ -562,7 +566,7 @@ class FtpTab extends BaseTab {
             this.$('#ftp-form-password').type = 'password';  // 添加时密码隐藏
             // 默认根目录 = FTP根目录
             const defaultFtpRoot = this.state?.get?.('config')?.ftp?.root || './ftp';
-            this.directoryPicker?.setValue(defaultFtpRoot);
+            this.$('#ftp-form-root').value = defaultFtpRoot;
         }
 
         modal.classList.add('active');
@@ -577,7 +581,7 @@ class FtpTab extends BaseTab {
                     const userPath = defaultFtpRoot.endsWith('/') 
                         ? defaultFtpRoot + username 
                         : defaultFtpRoot + '/' + username;
-                    this.directoryPicker?.setValue(userPath);
+                    this.$('#ftp-form-root').value = userPath;
                 }
             });
         }
@@ -658,7 +662,7 @@ class FtpTab extends BaseTab {
     async saveUser() {
         const username = this.$('#ftp-form-username')?.value.trim();
         const password = this.$('#ftp-form-password')?.value.trim();
-        const rootPath = this.directoryPicker?.getValue() || '/';
+        const rootPath = this.$('#ftp-form-root')?.value.trim() || '/';
         const quota = parseInt(this.$('#ftp-form-quota')?.value) || 0;
         const expiryDays = parseInt(this.$('#ftp-form-expiry')?.value) || 0;
         const status = this.$('#ftp-form-status')?.value || 'enabled';

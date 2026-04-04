@@ -265,6 +265,50 @@ function switchTab(tabName) {
 }
 
 /**
+ * 更新顶部栏系统信息
+ */
+// 操作系统图标映射（官方品牌 Logo）
+function getOSIcon(osName) {
+    const lower = (osName || '').toLowerCase();
+    if (lower.includes('debian')) return 'debian';
+    if (lower.includes('ubuntu')) return 'ubuntu';
+    if (lower.includes('centos')) return 'centos';
+    if (lower.includes('fedora')) return 'fedora';
+    if (lower.includes('arch')) return 'arch';
+    if (lower.includes('opensuse') || lower.includes('suse')) return 'opensuse';
+    if (lower.includes('alpine')) return 'alpine';
+    if (lower.includes('macos') || lower.includes('darwin')) return 'macos';
+    if (lower.includes('windows')) return 'windows';
+    if (lower.includes('linux')) return 'linux';
+    return 'linux';
+}
+
+function updateHeaderOS(data) {
+    const osNameShort = data.os_name_short || data.os_name || data.os || '--';
+    const osNameFull = data.os_name || data.os || '--';
+    const nameEl = document.getElementById('header-os-name');
+    if (nameEl) nameEl.textContent = osNameShort;
+
+    const iconEl = document.getElementById('header-os-icon');
+    if (iconEl) {
+        const iconKey = getOSIcon(osNameFull);
+        const base = new URL('.', window.location.href).pathname;
+        iconEl.src = `${base}images/os/${iconKey}.svg`;
+        iconEl.alt = iconKey;
+    }
+
+    const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '--';
+    };
+    setText('os-hostname', data.hostname);
+    setText('os-name-full', osNameFull);
+    setText('os-arch', data.arch);
+    setText('os-kernel', data.kernel);
+    setText('os-go-version', data.go_version);
+}
+
+/**
  * 加载初始数据
  */
 async function loadInitialData() {
@@ -278,8 +322,14 @@ async function loadInitialData() {
                 state.initSystem({
                     os: data.os,
                     arch: data.arch,
-                    hostname: data.hostname
+                    hostname: data.hostname,
+                    osName: data.os_name,
+                    osNameShort: data.os_name_short,
+                    kernel: data.kernel
                 });
+
+                // 更新顶部栏系统信息
+                updateHeaderOS(data);
 
                 globalEvents.emit('status:loaded', data);
             }
