@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "3.1.7"
+	version   = "3.1.8"
 	buildTime = "unknown"
 )
 
@@ -53,7 +53,7 @@ func main() {
 		log.Printf("警告: 初始化日志失败: %v", err)
 	}
 
-	handlers.LogSystemInfo("🪶 %s v%s 启动中...", serverName, version)
+	handlers.LogPanelSystem(handlers.LogLevelInfo, "🪶 %s v%s 启动中...", serverName, version)
 
 	// 创建服务管理器
 	serverManager = handlers.NewServerManager(cm, *configDir)
@@ -63,7 +63,7 @@ func main() {
 	if ftpCfg.Port > 0 {
 		ftpServer, err := handlers.NewFTPServerWithValidator(ftpCfg, cm, cm.GetFTPRoot())
 		if err != nil {
-			handlers.LogSystemWarn("创建FTP服务器失败: %v", err)
+			handlers.LogPanelSystem(handlers.LogLevelWarn, "创建FTP服务器失败: %v", err)
 		} else {
 			serverManager.SetFTPServer(ftpServer, ftpCfg)
 		}
@@ -80,30 +80,30 @@ func main() {
 
 	// 启动管理面板服务器
 	if err := serverManager.StartAdminPanel(); err != nil {
-		handlers.LogSystemError("启动管理面板失败: %v", err)
+		handlers.LogPanelSystem(handlers.LogLevelError, "启动管理面板失败: %v", err)
 		log.Fatalf("启动管理面板失败: %v", err)
 	}
 
 	// 启动网站服务器
 	if err := serverManager.StartSitesServer(); err != nil {
-		handlers.LogSystemWarn("启动网站服务器失败: %v", err)
+		handlers.LogPanelSystem(handlers.LogLevelWarn, "启动网站服务器失败: %v", err)
 	}
 
 	// 启动 FTP 服务
 	if ftpCfg.Enabled {
 		if err := serverManager.StartFTP(); err != nil {
-			handlers.LogSystemError("FTP服务器启动失败: %v", err)
+			handlers.LogPanelSystem(handlers.LogLevelError, "FTP服务器启动失败: %v", err)
 		}
 	}
 
-	handlers.LogSystemInfo("%s 启动完成", serverName)
+	handlers.LogPanelSystem(handlers.LogLevelInfo, "%s 启动完成", serverName)
 
 	// 等待退出信号
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
 
-	handlers.LogSystemInfo("收到信号 %v，正在关闭...", sig)
+	handlers.LogPanelSystem(handlers.LogLevelInfo, "收到信号 %v，正在关闭...", sig)
 
 	if serverManager.IsFTPRunning() {
 		serverManager.StopFTP()
@@ -115,6 +115,6 @@ func main() {
 		serverManager.StopAdminPanel()
 	}
 
-	handlers.LogSystemInfo("%s 已关闭", serverName)
+	handlers.LogPanelSystem(handlers.LogLevelInfo, "%s 已关闭", serverName)
 	handlers.Close()
 }

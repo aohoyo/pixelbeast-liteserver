@@ -29,20 +29,10 @@ const (
 type LogCategory string
 
 const (
-	LogCategoryHTTP   LogCategory = "http"
-	LogCategoryFTP    LogCategory = "ftp"
-	LogCategoryPanel  LogCategory = "panel"
-	LogCategorySystem LogCategory = "system"
+	LogCategoryHTTP  LogCategory = "http"
+	LogCategoryFTP   LogCategory = "ftp"
+	LogCategoryPanel LogCategory = "panel"
 )
-
-// 日志级别映射
-var levelNames = map[LogLevel]string{
-	LogLevelDebug: "debug",
-	LogLevelInfo:  "info",
-	LogLevelWarn:  "warn",
-	LogLevelError: "error",
-	LogLevelAuth:  "auth",
-}
 
 var nameToLevel = map[string]LogLevel{
 	"debug": LogLevelDebug,
@@ -50,12 +40,6 @@ var nameToLevel = map[string]LogLevel{
 	"warn":  LogLevelWarn,
 	"error": LogLevelError,
 	"auth":  LogLevelAuth,
-}
-
-// LogType 日志类型
-type LogType struct {
-	Category LogCategory
-	Name     string
 }
 
 // Logger 日志记录器
@@ -78,7 +62,7 @@ func InitLogger(logDir string) error {
 // InitLoggerWithConfig 带配置初始化日志记录器
 func InitLoggerWithConfig(logDir string, cfg *config.LogConfig) error {
 	// 创建各分类目录
-	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel), string(LogCategorySystem)}
+	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel)}
 	for _, cat := range categories {
 		dir := filepath.Join(logDir, cat)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -370,7 +354,7 @@ func (l *Logger) doCleanup() {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 	compressCutoff := time.Now().AddDate(0, 0, -compressDays)
 
-	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel), string(LogCategorySystem)}
+	categories := []string{string(LogCategoryHTTP), string(LogCategoryFTP), string(LogCategoryPanel)}
 
 	for _, cat := range categories {
 		dir := filepath.Join(l.baseDir, cat)
@@ -549,7 +533,7 @@ func LogFTPByUser(username string, level LogLevel, format string, args ...interf
 	}
 }
 
-// ============ Panel 日志（统一写入 server.log）============
+// ============ Panel 日志（分文件：server.log / api.log / auth.log）============
 
 // LogPanelAccess 记录面板访问
 func LogPanelAccess(username, path, remoteAddr string) {
@@ -560,13 +544,13 @@ func LogPanelAccess(username, path, remoteAddr string) {
 		"[访问] %s (用户=%s from %s)", path, username, remoteAddr)
 }
 
-// LogPanelAPI 记录 API 调用
+// LogPanelAPI 记录 API 调用 → api.log
 func LogPanelAPI(username, method, path, remoteAddr string, statusCode int, duration time.Duration) {
-	Log(LogCategoryPanel, "server", LogLevelInfo,
+	Log(LogCategoryPanel, "api", LogLevelInfo,
 		"[API] %s %s (用户=%s from %s) -> %d (%v)", method, path, username, remoteAddr, statusCode, duration)
 }
 
-// LogPanelAuth 记录认证事件
+// LogPanelAuth 记录认证事件 → auth.log
 func LogPanelAuth(event, username, remoteAddr string, success bool, reason string) {
 	level := LogLevelAuth
 	if !success {
@@ -576,7 +560,7 @@ func LogPanelAuth(event, username, remoteAddr string, success bool, reason strin
 	if !success {
 		status = "失败"
 	}
-	Log(LogCategoryPanel, "server", level,
+	Log(LogCategoryPanel, "auth", level,
 		"[认证] %s %s: 用户=%s from %s (%s)", event, status, username, remoteAddr, reason)
 }
 
@@ -614,26 +598,9 @@ func LogPanelService(username, service, action string, success bool) {
 		"[服务] %s: %s (用户=%s, %s)", action, service, username, status)
 }
 
-// ============ System 日志 ============
-
-// LogSystem 记录系统日志
-func LogSystem(level LogLevel, format string, args ...interface{}) {
-	Log(LogCategorySystem, "server", level, format, args...)
-}
-
-// LogSystemInfo 记录系统信息
-func LogSystemInfo(format string, args ...interface{}) {
-	LogSystem(LogLevelInfo, format, args...)
-}
-
-// LogSystemWarn 记录系统警告
-func LogSystemWarn(format string, args ...interface{}) {
-	LogSystem(LogLevelWarn, format, args...)
-}
-
-// LogSystemError 记录系统错误
-func LogSystemError(format string, args ...interface{}) {
-	LogSystem(LogLevelError, format, args...)
+// LogPanelSystem 系统级日志（启动/关闭等）→ server.log
+func LogPanelSystem(level LogLevel, format string, args ...interface{}) {
+	Log(LogCategoryPanel, "server", level, format, args...)
 }
 
 // GetLogFilePath 获取日志文件路径

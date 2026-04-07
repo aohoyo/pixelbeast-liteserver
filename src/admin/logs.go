@@ -42,6 +42,131 @@ type LogStats struct {
 	Warnings int    `json:"warnings"`
 }
 
+// resolveLogPath 根据 category + type 解析日志文件路径
+func resolveLogPath(logDir, category, logType string) (string, error) {
+	switch category {
+	case "http":
+		if logType == "" {
+			logType = "default"
+		}
+		return filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType)), nil
+	case "ftp":
+		if logType == "" {
+			logType = "anonymous"
+		}
+		return filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType)), nil
+	case "panel":
+		if logType == "" {
+			logType = "server"
+		}
+		return filepath.Join(logDir, "panel", logType+".log"), nil
+	default:
+		return "", fmt.Errorf("未知的日志分类: %s", category)
+	}
+}
+
+// resolveDatedPath 查找历史日期文件，若无则回退原路径（由调用方做内容过滤）
+func resolveDatedPath(logPath, date string) string {
+	if date == "" {
+		return logPath
+	}
+	datedPath := strings.TrimSuffix(logPath, ".log") + "." + date + ".log"
+	if _, err := os.Stat(datedPath); err == nil {
+		return datedPath
+	}
+	gzPath := datedPath + ".gz"
+	if _, err := os.Stat(gzPath); err == nil {
+		return gzPath
+	}
+	return logPath
+}
+
+// ============ 公共：文件读取 & 解析 ============
+
+// readLogFile 读取日志文件，支持 search/level/date 过滤
+func readLogFile(path, search, level, date string, limit int) ([]LogEntry, int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer file.Close()
+
+	var reader io.Reader = file
+	if strings.HasSuffix(path, ".gz") {
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	entries := make([]LogEntry, 0, limit)
+	matched := 0
+	scanner := bufio.NewScanner(reader)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if !matchLogLine(line, date, search, level) {
+			continue
+		}
+
+		matched++
+		if len(entries) < limit {
+			entries = append(entries, parseLogEntry(line))
+		}
+	}
+
+	return entries, matched, scanner.Err()
+}
+
+// matchLogLine 检查日志行是否匹配过滤条件
+func matchLogLine(line, date, search, level string) bool {
+	if date != "" && !strings.HasPrefix(line, date) {
+		return false
+	}
+	if search != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(search)) {
+		return false
+	}
+	if level != "" {
+		lineLevel := extractLogLevel(line)
+		if lineLevel != "" && lineLevel != level {
+			return false
+		}
+	}
+	return true
+}
+
+// parseLogEntry 解析日志条目
+func parseLogEntry(line string) LogEntry {
+	entry := LogEntry{Raw: line}
+
+	if len(line) >= 19 {
+		if _, err := time.Parse("2006-01-02 15:04:05", line[:19]); err == nil {
+			entry.Timestamp = line[:19]
+			line = strings.TrimSpace(line[19:])
+		}
+	}
+
+	entry.Level = extractLogLevel(line)
+	entry.Message = line
+	return entry
+}
+
+// extractLogLevel 提取日志级别
+func extractLogLevel(line string) string {
+	upper := strings.ToUpper(line)
+	for _, l := range []string{"DEBUG", "INFO", "WARN", "ERROR", "AUTH"} {
+		if strings.Contains(upper, "["+l+"]") {
+			return strings.ToLower(l)
+		}
+	}
+	return ""
+}
+
+// ============ API Handlers ============
+
 // handleLogsList 获取日志文件列表
 func (h *Handler) handleLogsList(w http.ResponseWriter, r *http.Request) {
 	logDir := handlers.GetLogBaseDir()
@@ -50,10 +175,9 @@ func (h *Handler) handleLogsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files := []LogFileInfo{}
-	categories := []string{"system", "http", "ftp", "panel"}
+	files := make([]LogFileInfo, 0)
 
-	for _, cat := range categories {
+	for _, cat := range []string{"http", "ftp", "panel"} {
 		catDir := filepath.Join(logDir, cat)
 		entries, err := os.ReadDir(catDir)
 		if err != nil {
@@ -64,7 +188,6 @@ func (h *Handler) handleLogsList(w http.ResponseWriter, r *http.Request) {
 			if entry.IsDir() {
 				continue
 			}
-
 			info, err := entry.Info()
 			if err != nil {
 				continue
@@ -72,7 +195,6 @@ func (h *Handler) handleLogsList(w http.ResponseWriter, r *http.Request) {
 
 			name := entry.Name()
 			ext := filepath.Ext(name)
-
 			files = append(files, LogFileInfo{
 				Name:       name,
 				Category:   cat,
@@ -101,7 +223,7 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r.URL.Query().Get("limit"), 200)
 
 	if category == "" {
-		category = "system"
+		category = "panel"
 	}
 
 	logDir := handlers.GetLogBaseDir()
@@ -110,141 +232,25 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 确定日志文件路径
-	var logPath string
-
-	switch category {
-	case "system":
-		logPath = filepath.Join(logDir, "system", "server.log")
-	case "http":
-		// HTTP 日志按站点分：site-{id}.log
-		if logType == "" {
-			logType = "default"
-		}
-		logPath = filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType))
-	case "ftp":
-		// FTP 日志按用户分：user-{name}.log
-		if logType == "" {
-			logType = "anonymous"
-		}
-		logPath = filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType))
-	case "panel":
-		// 面板日志：统一记录到 server.log
-		logPath = filepath.Join(logDir, "panel", "server.log")
-	default:
-		Error(w, 400, "未知的日志分类")
+	logPath, err := resolveLogPath(logDir, category, logType)
+	if err != nil {
+		Error(w, 400, err.Error())
 		return
 	}
 
-	// 检查历史日期
-	if date != "" {
-		logPath = strings.TrimSuffix(logPath, ".log") + "." + date + ".log"
-		if _, err := os.Stat(logPath); os.IsNotExist(err) {
-			logPath = logPath + ".gz"
-		}
-	}
+	logPath = resolveDatedPath(logPath, date)
 
-	entries, total, err := readLogFile(logPath, search, level, 0, limit)
+	entries, total, err := readLogFile(logPath, search, level, date, limit)
 	if err != nil {
 		if os.IsNotExist(err) {
-			Success(w, map[string]interface{}{
-				"entries": []LogEntry{},
-				"total":   0,
-				"file":    filepath.Base(logPath),
-			})
+			Success(w, map[string]interface{}{"entries": []LogEntry{}, "total": 0, "file": filepath.Base(logPath)})
 			return
 		}
 		Error(w, 500, "读取日志失败: "+err.Error())
 		return
 	}
 
-	Success(w, map[string]interface{}{
-		"entries": entries,
-		"total":   total,
-		"file":    filepath.Base(logPath),
-	})
-}
-
-// readLogFile 读取日志文件
-func readLogFile(path string, search, level string, offset, limit int) ([]LogEntry, int, error) {
-	var reader io.Reader
-
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer file.Close()
-
-	if strings.HasSuffix(path, ".gz") {
-		gzReader, err := gzip.NewReader(file)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer gzReader.Close()
-		reader = gzReader
-	} else {
-		reader = file
-	}
-
-	entries := []LogEntry{}
-	scanner := bufio.NewScanner(reader)
-	matched := 0
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// 搜索过滤
-		if search != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(search)) {
-			continue
-		}
-
-		// 级别过滤
-		if level != "" {
-			lineLevel := extractLogLevel(line)
-			if lineLevel != "" && lineLevel != level {
-				continue
-			}
-		}
-
-		entry := parseLogEntry(line)
-		matched++
-
-		if matched > offset && len(entries) < limit {
-			entries = append(entries, entry)
-		}
-	}
-
-	return entries, matched, scanner.Err()
-}
-
-// parseLogEntry 解析日志条目
-func parseLogEntry(line string) LogEntry {
-	entry := LogEntry{Raw: line}
-
-	if len(line) >= 19 {
-		ts := line[:19]
-		if _, err := time.Parse("2006-01-02 15:04:05", ts); err == nil {
-			entry.Timestamp = ts
-			line = strings.TrimSpace(line[19:])
-		}
-	}
-
-	entry.Level = extractLogLevel(line)
-	entry.Message = line
-
-	return entry
-}
-
-// extractLogLevel 提取日志级别
-func extractLogLevel(line string) string {
-	line = strings.ToUpper(line)
-	levels := []string{"DEBUG", "INFO", "WARN", "ERROR", "AUTH"}
-	for _, l := range levels {
-		if strings.Contains(line, "["+l+"]") {
-			return strings.ToLower(l)
-		}
-	}
-	return ""
+	Success(w, map[string]interface{}{"entries": entries, "total": total, "file": filepath.Base(logPath)})
 }
 
 // handleLogsStats 获取日志统计
@@ -252,9 +258,11 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	logType := r.URL.Query().Get("type")
 	date := r.URL.Query().Get("date")
+	search := r.URL.Query().Get("search")
+	level := r.URL.Query().Get("level")
 
 	if category == "" {
-		category = "system"
+		category = "panel"
 	}
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -266,40 +274,31 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stat := LogStats{Category: category, Type: logType}
-
-	// 获取日志路径
-	var logPath string
-	switch category {
-	case "system":
-		logPath = filepath.Join(logDir, "system", "server.log")
-	case "http":
-		if logType == "" {
-			logType = "default"
-		}
-		logPath = filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType))
-	case "ftp":
-		if logType == "" {
-			logType = "anonymous"
-		}
-		logPath = filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType))
-	case "panel":
-		logPath = filepath.Join(logDir, "panel", "server.log")
+	logPath, err := resolveLogPath(logDir, category, logType)
+	if err != nil {
+		Error(w, 400, err.Error())
+		return
 	}
+
+	logPath = resolveDatedPath(logPath, date)
+
+	stat := LogStats{Category: category, Type: logType}
 
 	file, err := os.Open(logPath)
 	if err == nil {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, date) {
-				stat.Count++
-				if strings.Contains(strings.ToUpper(line), "[ERROR]") {
-					stat.Errors++
-				}
-				if strings.Contains(strings.ToUpper(line), "[WARN]") {
-					stat.Warnings++
-				}
+			if !matchLogLine(line, date, search, level) {
+				continue
+			}
+			stat.Count++
+			upper := strings.ToUpper(line)
+			if strings.Contains(upper, "[ERROR]") {
+				stat.Errors++
+			}
+			if strings.Contains(upper, "[WARN]") {
+				stat.Warnings++
 			}
 		}
 		file.Close()
@@ -325,31 +324,22 @@ func (h *Handler) handleLogsDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 构建日志路径
-	var logPath string
-	switch category {
-	case "system":
-		logPath = filepath.Join(logDir, "system", "server.log")
-	case "http":
-		if logType == "" {
-			logType = "default"
-		}
-		logPath = filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType))
-	case "ftp":
-		if logType == "" {
-			logType = "anonymous"
-		}
-		logPath = filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType))
-	case "panel":
-		logPath = filepath.Join(logDir, "panel", "server.log")
-	default:
-		Error(w, 400, "未知的日志分类")
+	logPath, err := resolveLogPath(logDir, category, logType)
+	if err != nil {
+		Error(w, 400, err.Error())
 		return
 	}
 
-	// 历史日期
 	if date != "" {
-		logPath = strings.TrimSuffix(logPath, ".log") + "." + date + ".log"
+		datedPath := strings.TrimSuffix(logPath, ".log") + "." + date + ".log"
+		if _, err := os.Stat(datedPath); err == nil {
+			logPath = datedPath
+		} else {
+			gzPath := datedPath + ".gz"
+			if _, err := os.Stat(gzPath); err == nil {
+				logPath = gzPath
+			}
+		}
 	}
 
 	if _, err := os.Stat(logPath); os.IsNotExist(err) {
@@ -357,8 +347,7 @@ func (h *Handler) handleLogsDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := filepath.Base(logPath)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(logPath)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, logPath)
 }
@@ -379,24 +368,9 @@ func (h *Handler) handleLogsClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var logPath string
-	switch category {
-	case "system":
-		logPath = filepath.Join(logDir, "system", "server.log")
-	case "http":
-		if logType == "" {
-			logType = "default"
-		}
-		logPath = filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType))
-	case "ftp":
-		if logType == "" {
-			logType = "anonymous"
-		}
-		logPath = filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType))
-	case "panel":
-		logPath = filepath.Join(logDir, "panel", "server.log")
-	default:
-		Error(w, 400, "未知的日志分类")
+	logPath, err := resolveLogPath(logDir, category, logType)
+	if err != nil {
+		Error(w, 400, err.Error())
 		return
 	}
 

@@ -1,18 +1,24 @@
 /**
  * 日志管理模块 v3
- * 
- * 分类：系统日志 / HTTP日志 / FTP日志 / 面板日志
+ *
+ * 分类：面板日志 / HTTP日志 / FTP日志
  */
 
 import { BaseTab } from './BaseTab.js';
 import { escapeHtml } from '../core/utils.js';
 
+// 获取本地日期字符串 YYYY-MM-DD
+function localDateStr(offsetDays = 0) {
+    const d = new Date();
+    if (offsetDays) d.setDate(d.getDate() + offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // 图标
 const ICONS = {
-    system: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    panel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>`,
     http: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
     ftp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
-    panel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
     download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
     trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
@@ -20,33 +26,34 @@ const ICONS = {
 
 // 分类配置
 const CATEGORIES = [
-    { id: 'system', label: '系统日志', icon: ICONS.system },
+    { id: 'panel', label: '面板日志', icon: ICONS.panel },
     { id: 'http', label: 'HTTP日志', icon: ICONS.http },
-    { id: 'ftp', label: 'FTP日志', icon: ICONS.ftp },
-    { id: 'panel', label: '面板日志', icon: ICONS.panel }
+    { id: 'ftp', label: 'FTP日志', icon: ICONS.ftp }
 ];
 
-// 子类型配置
+// 子类型配置（http/ftp 动态加载）
 const SUB_TYPES = {
-    system: [{ id: 'server', label: '服务日志' }],
-    http: [],      // 动态加载站点列表
-    ftp: [],       // 动态加载用户列表
-    panel: [{ id: 'server', label: '面板日志' }]
+    panel: [
+        { id: 'server', label: 'Server' },
+        { id: 'auth', label: 'Auth' },
+        { id: 'api', label: 'API' }
+    ],
+    http: [],
+    ftp: []
 };
 
 class LogsTab extends BaseTab {
     constructor(deps) {
         super(deps, 'logs');
-        this.category = 'system';
+        this.category = 'panel';
         this.type = 'server';
-        this.date = '';
+        this.date = localDateStr();
         this.logFiles = [];
         this.sites = [];
         this.ftpUsers = [];
     }
 
     onInit() {
-        console.log('初始化日志管理面板...');
         this.initUI();
         this.bindEvents();
     }
@@ -57,8 +64,7 @@ class LogsTab extends BaseTab {
             this.loadSites(),
             this.loadFTPUsers()
         ]);
-        await this.loadLogs();
-        await this.loadStats();
+        await this.refresh();
     }
 
     // ========== UI ==========
@@ -79,7 +85,7 @@ class LogsTab extends BaseTab {
             <div class="logs-subtabs" id="logs-subtabs"></div>
             <div class="logs-toolbar">
                 <div class="logs-toolbar-left">
-                    <select id="log-date" class="form-select-sm"><option value="">今天</option></select>
+                    <select id="log-date" class="form-select-sm"></select>
                     <select id="log-level" class="form-select-sm">
                         <option value="">全部级别</option>
                         <option value="error">错误</option>
@@ -113,27 +119,29 @@ class LogsTab extends BaseTab {
         if (!container) return;
 
         let types = SUB_TYPES[this.category] || [];
-        
+
         // HTTP: 动态加载站点
-        if (this.category === 'http' && this.sites.length > 0) {
-            types = this.sites.map(s => ({ id: s.id, label: s.name }));
-            if (types.length === 0) {
-                types = [{ id: 'default', label: '默认站点' }];
-            }
+        if (this.category === 'http') {
+            types = this.sites.length > 0
+                ? this.sites.map(s => ({ id: s.id, label: s.name }))
+                : [{ id: 'default', label: '默认站点' }];
         }
-        
+
         // FTP: 动态加载用户
-        if (this.category === 'ftp' && this.ftpUsers.length > 0) {
-            types = this.ftpUsers.map(u => ({ id: u.username, label: u.username }));
-            if (types.length === 0) {
-                types = [{ id: 'anonymous', label: '匿名用户' }];
-            }
+        if (this.category === 'ftp') {
+            types = this.ftpUsers.length > 0
+                ? this.ftpUsers.map(u => ({ id: u.username, label: u.username }))
+                : [{ id: 'anonymous', label: '匿名用户' }];
         }
 
         if (types.length <= 1) {
             container.innerHTML = '';
-            this.type = types[0]?.id || 'all';
+            this.type = types[0]?.id || 'server';
             return;
+        }
+
+        if (!types.find(t => t.id === this.type)) {
+            this.type = types[0].id;
         }
 
         container.innerHTML = types.map(t => `
@@ -145,15 +153,9 @@ class LogsTab extends BaseTab {
                 this.type = btn.dataset.type;
                 container.querySelectorAll('.logs-subtab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                this.loadLogs();
-                this.loadStats();
+                this.refresh();
             });
         });
-
-        // 默认选中第一个
-        if (!types.find(t => t.id === this.type)) {
-            this.type = types[0].id;
-        }
     }
 
     bindEvents() {
@@ -163,135 +165,128 @@ class LogsTab extends BaseTab {
                 this.category = btn.dataset.category;
                 this.$$('.logs-tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                this.type = SUB_TYPES[this.category]?.[0]?.id || 'all';
+                this.type = SUB_TYPES[this.category]?.[0]?.id || 'server';
+                this.date = localDateStr();
                 this.updateSubTabs();
-                this.loadLogs();
-                this.loadStats();
+                this.updateDateOptions();
+                this.refresh();
             });
         });
 
         // 过滤
-        this.$('#log-date')?.addEventListener('change', (e) => { this.date = e.target.value; this.loadLogs(); });
-        this.$('#log-level')?.addEventListener('change', () => this.loadLogs());
-        
+        this.$('#log-date')?.addEventListener('change', (e) => { this.date = e.target.value; this.refresh(); });
+        this.$('#log-level')?.addEventListener('change', () => this.refresh());
+
         let searchTimer;
         this.$('#log-search')?.addEventListener('input', () => {
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => this.loadLogs(), 300);
+            searchTimer = setTimeout(() => this.refresh(), 300);
         });
 
         // 按钮
-        this.$('#log-refresh')?.addEventListener('click', () => {
-            this.loadLogs();
-            this.loadStats();
-        });
+        this.$('#log-refresh')?.addEventListener('click', () => this.refresh());
         this.$('#log-download')?.addEventListener('click', () => this.download());
         this.$('#log-clear')?.addEventListener('click', () => this.confirmClear());
     }
 
     // ========== 数据加载 ==========
 
+    async refresh() {
+        await Promise.all([this.loadLogs(), this.loadStats()]);
+    }
+
+    buildParams() {
+        return new URLSearchParams({
+            category: this.category,
+            type: this.type,
+            date: this.date,
+            search: this.$('#log-search')?.value || '',
+            level: this.$('#log-level')?.value || ''
+        });
+    }
+
     async loadFiles() {
         try {
             this.logFiles = await this.api.getJSON('/api/logs') || [];
             this.updateDateOptions();
-        } catch (error) {
-            console.error('加载日志文件列表失败:', error);
-        }
+        } catch (_) {}
     }
 
     async loadSites() {
-        try {
-            this.sites = await this.api.getJSON('/api/sites') || [];
-        } catch (error) {
-            this.sites = [];
-        }
+        try { this.sites = await this.api.getJSON('/api/sites') || []; }
+        catch (_) { this.sites = []; }
     }
 
     async loadFTPUsers() {
-        try {
-            const data = await this.api.getJSON('/api/ftp/users') || [];
-            this.ftpUsers = data;
-        } catch (error) {
-            this.ftpUsers = [];
-        }
+        try { this.ftpUsers = await this.api.getJSON('/api/ftp/users') || []; }
+        catch (_) { this.ftpUsers = []; }
     }
 
     updateDateOptions() {
         const select = this.$('#log-date');
         if (!select) return;
 
-        const dates = new Set(['']);
-        const today = new Date().toISOString().split('T')[0];
+        const today = localDateStr();
+        const dates = new Set([today]);
 
+        // 从文件名中提取日期
         this.logFiles.forEach(f => {
-            if (f.category === this.category || this.category === 'system') {
-                if (!f.compressed) {
-                    const match = f.name.match(/(\d{4}-\d{2}-\d{2})/);
-                    if (match && match[1] !== today) dates.add(match[1]);
-                }
+            if (f.category === this.category && !f.compressed) {
+                const match = f.name.match(/(\d{4}-\d{2}-\d{2})/);
+                if (match && match[1] !== today) dates.add(match[1]);
             }
         });
 
-        select.innerHTML = Array.from(dates).sort().reverse()
-            .map(d => `<option value="${d}">${d || '今天'}</option>`).join('');
+        // 无日期文件时，生成最近7天选项
+        if (dates.size <= 1) {
+            for (let i = 1; i <= 7; i++) {
+                dates.add(localDateStr(-i));
+            }
+        }
+
+        // "今天" 固定在第一位
+        select.innerHTML = `<option value="${today}">今天</option>` +
+            Array.from(dates).filter(d => d !== today).sort().reverse()
+                .map(d => `<option value="${d}">${d}</option>`).join('');
     }
 
     async loadLogs() {
         const viewer = this.$('#log-viewer');
         if (!viewer) return;
 
-        const search = this.$('#log-search')?.value || '';
-        const level = this.$('#log-level')?.value || '';
-
         viewer.innerHTML = '<div class="logs-loading">加载中...</div>';
 
         try {
-            const params = new URLSearchParams({ 
-                category: this.category, 
-                type: this.type, 
-                search, 
-                level, 
-                limit: '200' 
-            });
-            if (this.date) params.set('date', this.date);
-
-            console.log('Loading logs:', this.category, this.type);  // 调试
+            const params = this.buildParams();
+            params.set('limit', '200');
             const data = await this.api.getJSON(`/api/logs/read?${params}`);
-            console.log('Logs data:', data);  // 调试
-            
-            if (data?.entries) {
+
+            if (data?.entries?.length) {
                 this.renderLogs(data.entries);
                 this.$('#log-count').textContent = `共 ${data.total} 条`;
             } else {
                 viewer.innerHTML = '<div class="logs-empty">暂无日志</div>';
+                this.$('#log-count').textContent = '共 0 条';
             }
         } catch (error) {
-            console.error('Load logs error:', error);  // 调试
             viewer.innerHTML = `<div class="logs-error">加载失败: ${error.message}</div>`;
         }
     }
 
     async loadStats() {
         try {
-            const params = new URLSearchParams({ category: this.category, type: this.type });
-            const data = await this.api.getJSON(`/api/logs/stats?${params}`) || [];
+            const data = await this.api.getJSON(`/api/logs/stats?${this.buildParams()}`) || [];
             let total = 0, errors = 0, warnings = 0;
             data.forEach(s => { total += s.count; errors += s.errors; warnings += s.warnings; });
             this.setText('#stat-count', total);
             this.setText('#stat-errors', errors);
             this.setText('#stat-warnings', warnings);
-        } catch (error) {
-            console.error('加载统计失败:', error);
-        }
+        } catch (_) {}
     }
 
     renderLogs(entries) {
         const viewer = this.$('#log-viewer');
-        if (!viewer || !entries?.length) {
-            viewer.innerHTML = '<div class="logs-empty">暂无日志</div>';
-            return;
-        }
+        if (!viewer) return;
 
         viewer.innerHTML = entries.map(e => {
             const cls = e.level ? `log-${e.level}` : '';
@@ -308,12 +303,7 @@ class LogsTab extends BaseTab {
     // ========== 操作 ==========
 
     download() {
-        const params = new URLSearchParams({
-            category: this.category,
-            type: this.type,
-            date: this.date
-        });
-        window.open(`/api/logs/download?${params}`, '_blank');
+        window.open(`/api/logs/download?${this.buildParams()}`, '_blank');
     }
 
     confirmClear() {
@@ -322,7 +312,7 @@ class LogsTab extends BaseTab {
             try {
                 await this.api.post(`/api/logs/clear?category=${this.category}&type=${this.type}`);
                 this.message.success('日志已清空');
-                await this.loadLogs();
+                await this.refresh();
             } catch (error) {
                 this.message.error('清空失败: ' + error.message);
             }

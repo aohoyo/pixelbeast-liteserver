@@ -460,6 +460,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"sites_count":   len(h.ConfigManager.Sites.Sites),
 		"ftp_running":   h.ServerManager != nil && h.ServerManager.IsFTPRunning(),
 		"ftp_port":      h.ConfigManager.FTP.Port,
+		"ftp_users":     len(h.ConfigManager.FTP.Users),
 
 		// 保留原有字段
 		"memory_mb":  memoryMB,

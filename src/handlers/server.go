@@ -274,54 +274,11 @@ func (m *ServerManager) StartSitesServer() error {
 		return nil
 	}
 
-	// 获取共享端口
-	sharedPort := m.ConfigManager.GetSharedPort()
-
-	// 检查是否有站点需要 HTTPS
-	hasHTTPS := false
-	for _, site := range m.ConfigManager.Sites.Sites {
-		if site.SSL != nil && site.SSL.Enabled {
-			hasHTTPS = true
-			break
-		}
-	}
-
-	if m.SitesHandler == nil {
-		m.SitesHandler = m.SitesRouter
-	}
-
-	m.SitesServer = &http.Server{
-		Addr:         fmt.Sprintf(":%d", sharedPort),
-		Handler:      m.SitesRouter,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
-	if hasHTTPS && m.sitesTLSCfg != nil {
-		m.SitesServer.TLSConfig = m.sitesTLSCfg
-	}
-
-	m.sitesRunning = true
-
-	go func() {
-		log.Printf("[Sites] 网站服务器启动在端口 %d", sharedPort)
-		var err error
-		if m.SitesServer.TLSConfig != nil {
-			err = m.SitesServer.ListenAndServeTLS("", "")
-		} else {
-			err = m.SitesServer.ListenAndServe()
-		}
-		if err != nil && err != http.ErrServerClosed {
-			log.Printf("[Sites] 服务错误: %v", err)
-		}
-		m.mu.Lock()
-		m.sitesRunning = false
-		m.mu.Unlock()
-	}()
-
-	// 启动独立端口站点
+	// 每个站点独立端口监听
 	m.startPortSites()
 
+	m.sitesRunning = true
+	log.Printf("[Sites] 站点服务已启动")
 	return nil
 }
 
@@ -329,8 +286,12 @@ func (m *ServerManager) StartSitesServer() error {
 func (m *ServerManager) startPortSites() {
 	m.stopPortSites()
 
-	for _, site := range m.ConfigManager.Sites.Sites {
-		if !site.Enabled || site.Port <= 0 || site.Port == m.ConfigManager.GetSharedPort() {
+	for i := range m.ConfigManager.Sites.Sites {
+		site := &(m.ConfigManager.Sites.Sites)[i]
+		if !site.Enabled {
+			continue
+		}
+		if site.Port <= 0 {
 			continue
 		}
 		// 跳过管理面板端口
@@ -338,7 +299,7 @@ func (m *ServerManager) startPortSites() {
 			continue
 		}
 
-		handler, err := m.SitesRouter.createHandler(&site)
+		handler, err := m.SitesRouter.createHandler(site)
 		if err != nil {
 			log.Printf("[Sites] 独立端口 %d 创建处理器失败: %v", site.Port, err)
 			continue
@@ -365,9 +326,7 @@ func (m *ServerManager) startPortSites() {
 // stopPortSites 停止独立端口站点
 func (m *ServerManager) stopPortSites() {
 	for port, srv := range m.portServers {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		srv.Shutdown(ctx)
-		cancel()
+		srv.Close()
 		log.Printf("[Sites] 独立端口 %d 已停止", port)
 	}
 	m.portServers = make(map[int]*http.Server)
@@ -377,22 +336,17 @@ func (m *ServerManager) stopPortSites() {
 // StopSitesServer 停止网站服务器
 func (m *ServerManager) StopSitesServer() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.sitesRunning || m.SitesServer == nil {
+	if !m.sitesRunning {
+		m.mu.Unlock()
 		return nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err := m.SitesServer.Shutdown(ctx)
 	m.sitesRunning = false
+	m.mu.Unlock()
 
 	m.stopPortSites()
 
 	log.Printf("[Sites] 网站服务器已停止")
-	return err
+	return nil
 }
 
 // RestartSitesServer 重启网站服务器
@@ -484,10 +438,8 @@ func (m *ServerManager) StopSite(siteID string) error {
 	// 停止独立端口监听
 	if site.Port > 0 {
 		if srv, ok := m.portServers[site.Port]; ok {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			srv.Shutdown(ctx)
-			cancel()
 			delete(m.portServers, site.Port)
+			srv.Close()
 			log.Printf("[Sites] 独立端口 %d 已停止", site.Port)
 		}
 	}
