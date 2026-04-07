@@ -452,7 +452,13 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"diskio_iops":           diskIOIOPS,
 		"diskio_latency_ms":     diskIOLatencyMs,
 
-		// FTP 状态
+		// 服务状态
+		"admin_running": h.ServerManager != nil && h.ServerManager.IsAdminRunning(),
+		"admin_port":    h.ConfigManager.Server.Admin.Port,
+		"sites_running": h.ServerManager != nil && h.ServerManager.IsSitesRunning(),
+		"sites_count":   len(h.ConfigManager.Sites.Sites),
+		"ftp_running":   h.ServerManager != nil && h.ServerManager.IsFTPRunning(),
+		"ftp_port":      h.ConfigManager.FTP.Port,
 
 		// 保留原有字段
 		"memory_mb":  memoryMB,

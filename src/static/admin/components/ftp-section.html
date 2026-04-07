@@ -100,11 +100,13 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">根目录 <span class="required">*</span></label>
-            <div class="dir-input-wrapper">
-              <input type="text" class="form-input" id="ftp-form-root" placeholder="./ftp" />
-              <button type="button" class="btn btn-secondary dir-browse-btn" data-dir="ftp-form-root">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              </button>
+            <div class="directory-picker">
+              <div class="directory-picker-input">
+                <input type="text" class="form-input-inline" id="ftp-form-root" placeholder="./ftp" />
+                <button type="button" class="btn btn-secondary directory-picker-btn" data-dir="ftp-form-root">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                </button>
+              </div>
             </div>
             <span class="form-hint">用户只能访问此目录及其子目录</span>
           </div>
@@ -140,7 +142,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">状态</label>
-            <select class="form-select" id="ftp-form-status">
+            <select  id="ftp-form-status" class="form-select">
               <option value="enabled">启用</option>
               <option value="disabled">禁用</option>
             </select>

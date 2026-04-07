@@ -131,7 +131,7 @@
     border-color: var(--primary);
 }
 
-/* 统计卡片 */
+/* 统计卡片（扩展 main.css 的 .stats-grid / .stat-card） */
 .logs-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -140,32 +140,20 @@
     flex-shrink: 0;
 }
 
-.stat-card {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+.logs-stats .stat-card {
     text-align: center;
 }
 
-.stat-value {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--text);
+.logs-stats .stat-value {
     margin-bottom: var(--space-xs);
 }
 
-.stat-value.stat-error {
+.logs-stats .stat-value.stat-error {
     color: var(--danger);
 }
 
-.stat-value.stat-warning {
+.logs-stats .stat-value.stat-warning {
     color: var(--warning);
-}
-
-.stat-label {
-    font-size: 0.85rem;
-    color: var(--text-light);
 }
 
 /* 日志查看器容器 */
@@ -305,30 +293,6 @@
     width: 16px;
     height: 16px;
     accent-color: var(--primary);
-}
-
-/* 按钮内图标 */
-.btn-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    vertical-align: middle;
-    margin-right: 4px;
-}
-
-.btn-icon svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* 文件图标 */
-.file-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    vertical-align: middle;
-    margin-right: 6px;
-    color: var(--text-light);
 }
 
 /* 日志 Tab 图标 */

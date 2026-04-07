@@ -201,7 +201,7 @@ class FtpTab extends BaseTab {
         this.$('#ftp-user-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
 
         // 目录浏览按钮
-        this.$$('.dir-browse-btn').forEach(btn => {
+        this.$$('.directory-picker-btn').forEach(btn => {
             btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
         });
 

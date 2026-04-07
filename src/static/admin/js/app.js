@@ -36,7 +36,6 @@ const config = {
 };
 
 // 自动刷新定时器
-let refreshTimer = null;
 
 /**
  * 初始化应用
@@ -66,11 +65,6 @@ async function init() {
 
         // 7. 加载初始数据
         loadInitialData();
-
-        // 7. 设置自动刷新
-        if (config.autoRefresh) {
-            startAutoRefresh();
-        }
 
         console.log('✅ 像素兽 1.0 初始化完成');
     } catch (error) {
@@ -106,7 +100,7 @@ function checkAuth() {
     const loginPath = currentPath.replace(/\/$/, '') + '/login';
 
     // 尝试获取状态来验证认证
-    api.get('/api/status')
+    api.get('/api/system/status')
         .then(response => {
             if (response && response.ok) {
                 // 已认证，继续
@@ -147,18 +141,13 @@ function initEventListeners() {
 
     // 页面可见性变化
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            stopAutoRefresh();
-        } else {
-            if (config.autoRefresh) {
-                startAutoRefresh();
+        if (!document.hidden) {
+            // 页面重新可见时刷新当前 tab
+            const currentTab = state.get('currentTab');
+            if (currentTab) {
+                globalEvents.emit(`refresh:${currentTab}`);
             }
         }
-    });
-
-    // 页面卸载前清理
-    window.addEventListener('beforeunload', () => {
-        stopAutoRefresh();
     });
 
     // 登出按钮
@@ -349,38 +338,6 @@ async function loadInitialData() {
     }
 }
 
-/**
- * 启动自动刷新
- */
-function startAutoRefresh() {
-    if (refreshTimer) return;
-
-    refreshTimer = setInterval(() => {
-        const currentTab = state.get('currentTab');
-        if (currentTab === 'status') {
-            api.get('/api/status')
-                .then(async response => {
-                    if (response && response.ok) {
-                        const data = await api.parseJSON(response);
-                        if (data) {
-                            globalEvents.emit('status:loaded', data);
-                        }
-                    }
-                })
-                .catch(() => {});
-        }
-    }, config.refreshInterval);
-}
-
-/**
- * 停止自动刷新
- */
-function stopAutoRefresh() {
-    if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-    }
-}
 
 /**
  * 登出

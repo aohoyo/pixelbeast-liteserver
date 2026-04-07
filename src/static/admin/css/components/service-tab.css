@@ -118,15 +118,15 @@
 
 /* 快速链接 */
 .quick-link {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
-    max-width: 400px;
+    max-width: 100%;
 }
 
 .quick-link-text {
-    flex: 1;
     min-width: 0;
+    max-width: 380px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

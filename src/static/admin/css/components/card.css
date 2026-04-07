@@ -59,19 +59,6 @@
     flex-shrink: 0;
 }
 
-/* ==================== 工具栏 ==================== */
-.toolbar {
-    display: flex;
-    gap: var(--space-sm);
-    padding: var(--space-sm) 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: var(--space-md);
-}
-
-.toolbar .btn {
-    padding: 8px 16px;
-}
-
 /* ==================== 进度条 ==================== */
 .progress-bar {
     height: 8px;

@@ -177,7 +177,7 @@ class SitesTab extends BaseTab {
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
 
         // 目录浏览按钮
-        this.$$('.dir-browse-btn').forEach(btn => {
+        this.$$('.directory-picker-btn').forEach(btn => {
             btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
         });
         // 删除确认弹窗
@@ -559,6 +559,7 @@ class SitesTab extends BaseTab {
                 this.message.success('站点已创建');
             }
             this.hideEditor();
+            this.api.clearCache('/api/sites');
             await this.refresh();
         } catch (error) {
             this.message.error('保存失败: ' + error.message);

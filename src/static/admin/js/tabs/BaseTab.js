@@ -78,15 +78,22 @@ export class BaseTab {
      * 刷新数据
      */
     async refresh() {
-        if (this._loading) return;
+        if (this._loading) {
+            this._pendingRefresh = true;
+            return;
+        }
         this._loading = true;
-        
+
         try {
             await this.onRefresh();
         } catch (error) {
             this.onError(error, '刷新失败');
         } finally {
             this._loading = false;
+            if (this._pendingRefresh) {
+                this._pendingRefresh = false;
+                this.refresh();
+            }
         }
     }
 

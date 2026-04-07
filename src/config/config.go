@@ -58,6 +58,7 @@ type SiteConfig struct {
 	// 静态站点
 	Port       int      `json:"port"`
 	Domain     []string `json:"domain"`
+	Root       string   `json:"root,omitempty"`
 	IndexFiles []string `json:"index_files"`
 	AutoIndex  bool     `json:"auto_index"`
 
@@ -273,8 +274,11 @@ func (cm *ConfigManager) GetFTPRoot() string {
 	return "./ftp"
 }
 
-// GetSiteRoot 获取站点根目录（静态站点：SitesDir/site.ID）
+// GetSiteRoot 获取站点根目录（优先使用自定义路径，否则默认 SitesDir/site.ID）
 func (cm *ConfigManager) GetSiteRoot(site *SiteConfig) string {
+	if site.Root != "" {
+		return site.Root
+	}
 	return filepath.Join(cm.GetSitesDir(), site.ID)
 }
 

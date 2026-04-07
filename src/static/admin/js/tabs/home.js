@@ -99,8 +99,8 @@ class HomeTab extends BaseTab {
         this.updateNetwork(data);
         this.updateDiskIO(data);
 
-        // 更新服务状态
-        this.updateServices();
+        // 更新服务状态（使用已加载的数据）
+        this.updateServices(data);
     }
 
     // ========== 更新显示 ==========
@@ -345,15 +345,14 @@ class HomeTab extends BaseTab {
             '#f97316', 'rgba(249,115,22,0.15)', '#a78bfa', 'rgba(167,139,250,0.15)');
     }
 
-    async updateServices() {
-        const status = await this.api.getJSON('/api/status');
-        if (!status) return;
+    updateServices(data) {
+        if (!data) return;
 
-        this.updateServiceCard('admin', status.admin_running, `端口 :${status.admin_port}`);
-        this.updateServiceCard('sites', status.sites_running,
-            status.sites_count > 0 ? `${status.sites_count} 个站点` : '无站点');
-        this.updateServiceCard('ftp', status.ftp_running,
-            status.ftp_port ? `端口 :${status.ftp_port}` : '未配置');
+        this.updateServiceCard('admin', data.admin_running, `端口 :${data.admin_port}`);
+        this.updateServiceCard('sites', data.sites_running,
+            data.sites_count > 0 ? `${data.sites_count} 个站点` : '无站点');
+        this.updateServiceCard('ftp', data.ftp_running,
+            data.ftp_port ? `端口 :${data.ftp_port}` : '未配置');
     }
 
     updateServiceCard(service, running, detail) {

@@ -32,7 +32,6 @@ class API {
         this.responseInterceptors = [];
         this.baseURL = API_BASE;
         this.cacheConfig = {
-            '/api/status': 5000,           // 状态缓存 5 秒
             '/api/system/status': 5000,    // 系统状态 5 秒
             '/api/sites': 10000,           // 站点列表 10 秒
             '/api/ftp/users': 10000,       // FTP 用户 10 秒
