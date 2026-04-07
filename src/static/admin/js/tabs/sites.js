@@ -135,7 +135,11 @@ class SitesTab extends BaseTab {
                     if (row.type === 'static') {
                         return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><a class="root-link" href="#" data-browse-path="${escapeHtml(value || '.')}" title="在文件管理中打开">${escapeHtml(value || '-')}</a></div>`;
                     }
-                    return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><code>${escapeHtml(row.proxy?.target || '-')}</code></div>`;
+                    const target = row.proxy?.target || '';
+                    if (target) {
+                        return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><a class="root-link" href="${escapeHtml(target)}" target="_blank" title="打开代理目标">${escapeHtml(target)}</a></div>`;
+                    }
+                    return `<div class="root-path"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><span class="text-muted">-</span></div>`;
                 }
             },
             {

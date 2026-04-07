@@ -26,11 +26,13 @@ type ServerManager struct {
 	adminRunning bool
 
 	// 网站服务器（多站点）
-	SitesServer  *http.Server
-	SitesRouter  *VirtualHostRouter
-	SitesHandler http.Handler
-	sitesRunning bool
-	sitesTLSCfg  *tls.Config
+	SitesServer      *http.Server
+	SitesRouter      *VirtualHostRouter
+	SitesHandler     http.Handler
+	sitesRunning     bool
+	sitesTLSCfg      *tls.Config
+	portServers      map[int]*http.Server // 独立端口站点监听
+	portSitesRunning bool
 
 	// FTP 服务
 	FTPServer  *FTPServer
@@ -52,6 +54,7 @@ func NewServerManager(cm *config.ConfigManager, configPath string) *ServerManage
 		FileManager:   NewFileManager(),
 		SitesRouter:   NewVirtualHostRouter(cm.GetSitesDir()),
 		SSLManager:    NewSSLManager("./ssl"),
+		portServers:   make(map[int]*http.Server),
 	}
 
 	sm.SitesRouter.SetSharedPort(cm.GetSharedPort())
@@ -238,6 +241,9 @@ func (m *ServerManager) ReloadSites() error {
 	// 更新文件管理器书签
 	m.FileManager.UpdateBookmarksFromConfig(m.ConfigManager.Sites.Sites, m.ConfigManager.GetSitesDir())
 
+	// 重启独立端口站点
+	m.startPortSites()
+
 	log.Printf("[Sites] 站点配置已重新加载")
 	return nil
 }
@@ -313,7 +319,59 @@ func (m *ServerManager) StartSitesServer() error {
 		m.mu.Unlock()
 	}()
 
+	// 启动独立端口站点
+	m.startPortSites()
+
 	return nil
+}
+
+// startPortSites 启动独立端口站点
+func (m *ServerManager) startPortSites() {
+	m.stopPortSites()
+
+	for _, site := range m.ConfigManager.Sites.Sites {
+		if !site.Enabled || site.Port <= 0 || site.Port == m.ConfigManager.GetSharedPort() {
+			continue
+		}
+		// 跳过管理面板端口
+		if site.Port == m.ConfigManager.Server.Admin.Port {
+			continue
+		}
+
+		handler, err := m.SitesRouter.createHandler(&site)
+		if err != nil {
+			log.Printf("[Sites] 独立端口 %d 创建处理器失败: %v", site.Port, err)
+			continue
+		}
+
+		srv := &http.Server{
+			Addr:         fmt.Sprintf(":%d", site.Port),
+			Handler:      handler,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+		}
+		m.portServers[site.Port] = srv
+
+		go func(port int, name string) {
+			log.Printf("[Sites] 站点 %s 启动在独立端口 %d", name, port)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+			}
+		}(site.Port, site.Name)
+	}
+	m.portSitesRunning = true
+}
+
+// stopPortSites 停止独立端口站点
+func (m *ServerManager) stopPortSites() {
+	for port, srv := range m.portServers {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		srv.Shutdown(ctx)
+		cancel()
+		log.Printf("[Sites] 独立端口 %d 已停止", port)
+	}
+	m.portServers = make(map[int]*http.Server)
+	m.portSitesRunning = false
 }
 
 // StopSitesServer 停止网站服务器
@@ -330,6 +388,8 @@ func (m *ServerManager) StopSitesServer() error {
 
 	err := m.SitesServer.Shutdown(ctx)
 	m.sitesRunning = false
+
+	m.stopPortSites()
 
 	log.Printf("[Sites] 网站服务器已停止")
 	return err
@@ -380,6 +440,26 @@ func (m *ServerManager) StartSite(siteID string) error {
 		m.ConfigManager.Save()
 	}
 
+	// 启动独立端口监听
+	if site.Port > 0 && site.Port != m.ConfigManager.GetSharedPort() && site.Port != m.ConfigManager.Server.Admin.Port {
+		handler, err := m.SitesRouter.createHandler(site)
+		if err == nil {
+			srv := &http.Server{
+				Addr:         fmt.Sprintf(":%d", site.Port),
+				Handler:      handler,
+				ReadTimeout:  30 * time.Second,
+				WriteTimeout: 30 * time.Second,
+			}
+			m.portServers[site.Port] = srv
+			go func(port int, name string) {
+				log.Printf("[Sites] 站点 %s 启动在独立端口 %d", name, port)
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+				}
+			}(site.Port, site.Name)
+		}
+	}
+
 	log.Printf("[Sites] 站点 %s 已启动", site.Name)
 	return nil
 }
@@ -400,6 +480,17 @@ func (m *ServerManager) StopSite(siteID string) error {
 
 	// 从路由器移除
 	m.SitesRouter.RemoveHost(siteID)
+
+	// 停止独立端口监听
+	if site.Port > 0 {
+		if srv, ok := m.portServers[site.Port]; ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			srv.Shutdown(ctx)
+			cancel()
+			delete(m.portServers, site.Port)
+			log.Printf("[Sites] 独立端口 %d 已停止", site.Port)
+		}
+	}
 
 	// 更新配置
 	site.Enabled = false

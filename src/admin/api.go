@@ -477,17 +477,15 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 
 // formatUptime 格式化运行时长
 func formatUptime(d time.Duration) string {
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	minutes := int(d.Minutes()) % 60
+	totalSeconds := int(d.Seconds())
+	days := totalSeconds / 86400
+	hours := (totalSeconds % 86400) / 3600
+	minutes := (totalSeconds % 3600) / 60
 	if days > 0 {
-		if hours > 0 {
-			return fmt.Sprintf("%d 天 %d 小时", days, hours)
-		}
-		return fmt.Sprintf("%d 天", days)
+		return fmt.Sprintf("%d 天 %d 小时", days, hours)
 	}
 	if hours > 0 {
-		return fmt.Sprintf("%d 小时", hours)
+		return fmt.Sprintf("%d 小时 %d 分钟", hours, minutes)
 	}
 	return fmt.Sprintf("%d 分钟", minutes)
 }

@@ -41,7 +41,14 @@ func NewProxyHandler(cfg *config.ProxyConfig) (http.Handler, error) {
 	// 自定义 Director 修改请求
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// 保存原始 Host
+		originalHost := req.Host
+
 		director(req)
+
+		// 设置 Host 为目标主机（解决 403 问题）
+		req.Host = target.Host
+		req.Header.Set("Host", target.Host)
 
 		// 移除前缀
 		if cfg.StripPrefix != "" && strings.HasPrefix(req.URL.Path, cfg.StripPrefix) {
@@ -54,7 +61,7 @@ func NewProxyHandler(cfg *config.ProxyConfig) (http.Handler, error) {
 		}
 
 		// 设置代理请求头
-		req.Header.Set("X-Forwarded-Host", req.Host)
+		req.Header.Set("X-Forwarded-Host", originalHost)
 		req.Header.Set("X-Forwarded-Proto", scheme(req))
 		req.Header.Set("X-Real-IP", getRemoteIP(req))
 

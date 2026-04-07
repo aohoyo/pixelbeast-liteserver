@@ -48,23 +48,9 @@ func (r *VirtualHostRouter) AddHost(cfg *config.SiteConfig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// 根据站点类型创建处理器
-	var handler http.Handler
-	var err error
-
-	switch cfg.Type {
-	case "static":
-		handler = NewHTTPServer(filepath.Join(r.sitesDir, cfg.ID))
-	case "proxy":
-		if cfg.Proxy == nil {
-			return fmt.Errorf("proxy type requires proxy config")
-		}
-		handler, err = NewProxyHandler(cfg.Proxy)
-		if err != nil {
-			return fmt.Errorf("create proxy handler: %w", err)
-		}
-	default:
-		return fmt.Errorf("unknown site type: %s", cfg.Type)
+	handler, err := r.createHandler(cfg)
+	if err != nil {
+		return err
 	}
 
 	vh := &VirtualHost{
@@ -93,6 +79,29 @@ func (r *VirtualHostRouter) AddHost(cfg *config.SiteConfig) error {
 	}
 
 	return nil
+}
+
+// createHandler 根据站点类型创建处理器
+func (r *VirtualHostRouter) createHandler(cfg *config.SiteConfig) (http.Handler, error) {
+	switch cfg.Type {
+	case "static":
+		root := cfg.Root
+		if root == "" {
+			root = filepath.Join(r.sitesDir, cfg.ID)
+		}
+		return NewHTTPServer(root), nil
+	case "proxy":
+		if cfg.Proxy == nil {
+			return nil, fmt.Errorf("proxy type requires proxy config")
+		}
+		handler, err := NewProxyHandler(cfg.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("create proxy handler: %w", err)
+		}
+		return handler, nil
+	default:
+		return nil, fmt.Errorf("unknown site type: %s", cfg.Type)
+	}
 }
 
 // RemoveHost 移除虚拟主机
