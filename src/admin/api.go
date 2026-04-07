@@ -20,6 +20,7 @@ import (
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
 	psnet "github.com/shirou/gopsutil/v4/net"
@@ -217,7 +218,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"os_name_short":     getOSShortName(),
 		"kernel":            getKernelVersion(),
 		"hostname":          getHostname(),
-		"server_start_time": startTime.UnixMilli(),
+		"uptime_str": formatUptime(getSystemUptime()),
 		"uptime":            time.Since(startTime).Milliseconds(),
 		"admin_running":     adminRunning,
 		"admin_port":        adminPort,
@@ -436,7 +437,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"process_total":  processTotal,
 
 		// 运行时间
-		"server_start_time": startTime.UnixMilli(),
+		"uptime_str": formatUptime(getSystemUptime()),
 
 		// 网络
 		"net_sent_rate_kb":  netSpeedSentKB,
@@ -472,6 +473,32 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Success(w, statusData)
+}
+
+// formatUptime 格式化运行时长
+func formatUptime(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	if days > 0 {
+		if hours > 0 {
+			return fmt.Sprintf("%d 天 %d 小时", days, hours)
+		}
+		return fmt.Sprintf("%d 天", days)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%d 小时", hours)
+	}
+	return fmt.Sprintf("%d 分钟", minutes)
+}
+
+// getSystemUptime 获取系统运行时长
+func getSystemUptime() time.Duration {
+	info, err := host.Info()
+	if err == nil && info.Uptime > 0 {
+		return time.Duration(info.Uptime) * time.Second
+	}
+	return 0
 }
 
 // getCPUModel 获取 CPU 型号（跨平台）

@@ -278,6 +278,12 @@ function updateHeaderOS(data) {
     const nameEl = document.getElementById('header-os-name');
     if (nameEl) nameEl.textContent = osNameShort;
 
+    // 运行天数（显示在浮窗内，使用后端格式化字符串）
+    const uptimeEl = document.getElementById('os-uptime');
+    if (uptimeEl && data.uptime_str) {
+        uptimeEl.textContent = data.uptime_str;
+    }
+
     const iconEl = document.getElementById('header-os-icon');
     if (iconEl) {
         const iconKey = getOSIcon(osNameFull);
@@ -294,7 +300,6 @@ function updateHeaderOS(data) {
     setText('os-name-full', osNameFull);
     setText('os-arch', data.arch);
     setText('os-kernel', data.kernel);
-    setText('os-go-version', data.go_version);
 }
 
 /**

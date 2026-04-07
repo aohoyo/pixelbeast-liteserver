@@ -15,7 +15,7 @@ const SYNC_INTERVAL = 60000;
 class HomeTab extends BaseTab {
     constructor(deps) {
         super(deps, 'home');
-        this.serverStartTime = null;
+
         this.timers = { uptime: null, refresh: null, sync: null };
         this.currentData = {};
         this.netHistory = { sent: [], recv: [] };
@@ -30,19 +30,10 @@ class HomeTab extends BaseTab {
         this.initCollapsible();
         this.startTimers();
         
-        // 监听状态加载
-        this.events.on('status:loaded', (data) => {
-            if (data.server_start_time) {
-                this.serverStartTime = data.server_start_time;
-                this.updateUptime();
-            }
-        });
-
         // 页面可见性变化
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 this.refresh();
-                this.updateUptime();
             }
         });
     }
@@ -84,12 +75,6 @@ class HomeTab extends BaseTab {
         if (!data) return;
 
         this.currentData = data;
-
-        // 更新启动时间
-        if (data.server_start_time) {
-            this.serverStartTime = data.server_start_time;
-            this.updateUptime();
-        }
 
         // 更新各指标
         this.updateLoad(data);
@@ -368,12 +353,6 @@ class HomeTab extends BaseTab {
         if (portEl) portEl.innerHTML = detail;
     }
 
-    updateUptime() {
-        if (!this.serverStartTime) return;
-        const elapsed = Date.now() - this.serverStartTime;
-        this.setText('#status-uptime', formatUptime(elapsed));
-    }
-
     // ========== 操作 ==========
 
     async freeMemory() {
@@ -442,7 +421,6 @@ class HomeTab extends BaseTab {
     }
 
     startTimers() {
-        this.timers.uptime = setInterval(() => this.updateUptime(), 1000);
         this.timers.refresh = setInterval(() => this.refresh(), REFRESH_INTERVAL);
         this.timers.sync = setInterval(() => this.refresh(), SYNC_INTERVAL);
     }

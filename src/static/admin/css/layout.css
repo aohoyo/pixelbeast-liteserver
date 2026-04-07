@@ -84,6 +84,10 @@
     font-weight: 600;
     font-family: var(--font-mono);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    min-width: 0;
 }
 
 .header-os-icon {
@@ -113,18 +117,25 @@
 .os-detail-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
     padding: 5px 12px;
     font-size: 0.8rem;
 }
 
 .os-detail-row span:first-child {
     color: var(--text-muted);
+    flex-shrink: 0;
 }
 
 .os-detail-row span:last-child {
     color: var(--text);
     font-weight: 500;
     font-family: var(--font-mono);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .header-btn {
