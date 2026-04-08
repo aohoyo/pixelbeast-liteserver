@@ -335,7 +335,7 @@ class HomeTab extends BaseTab {
 
         this.updateServiceCard('admin', data.admin_running, `端口 :${data.admin_port}`);
         this.updateServiceCard('sites', data.sites_running,
-            data.sites_count > 0 ? `${data.sites_count} 个站点` : '无站点');
+            data.sites_enabled > 0 ? `${data.sites_enabled}/${data.sites_count} 个站点` : '无站点');
         this.updateServiceCard('ftp', data.ftp_running,
             data.ftp_users > 0 ? `${data.ftp_users} 个用户` : '无用户');
     }

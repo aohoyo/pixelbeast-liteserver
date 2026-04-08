@@ -114,8 +114,13 @@ class SitesTab extends BaseTab {
                 dataIndex: 'id',
                 className: 'col-link',
                 render: (value, row) => {
-                    let url = row.port > 0 ? `http://${window.location.hostname}:${row.port}` :
-                              (row.domain?.length > 0 ? `http://${row.domain[0]}` : '');
+                    let url = '';
+                    if (row.domain?.length > 0) {
+                        const port = row.port > 0 && row.port !== 80 ? `:${row.port}` : '';
+                        url = `http://${row.domain[0]}${port}`;
+                    } else if (row.port > 0) {
+                        url = `http://${window.location.hostname}:${row.port}`;
+                    }
                     if (!url) return '-';
                     return `
                         <div class="quick-link">

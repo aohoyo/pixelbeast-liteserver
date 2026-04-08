@@ -78,9 +78,16 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 重新加载站点
+	// 立即生效（无需全量重载）
 	if h.ServerManager != nil {
-		h.ServerManager.ReloadSites()
+		if req.Enabled {
+			site := h.ConfigManager.GetSiteByID(req.ID)
+			if site != nil {
+				h.ServerManager.AddSiteRuntime(site)
+			}
+		} else {
+			h.ServerManager.DeleteSiteRuntime(req.ID)
+		}
 	}
 
 	SuccessMessage(w, "站点状态已更新")
@@ -322,9 +329,21 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 重新加载站点
+	// 立即生效（无需全量重载）
 	if h.ServerManager != nil {
-		h.ServerManager.ReloadSites()
+		for _, id := range req.IDs {
+			switch req.Action {
+			case "enable":
+				site := h.ConfigManager.GetSiteByID(id)
+				if site != nil {
+					h.ServerManager.AddSiteRuntime(site)
+				}
+			case "disable":
+				h.ServerManager.DeleteSiteRuntime(id)
+			case "delete":
+				h.ServerManager.DeleteSiteRuntime(id)
+			}
+		}
 	}
 
 	SuccessMessage(w, fmt.Sprintf("已处理 %d 个站点", count))
@@ -398,9 +417,9 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 重新加载站点
+	// 立即生效（无需全量重载）
 	if h.ServerManager != nil {
-		h.ServerManager.ReloadSites()
+		h.ServerManager.AddSiteRuntime(&site)
 	}
 
 	Success(w, siteToMap(site))
@@ -449,9 +468,12 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 
-	// 重新加载站点
+	// 立即生效（无需全量重载）
 	if h.ServerManager != nil {
-		h.ServerManager.ReloadSites()
+		site := h.ConfigManager.GetSiteByID(id)
+		if site != nil {
+			h.ServerManager.UpdateSiteRuntime(site)
+		}
 	}
 
 	SuccessMessage(w, "站点已更新")
@@ -487,9 +509,9 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 
-	// 重新加载站点
+	// 立即生效（无需全量重载）
 	if h.ServerManager != nil {
-		h.ServerManager.ReloadSites()
+		h.ServerManager.DeleteSiteRuntime(id)
 	}
 
 	SuccessMessage(w, "站点已删除")

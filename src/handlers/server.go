@@ -376,44 +376,22 @@ func (m *ServerManager) StartSite(siteID string) error {
 	}
 
 	if site.Enabled {
-		return nil // 已经在运行
+		return nil
 	}
 
-	// 更新配置
 	site.Enabled = true
 	site.UpdatedAt = time.Now().Format(time.RFC3339)
 
-	// 添加到路由器
 	if err := m.SitesRouter.AddHost(site); err != nil {
 		site.Enabled = false
 		return fmt.Errorf("添加站点路由失败: %w", err)
 	}
 
-	// 保存配置
 	if m.ConfigManager != nil {
 		m.ConfigManager.Save()
 	}
 
-	// 启动独立端口监听
-	if site.Port > 0 && site.Port != m.ConfigManager.GetSharedPort() && site.Port != m.ConfigManager.Server.Admin.Port {
-		handler, err := m.SitesRouter.createHandler(site)
-		if err == nil {
-			srv := &http.Server{
-				Addr:         fmt.Sprintf(":%d", site.Port),
-				Handler:      handler,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 30 * time.Second,
-			}
-			m.portServers[site.Port] = srv
-			go func(port int, name string) {
-				log.Printf("[Sites] 站点 %s 启动在独立端口 %d", name, port)
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
-				}
-			}(site.Port, site.Name)
-		}
-	}
-
+	m.startSitePort(site)
 	log.Printf("[Sites] 站点 %s 已启动", site.Name)
 	return nil
 }
@@ -429,32 +407,115 @@ func (m *ServerManager) StopSite(siteID string) error {
 	}
 
 	if !site.Enabled {
-		return nil // 已经停止
+		return nil
 	}
 
-	// 从路由器移除
 	m.SitesRouter.RemoveHost(siteID)
+	m.stopSitePort(site)
 
-	// 停止独立端口监听
-	if site.Port > 0 {
-		if srv, ok := m.portServers[site.Port]; ok {
-			delete(m.portServers, site.Port)
-			srv.Close()
-			log.Printf("[Sites] 独立端口 %d 已停止", site.Port)
-		}
-	}
-
-	// 更新配置
 	site.Enabled = false
 	site.UpdatedAt = time.Now().Format(time.RFC3339)
 
-	// 保存配置
 	if m.ConfigManager != nil {
 		m.ConfigManager.Save()
 	}
 
 	log.Printf("[Sites] 站点 %s 已停止", site.Name)
 	return nil
+}
+
+// AddSiteRuntime 添加站点并立即启动（无需全量重载）
+func (m *ServerManager) AddSiteRuntime(site *config.SiteConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !site.Enabled {
+		return
+	}
+
+	if err := m.SitesRouter.AddHost(site); err != nil {
+		log.Printf("[Sites] 添加站点路由失败: %s, %v", site.Name, err)
+		return
+	}
+
+	m.startSitePort(site)
+	log.Printf("[Sites] 站点 %s 已添加并启动", site.Name)
+}
+
+// UpdateSiteRuntime 更新站点（先停旧再启新，无需全量重载）
+func (m *ServerManager) UpdateSiteRuntime(site *config.SiteConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.SitesRouter.RemoveHost(site.ID)
+	m.stopSitePort(site)
+
+	if !site.Enabled {
+		log.Printf("[Sites] 站点 %s 已更新（停止状态）", site.Name)
+		return
+	}
+
+	if err := m.SitesRouter.AddHost(site); err != nil {
+		log.Printf("[Sites] 更新站点路由失败: %s, %v", site.Name, err)
+		return
+	}
+
+	m.startSitePort(site)
+	log.Printf("[Sites] 站点 %s 已更新并重启", site.Name)
+}
+
+// DeleteSiteRuntime 删除站点并立即停止（无需全量重载）
+func (m *ServerManager) DeleteSiteRuntime(siteID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.SitesRouter.RemoveHost(siteID)
+
+	if site := m.ConfigManager.GetSiteByID(siteID); site != nil {
+		m.stopSitePort(site)
+	}
+
+	log.Printf("[Sites] 站点 %s 已删除", siteID)
+}
+
+// startSitePort 启动单个站点的端口监听
+func (m *ServerManager) startSitePort(site *config.SiteConfig) {
+	if site.Port <= 0 || site.Port == m.ConfigManager.Server.Admin.Port {
+		return
+	}
+
+	handler, err := m.SitesRouter.createHandler(site)
+	if err != nil {
+		log.Printf("[Sites] 端口 %d 创建处理器失败: %v", site.Port, err)
+		return
+	}
+
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", site.Port),
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+	m.portServers[site.Port] = srv
+
+	go func(port int, name string) {
+		log.Printf("[Sites] 站点 %s 启动在端口 %d", name, port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+		}
+	}(site.Port, site.Name)
+}
+
+// stopSitePort 停止单个站点的端口监听
+func (m *ServerManager) stopSitePort(site *config.SiteConfig) {
+	if site.Port <= 0 {
+		return
+	}
+	if srv, ok := m.portServers[site.Port]; ok {
+		delete(m.portServers, site.Port)
+		srv.Close()
+		log.Printf("[Sites] 端口 %d 已关闭", site.Port)
+	}
 }
 
 // RestartSite 重启单个站点

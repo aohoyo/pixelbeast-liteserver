@@ -223,6 +223,7 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		"admin_running":     adminRunning,
 		"admin_port":        adminPort,
 		"sites_running":     sitesRunning,
+		"sites_enabled":     countEnabledSites(h.ConfigManager.Sites.Sites),
 		"sites_count":       len(h.ConfigManager.Sites.Sites),
 		"sites":             sites,
 	}
@@ -457,6 +458,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"admin_running": h.ServerManager != nil && h.ServerManager.IsAdminRunning(),
 		"admin_port":    h.ConfigManager.Server.Admin.Port,
 		"sites_running": h.ServerManager != nil && h.ServerManager.IsSitesRunning(),
+		"sites_enabled": countEnabledSites(h.ConfigManager.Sites.Sites),
 		"sites_count":   len(h.ConfigManager.Sites.Sites),
 		"ftp_running":   h.ServerManager != nil && h.ServerManager.IsFTPRunning(),
 		"ftp_port":      h.ConfigManager.FTP.Port,
@@ -498,6 +500,17 @@ func getSystemUptime() time.Duration {
 		return time.Duration(info.Uptime) * time.Second
 	}
 	return 0
+}
+
+// countEnabledSites 统计启用的站点数量
+func countEnabledSites(sites []config.SiteConfig) int {
+	count := 0
+	for _, s := range sites {
+		if s.Enabled {
+			count++
+		}
+	}
+	return count
 }
 
 // getCPUModel 获取 CPU 型号（跨平台）
