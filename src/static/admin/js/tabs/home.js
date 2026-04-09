@@ -5,8 +5,7 @@
  */
 
 import { BaseTab } from './BaseTab.js';
-import { formatUptime, formatStorage, animateValue } from '../core/utils.js';
-import { showSkeleton, hideSkeleton } from '../components/skeleton.js';
+import { formatStorage, animateValue } from '../core/utils.js';
 
 // 配置
 const REFRESH_INTERVAL = 5000;
@@ -16,7 +15,7 @@ class HomeTab extends BaseTab {
     constructor(deps) {
         super(deps, 'home');
 
-        this.timers = { uptime: null, refresh: null, sync: null };
+        this.timers = { refresh: null, sync: null };
         this.currentData = {};
         this.netHistory = { sent: [], recv: [] };
         this.diskIOHistory = { write: [], read: [] };
@@ -46,27 +45,16 @@ class HomeTab extends BaseTab {
         });
 
         // 释放内存
-        this.$('#free-memory-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.freeMemory();
-        });
         this.$('#tooltip-free-memory-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.freeMemory();
         });
 
         // 清理
-        this.$('#cleanup-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.scanCleanup();
-        });
         this.$('#tooltip-cleanup-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.scanCleanup();
         });
-
-        // 确认清理
-        this.$('#confirm-cleanup-btn')?.addEventListener('click', () => this.executeCleanup());
     }
 
     async onLoad() {
@@ -169,8 +157,8 @@ class HomeTab extends BaseTab {
         this.setText('#memory-total', formatStorage(total));
         this.setText('#tooltip-memory-status', `占用${Math.round(percent)}%`);
         this.setText('#tooltip-mem-free', formatStorage(data.memory_free_gb || 0));
-        this.setText('#tooltip-mem-used', formatStorage(used) + ' MB');
-        this.setText('#tooltip-mem-total', formatStorage(total) + ' MB');
+        this.setText('#tooltip-mem-used', formatStorage(used));
+        this.setText('#tooltip-mem-total', formatStorage(total));
         this.setText('#tooltip-mem-shared', (data.memory_shared_mb || 0) + ' MB');
         this.setText('#tooltip-mem-available', formatStorage(data.memory_available_gb || 0));
         this.setText('#tooltip-mem-buff-cache', data.memory_buff_cache_mb || '--');
@@ -356,52 +344,125 @@ class HomeTab extends BaseTab {
     // ========== 操作 ==========
 
     async freeMemory() {
-        const btns = [this.$('#free-memory-btn'), this.$('#tooltip-free-memory-btn')];
-        btns.forEach(btn => { if (btn) { btn.disabled = true; btn.textContent = '释放中...'; } });
+        // 确认对话框
+        this.dialog.confirm('确定要释放内存吗？将清理系统缓存并回收闲置内存。', () => {
+            this.doFreeMemory();
+        });
+    }
+
+    async doFreeMemory() {
+        const btn = this.$('#tooltip-free-memory-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '释放中...'; }
+
+        // 记录当前内存百分比，用于动画
+        const currentPercent = this.currentData?.memory_percent || 0;
+
+        // 动画：环圈从当前值 → 0
+        await this.animateRingTo('memory', 0, 800);
 
         try {
             const response = await this.api.post('/api/system/free-memory');
             if (response?.ok) {
                 const data = await this.api.parseJSON(response);
-                this.setText('#freed-memory-size', `${(data?.freed_mb || 0).toFixed(1)} MB`);
-                this.dialog.show('free-memory-dialog');
+
+                // 刷新数据获取最新内存值
                 await this.refresh();
+
+                // 动画：环圈从 0 → 实际值
+                const newPercent = this.currentData?.memory_percent || 0;
+                await this.animateRingTo('memory', newPercent, 800);
+
+                this.toast.success(`已释放 ${(data?.freed_mb || 0).toFixed(1)} MB 内存`);
             }
         } catch (error) {
+            // 释放失败，恢复环圈
+            await this.animateRingTo('memory', currentPercent, 400);
             this.toast.error('释放内存失败');
         } finally {
-            btns.forEach(btn => { if (btn) { btn.disabled = false; btn.textContent = '立即释放'; } });
+            if (btn) { btn.disabled = false; btn.textContent = '立即释放'; }
         }
+    }
+
+    /**
+     * 环形图动画到目标值
+     * @param {string} id - 环形图 ID 前缀 (如 'memory')
+     * @param {number} targetPercent - 目标百分比
+     * @param {number} duration - 动画时长 ms
+     */
+    animateRingTo(id, targetPercent, duration = 600) {
+        return new Promise(resolve => {
+            const fill = document.getElementById(`${id}-ring-fill`);
+            const text = document.getElementById(`${id}-percent`);
+            if (!fill) { resolve(); return; }
+
+            const circumference = 2 * Math.PI * 40;
+            const startOffset = parseFloat(fill.style.strokeDashoffset) || circumference;
+            const targetOffset = circumference - (targetPercent / 100) * circumference;
+            const startTime = performance.now();
+
+            // 读取起始百分比
+            const startPercent = parseFloat(text?.textContent) || 0;
+
+            const animate = (now) => {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+
+                // 更新环形
+                const currentOffset = startOffset + (targetOffset - startOffset) * ease;
+                fill.style.strokeDashoffset = currentOffset;
+
+                // 更新文字
+                if (text) {
+                    const currentPercent = startPercent + (targetPercent - startPercent) * ease;
+                    text.textContent = Math.round(currentPercent);
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 更新颜色状态
+                    fill.classList.remove('warning', 'danger');
+                    if (targetPercent > 80) fill.classList.add('danger');
+                    else if (targetPercent > 50) fill.classList.add('warning');
+                    resolve();
+                }
+            };
+
+            requestAnimationFrame(animate);
+        });
     }
 
     async scanCleanup() {
-        try {
-            const response = await this.api.get('/api/system/cleanup-scan');
-            if (response?.ok) {
-                const data = await this.api.parseJSON(response);
-                this.setText('#cleanup-logs', `${(data?.logs_mb || 0).toFixed(1)} MB`);
-                this.setText('#cleanup-temp', `${(data?.temp_mb || 0).toFixed(1)} MB`);
-                this.setText('#cleanup-total', `${(data?.total_mb || 0).toFixed(1)} MB`);
-                this.dialog.show('cleanup-dialog');
-            }
-        } catch (error) {
-            this.toast.error('扫描失败');
-        }
+        // 确认对话框
+        this.dialog.confirm('确定要清理系统垃圾吗？将清理日志文件和临时文件。', () => {
+            this.doCleanup();
+        });
     }
 
-    async executeCleanup() {
-        const btn = this.$('#confirm-cleanup-btn');
+    async doCleanup() {
+        const btn = this.$('#tooltip-cleanup-btn');
         if (btn) { btn.disabled = true; btn.textContent = '清理中...'; }
+
+        const currentPercent = this.currentData?.disk_percent || 0;
+
+        // 动画：环圈从当前值 → 0
+        await this.animateRingTo('disk', 0, 800);
 
         try {
             const response = await this.api.post('/api/system/cleanup');
             if (response?.ok) {
                 const data = await this.api.parseJSON(response);
-                this.dialog.hide('cleanup-dialog');
-                this.toast.success(`成功清理 ${(data?.cleaned_mb || 0).toFixed(1)} MB`);
+
                 await this.refresh();
+
+                const newPercent = this.currentData?.disk_percent || 0;
+                await this.animateRingTo('disk', newPercent, 800);
+
+                this.toast.success(`成功清理 ${(data?.cleaned_mb || 0).toFixed(1)} MB`);
             }
         } catch (error) {
+            await this.animateRingTo('disk', currentPercent, 400);
             this.toast.error('清理失败');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = '立即清理'; }
@@ -427,13 +488,6 @@ class HomeTab extends BaseTab {
 
     stopTimers() {
         Object.values(this.timers).forEach(t => t && clearInterval(t));
-    }
-
-    // ========== 骨架屏 ==========
-
-    showMetricsSkeleton() {
-        // 使用 skeleton.js 的 showSkeleton 函数
-        showSkeleton('.metrics-grid', 'metric', { count: 4 });
     }
 
     onDestroy() {

@@ -44,10 +44,6 @@
     border-bottom-color: var(--primary);
 }
 
-.logs-tab-icon {
-    font-size: 1.1rem;
-}
-
 /* 子 Tab 切换 */
 .logs-subtabs {
     display: flex;
@@ -331,4 +327,48 @@
         min-width: 0;
         font-size: 0.75rem;
     }
+}
+
+/* ==================== 日志设置面板 ==================== */
+
+.logs-settings {
+    margin-top: var(--space-md);
+    padding: var(--space-lg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+
+.logs-settings-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+}
+
+.logs-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.logs-settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.logs-settings-field label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.logs-settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
 }

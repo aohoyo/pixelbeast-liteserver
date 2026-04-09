@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"pixelbeast/src/handlers"
 	"runtime"
 	"strings"
 	"time"
@@ -369,6 +370,8 @@ func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
 		InternalServerError(w, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "上传", dst, true)
 	SuccessWithData(w, map[string]interface{}{"filename": handler.Filename}, "上传成功")
 }
 
@@ -398,6 +401,8 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		InternalServerError(w, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "删除", absPath, true)
 	SuccessMessage(w, "删除成功")
 }
 
@@ -426,6 +431,8 @@ func (h *Handler) mkdir(w http.ResponseWriter, r *http.Request) {
 		InternalServerError(w, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "创建目录", req.Path, true)
 	SuccessMessage(w, "目录创建成功")
 }
 
@@ -463,6 +470,8 @@ func (h *Handler) renameFile(w http.ResponseWriter, r *http.Request) {
 		InternalServerError(w, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "重命名", req.OldName+" -> "+req.NewName, true)
 	SuccessMessage(w, "重命名成功")
 }
 
@@ -581,6 +590,8 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "复制", req.SrcName, true)
 	SuccessMessage(w, "复制成功")
 }
 
@@ -659,6 +670,8 @@ func (h *Handler) touchFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "创建文件", req.Path, true)
 	SuccessMessage(w, "文件创建成功")
 }
 
@@ -696,6 +709,8 @@ func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "移动", req.SrcPath, true)
 	SuccessMessage(w, "移动成功")
 }
 
@@ -743,6 +758,8 @@ func (h *Handler) chmodFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "修改权限", req.Path, true)
 	SuccessMessage(w, "权限修改成功")
 }
 
@@ -899,5 +916,7 @@ func (h *Handler) saveFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "编辑", req.Path, true)
 	SuccessMessage(w, "保存成功")
 }

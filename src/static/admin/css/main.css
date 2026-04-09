@@ -1260,54 +1260,6 @@ pre {
     margin-top: var(--space-lg);
 }
 
-/* ==================== 清理弹窗样式 ==================== */
-
-.cleanup-stats {
-    background: var(--bg-elevated);
-    border-radius: var(--radius);
-    padding: var(--space-md);
-    margin-top: var(--space-md);
-}
-
-.cleanup-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-sm) 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.9rem;
-}
-
-.cleanup-item:last-child {
-    border-bottom: none;
-}
-
-.cleanup-item span:first-child {
-    color: var(--text-secondary);
-}
-
-.cleanup-item span:last-child {
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-weight: 500;
-}
-
-.cleanup-total {
-    font-weight: 600;
-    margin-top: var(--space-sm);
-    padding-top: var(--space-sm);
-    border-top: 2px solid var(--border);
-}
-
-.cleanup-total span:first-child {
-    color: var(--text);
-}
-
-.cleanup-total span:last-child {
-    color: var(--primary);
-    font-size: 1.1rem;
-}
-
 /* ==================== 卡片图标 ==================== */
 
 .card-header .icon {

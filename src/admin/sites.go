@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"pixelbeast/src/config"
+	"pixelbeast/src/handlers"
 )
 
 // handleSitesList 处理站点列表
@@ -90,6 +91,11 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	username := h.getSessionUsername(r)
+	siteName := h.ConfigManager.GetSiteByID(req.ID)
+	siteNameStr := req.ID
+	if siteName != nil { siteNameStr = siteName.Name }
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 切换状态: %s -> %v (用户=%s)", siteNameStr, req.Enabled, username)
 	SuccessMessage(w, "站点状态已更新")
 }
 
@@ -118,6 +124,8 @@ func (h *Handler) handleSiteStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 启动: %s (用户=%s)", req.ID, username)
 	SuccessMessage(w, "站点已启动")
 }
 
@@ -146,6 +154,8 @@ func (h *Handler) handleSiteStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 停止: %s (用户=%s)", req.ID, username)
 	SuccessMessage(w, "站点已停止")
 }
 
@@ -174,6 +184,8 @@ func (h *Handler) handleSiteRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 重启: %s (用户=%s)", req.ID, username)
 	SuccessMessage(w, "站点已重启")
 }
 
@@ -210,6 +222,8 @@ func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 切换站点服务: %s (用户=%s)", msg, username)
 	SuccessMessage(w, msg)
 }
 
@@ -223,6 +237,8 @@ func (h *Handler) startSitesService(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 启动站点服务 (用户=%s)", username)
 	SuccessMessage(w, "站点服务已启动")
 }
 
@@ -236,6 +252,8 @@ func (h *Handler) stopSitesService(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 停止站点服务 (用户=%s)", username)
 	SuccessMessage(w, "站点服务已停止")
 }
 
@@ -249,6 +267,8 @@ func (h *Handler) restartSitesService(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重启站点服务 (用户=%s)", username)
 	SuccessMessage(w, "站点服务已重启")
 }
 
@@ -262,6 +282,8 @@ func (h *Handler) reloadSitesConfig(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重载站点配置 (用户=%s)", username)
 	SuccessMessage(w, "站点配置已重载")
 }
 
@@ -346,6 +368,8 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 批量%s: %d个站点 (用户=%s)", req.Action, count, username)
 	SuccessMessage(w, fmt.Sprintf("已处理 %d 个站点", count))
 }
 
@@ -422,6 +446,8 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 		h.ServerManager.AddSiteRuntime(&site)
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 创建站点: %s (用户=%s)", site.Name, username)
 	Success(w, siteToMap(site))
 }
 
@@ -476,6 +502,8 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 		}
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 更新站点: %s (用户=%s)", id, username)
 	SuccessMessage(w, "站点已更新")
 }
 
@@ -514,6 +542,8 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 		h.ServerManager.DeleteSiteRuntime(id)
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 删除站点: %s (用户=%s)", site.Name, username)
 	SuccessMessage(w, "站点已删除")
 }
 

@@ -174,9 +174,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 记录面板访问日志（公开路由之后，认证路由之前）
-	startTime := time.Now()
-
 	// 公开路由（不需要认证）
 	switch actualPath {
 	case "/login":
@@ -204,29 +201,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 记录已认证用户的访问日志
-	remoteAddr := r.RemoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		remoteAddr = remoteAddr[:idx]
-	}
-
-	// 使用包装 ResponseWriter 来捕获状态码
-	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-	// 处理请求（在 defer 中记录日志）
-	defer func() {
-		duration := time.Since(startTime)
-		// 所有已认证请求都记录日志
-		if strings.HasPrefix(actualPath, "/api/") {
-			handlers.LogPanelAPI(session.Username, r.Method, actualPath, remoteAddr, rw.statusCode, duration)
-		} else if actualPath == "/" || actualPath == "/index.html" {
-			// 首页访问
-			handlers.LogPanelAccess(session.Username, actualPath, remoteAddr)
-		}
-	}()
-
-	// 替换 w 为 rw
-	w = rw
+	// 处理请求
 
 	// 已认证路由
 	switch actualPath {
@@ -325,6 +300,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleLogsDownload(w, r)
 	case "/api/logs/clear":
 		h.handleLogsClear(w, r)
+	case "/api/logs/bulk-clear":
+		h.handleLogsBulkClear(w, r)
+	case "/api/logs/bulk-export":
+		h.handleLogsBulkExport(w, r)
 	case "/api/logs/config":
 		h.handleLogsConfig(w, r)
 	// FTP 服务
@@ -720,15 +699,4 @@ func (h *Handler) logoutAPI(w http.ResponseWriter, r *http.Request) {
 	h.clearSession(w, r)
 	handlers.LogPanelAuth("登出", username, clientIP, true, "用户主动登出")
 	SuccessMessage(w, "已登出")
-}
-
-// responseWriter 包装 http.ResponseWriter 以捕获状态码
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
 }

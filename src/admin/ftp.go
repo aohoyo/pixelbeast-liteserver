@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pixelbeast/src/config"
+	"pixelbeast/src/handlers"
 )
 
 // ==================== FTP 状态 ====================
@@ -49,6 +50,8 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 	h.ConfigManager.FTP.Enabled = h.ServerManager.IsFTPRunning()
 	h.ConfigManager.Save()
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 切换FTP服务: %s (用户=%s)", msg, username)
 	SuccessMessage(w, msg)
 }
 
@@ -63,6 +66,8 @@ func (h *Handler) startFTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.ConfigManager.FTP.Enabled = true
 	h.ConfigManager.Save()
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 启动FTP服务 (用户=%s)", username)
 	SuccessMessage(w, "FTP服务已启动")
 }
 
@@ -77,6 +82,8 @@ func (h *Handler) stopFTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.ConfigManager.FTP.Enabled = false
 	h.ConfigManager.Save()
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 停止FTP服务 (用户=%s)", username)
 	SuccessMessage(w, "FTP服务已停止")
 }
 
@@ -89,6 +96,8 @@ func (h *Handler) restartFTP(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重启FTP服务 (用户=%s)", username)
 	SuccessMessage(w, "FTP服务重启成功")
 }
 
@@ -105,6 +114,8 @@ func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 	// 同步管理面板和 FTP 服务器的配置指针
 	h.ConfigManager = h.ServerManager.ConfigManager
 	h.ServerManager.SyncFTPConfig()
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重载FTP配置 (用户=%s)", username)
 	SuccessMessage(w, "配置已重载")
 }
 
@@ -122,6 +133,8 @@ func (h *Handler) saveFtpPort(w http.ResponseWriter, r *http.Request) {
 	}
 	h.ConfigManager.FTP.Port = data.Port
 	h.ConfigManager.Save()
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 修改端口: %d (用户=%s)", data.Port, username)
 	SuccessMessage(w, "FTP 端口已更新，重启服务生效")
 }
 
@@ -561,6 +574,9 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 添加用户: %s (用户=%s)", req.Username, username)
+
 	Success(w, map[string]interface{}{
 		"username": req.Username,
 		"rootPath": req.RootPath,
@@ -626,6 +642,8 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 删除用户: %s (用户=%s)", req.Username, username)
 	SuccessMessage(w, "用户已删除")
 }
 
@@ -678,6 +696,8 @@ func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled {
 		statusText = "已启用"
 	}
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 切换用户状态: %s -> %s (用户=%s)", req.Username, statusText, username)
 	SuccessMessage(w, "用户"+statusText)
 }
 
@@ -741,6 +761,8 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 		h.ServerManager.SyncFTPConfig()
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 批量%s: %d个用户 (用户=%s)", req.Action, len(req.Usernames), username)
 	SuccessMessage(w, "批量操作完成")
 }
 
@@ -828,6 +850,8 @@ func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username
 		return
 	}
 
+	sessionUser := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 更新用户: %s (用户=%s)", username, sessionUser)
 	SuccessMessage(w, "用户已更新")
 }
 
@@ -863,5 +887,7 @@ func (h *Handler) updateFtpUserConfig(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 
+	sessionUser := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 更新用户配置: %s (用户=%s)", username, sessionUser)
 	SuccessMessage(w, "配置已保存")
 }

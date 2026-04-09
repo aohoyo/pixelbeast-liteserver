@@ -369,8 +369,10 @@ func (l *Logger) doCleanup() {
 			}
 
 			name := f.Name()
-			// 跳过当前日志文件
-			if name == "access.log" || name == "error.log" || name == "api.log" || name == "auth.log" {
+			// 跳过当前日志文件（不含日期的视为当前日志）
+			isCurrentLog := strings.HasSuffix(name, ".log") && !strings.Contains(strings.TrimSuffix(name, ".log"), ".")
+			isSiteUser := (strings.HasPrefix(name, "site-") || strings.HasPrefix(name, "user-")) && strings.HasSuffix(name, ".log") && !strings.Contains(strings.TrimSuffix(name, ".log"), ".")
+			if isCurrentLog || isSiteUser {
 				continue
 			}
 
@@ -435,7 +437,7 @@ func Log(category LogCategory, logType string, level LogLevel, format string, ar
 	}
 }
 
-// ============ HTTP 日志 ============
+// ============ HTTP 日志（统一写 access.log / error.log）============
 
 // LogHTTPAccess 记录 HTTP 访问
 func LogHTTPAccess(method, path, remoteAddr string, statusCode int, duration time.Duration) {
@@ -443,15 +445,13 @@ func LogHTTPAccess(method, path, remoteAddr string, statusCode int, duration tim
 		"[HTTP] %s %s from %s -> %d (%v)", method, path, remoteAddr, statusCode, duration)
 }
 
-// LogHTTPAccessBySite 按站点记录 HTTP 访问
+// LogHTTPAccessBySite 按站点记录 HTTP 访问（写入统一 access.log，带站点标记）
 func LogHTTPAccessBySite(siteID, method, path, remoteAddr string, statusCode int, duration time.Duration) {
 	if siteID == "" {
 		siteID = "default"
 	}
-	if globalLogger != nil {
-		globalLogger.write(LogCategoryHTTP, "site-"+siteID, LogLevelInfo,
-			"[HTTP] %s %s from %s -> %d (%v)", method, path, remoteAddr, statusCode, duration)
-	}
+	Log(LogCategoryHTTP, "access", LogLevelInfo,
+		"[HTTP] [%s] %s %s from %s -> %d (%v)", siteID, method, path, remoteAddr, statusCode, duration)
 }
 
 // LogHTTPError 记录 HTTP 错误
@@ -460,15 +460,13 @@ func LogHTTPError(method, path, remoteAddr string, errMsg string, statusCode int
 		"[HTTP] %s %s from %s -> %d: %s", method, path, remoteAddr, statusCode, errMsg)
 }
 
-// LogHTTPErrorBySite 按站点记录 HTTP 错误
+// LogHTTPErrorBySite 按站点记录 HTTP 错误（写入统一 error.log，带站点标记）
 func LogHTTPErrorBySite(siteID, method, path, remoteAddr string, errMsg string, statusCode int) {
 	if siteID == "" {
 		siteID = "default"
 	}
-	if globalLogger != nil {
-		globalLogger.write(LogCategoryHTTP, "site-"+siteID, LogLevelError,
-			"[HTTP] %s %s from %s -> %d: %s", method, path, remoteAddr, statusCode, errMsg)
-	}
+	Log(LogCategoryHTTP, "error", LogLevelError,
+		"[HTTP] [%s] %s %s from %s -> %d: %s", siteID, method, path, remoteAddr, statusCode, errMsg)
 }
 
 // ============ FTP 日志 ============
@@ -484,16 +482,13 @@ func LogFTPLogin(username, remoteAddr string, success bool, reason string) {
 		status = "失败"
 	}
 	Log(LogCategoryFTP, "access", level,
-		"[FTP] 登录 %s: 用户=%s from %s (%s)", status, username, remoteAddr, reason)
-	// 同时写入用户日志
-	LogFTPByUser(username, level, "[FTP] 登录 %s from %s (%s)", status, remoteAddr, reason)
+		"[FTP] [%s] 登录 %s from %s (%s)", username, status, remoteAddr, reason)
 }
 
 // LogFTPCommand 记录 FTP 命令
 func LogFTPCommand(username, remoteAddr, command, args string) {
 	Log(LogCategoryFTP, "access", LogLevelInfo,
-		"[FTP] 命令: %s %s (用户=%s from %s)", command, args, username, remoteAddr)
-	LogFTPByUser(username, LogLevelInfo, "命令: %s %s from %s", command, args, remoteAddr)
+		"[FTP] [%s] 命令: %s %s from %s", username, command, args, remoteAddr)
 }
 
 // LogFTPTransfer 记录 FTP 传输
@@ -503,17 +498,13 @@ func LogFTPTransfer(username, remoteAddr, filename, direction string, size int64
 		status = "失败"
 	}
 	Log(LogCategoryFTP, "access", LogLevelInfo,
-		"[FTP] 传输%s: %s (用户=%s, 大小=%d, 耗时=%v, %s)", direction, filename, username, size, duration, status)
-	LogFTPByUser(username, LogLevelInfo, "传输%s: %s (大小=%d, 耗时=%v, %s)", direction, filename, size, duration, status)
+		"[FTP] [%s] 传输%s: %s (大小=%d, 耗时=%v, %s)", username, direction, filename, size, duration, status)
 }
 
 // LogFTPError 记录 FTP 错误
 func LogFTPError(username, remoteAddr, operation string, errMsg string) {
 	Log(LogCategoryFTP, "error", LogLevelError,
-		"[FTP] 错误: %s (用户=%s from %s): %s", operation, username, remoteAddr, errMsg)
-	if username != "" {
-		LogFTPByUser(username, LogLevelError, "错误: %s - %s", operation, errMsg)
-	}
+		"[FTP] [%s] 错误: %s from %s: %s", username, operation, remoteAddr, errMsg)
 }
 
 // LogFTPConnection 记录 FTP 连接
@@ -526,31 +517,26 @@ func LogFTPConnection(remoteAddr string, connected bool) {
 		"[FTP] %s: %s", action, remoteAddr)
 }
 
-// LogFTPByUser 按用户记录 FTP 日志
-func LogFTPByUser(username string, level LogLevel, format string, args ...interface{}) {
-	if globalLogger != nil && username != "" {
-		globalLogger.write(LogCategoryFTP, "user-"+username, level, format, args...)
-	}
+// ============ Panel 日志（操作日志 operation.log / 登录日志 login.log / 运行日志 runtime.log）============
+
+// LogPanelOperation 记录操作日志 → operation.log
+func LogPanelOperation(level LogLevel, format string, args ...interface{}) {
+	Log(LogCategoryPanel, "operation", level, format, args...)
 }
 
-// ============ Panel 日志（分文件：server.log / api.log / auth.log）============
-
-// LogPanelAccess 记录面板访问
-func LogPanelAccess(username, path, remoteAddr string) {
-	if username == "" {
-		username = "未认证"
-	}
-	Log(LogCategoryPanel, "server", LogLevelInfo,
-		"[访问] %s (用户=%s from %s)", path, username, remoteAddr)
+// LogPanelLogin 记录登录日志 → login.log
+func LogPanelLogin(level LogLevel, format string, args ...interface{}) {
+	Log(LogCategoryPanel, "login", level, format, args...)
 }
 
-// LogPanelAPI 记录 API 调用 → api.log
-func LogPanelAPI(username, method, path, remoteAddr string, statusCode int, duration time.Duration) {
-	Log(LogCategoryPanel, "api", LogLevelInfo,
-		"[API] %s %s (用户=%s from %s) -> %d (%v)", method, path, username, remoteAddr, statusCode, duration)
+// LogPanelRuntime 记录运行日志 → runtime.log
+func LogPanelRuntime(level LogLevel, format string, args ...interface{}) {
+	Log(LogCategoryPanel, "runtime", level, format, args...)
 }
 
-// LogPanelAuth 记录认证事件 → auth.log
+// ---- 以下为兼容旧调用，内部转发到新函数 ----
+
+// LogPanelAuth 记录认证事件 → 登录日志
 func LogPanelAuth(event, username, remoteAddr string, success bool, reason string) {
 	level := LogLevelAuth
 	if !success {
@@ -560,11 +546,10 @@ func LogPanelAuth(event, username, remoteAddr string, success bool, reason strin
 	if !success {
 		status = "失败"
 	}
-	Log(LogCategoryPanel, "auth", level,
-		"[认证] %s %s: 用户=%s from %s (%s)", event, status, username, remoteAddr, reason)
+	LogPanelLogin(level, "[认证] %s %s: 用户=%s from %s (%s)", event, status, username, remoteAddr, reason)
 }
 
-// LogPanelFileOp 记录文件操作
+// LogPanelFileOp 记录文件操作 → 操作日志
 func LogPanelFileOp(username, operation, targetPath string, success bool) {
 	status := "成功"
 	if !success {
@@ -574,33 +559,30 @@ func LogPanelFileOp(username, operation, targetPath string, success bool) {
 	if !success {
 		level = LogLevelWarn
 	}
-	Log(LogCategoryPanel, "server", level,
-		"[文件] %s %s (用户=%s, %s)", operation, targetPath, username, status)
+	LogPanelOperation(level, "[文件] %s %s (用户=%s, %s)", operation, targetPath, username, status)
 }
 
-// LogPanelConfigChange 记录配置变更
+// LogPanelConfigChange 记录配置变更 → 操作日志
 func LogPanelConfigChange(username, configPath string, success bool) {
 	status := "成功"
 	if !success {
 		status = "失败"
 	}
-	Log(LogCategoryPanel, "server", LogLevelInfo,
-		"[配置] 变更: %s (用户=%s, %s)", configPath, username, status)
+	LogPanelOperation(LogLevelInfo, "[配置] 变更: %s (用户=%s, %s)", configPath, username, status)
 }
 
-// LogPanelService 记录服务控制
+// LogPanelService 记录服务控制 → 操作日志
 func LogPanelService(username, service, action string, success bool) {
 	status := "成功"
 	if !success {
 		status = "失败"
 	}
-	Log(LogCategoryPanel, "server", LogLevelInfo,
-		"[服务] %s: %s (用户=%s, %s)", action, service, username, status)
+	LogPanelOperation(LogLevelInfo, "[服务] %s: %s (用户=%s, %s)", action, service, username, status)
 }
 
-// LogPanelSystem 系统级日志（启动/关闭等）→ server.log
+// LogPanelSystem 系统级日志 → 运行日志
 func LogPanelSystem(level LogLevel, format string, args ...interface{}) {
-	Log(LogCategoryPanel, "server", level, format, args...)
+	LogPanelRuntime(level, format, args...)
 }
 
 // GetLogFilePath 获取日志文件路径

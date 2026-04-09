@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"pixelbeast/src/handlers"
 	"strings"
 )
 
@@ -82,6 +83,9 @@ func (h *Handler) compressFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "压缩", req.Target, true)
+
 	Success(w, map[string]interface{}{
 		"file": filepath.Base(outputPath),
 		"path": req.Path,
@@ -142,6 +146,8 @@ func (h *Handler) extractFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
+	handlers.LogPanelFileOp(username, "解压", req.Path, true)
 	SuccessMessage(w, "解压成功")
 }
 

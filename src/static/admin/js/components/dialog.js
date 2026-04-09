@@ -1,16 +1,34 @@
 /**
  * Dialog 对话框组件
  * 纯 JS 实现，支持淡入淡出动画
+ *
+ * 支持两种调用方式：
+ * - show('dialog-id') — 显示 HTML 中已有的 .dialog 元素
+ * - show({ title, message, ... }) — 动态创建对话框
  */
 
 class Dialog {
     constructor() {
         this.currentDialog = null;
+
+        // 全局事件委托：处理 data-close-dialog 按钮
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close-dialog]')) {
+                this.close();
+            }
+        });
+
+        // ESC 键关闭
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.currentDialog) {
+                this.close();
+            }
+        });
     }
 
     /**
      * 显示对话框
-     * @param {Object} options - 配置选项
+     * @param {string|Object} options - 字符串 ID 或配置选项
      * @param {string} options.title - 标题
      * @param {string} options.message - 内容
      * @param {string} options.type - 类型: 'info' | 'warning' | 'danger'
@@ -20,6 +38,21 @@ class Dialog {
      * @param {Function} options.onCancel - 取消回调
      */
     show(options = {}) {
+        // 支持传入字符串 ID，显示已有的 HTML 弹窗
+        if (typeof options === 'string') {
+            const el = document.getElementById(options);
+            if (el) {
+                // 关闭之前的弹窗
+                if (this.currentDialog) {
+                    this.close();
+                }
+                this.currentDialog = el;
+                el.offsetHeight; // 触发重排
+                el.classList.add('active');
+            }
+            return;
+        }
+
         const {
             title = '提示',
             message = '',
@@ -45,7 +78,7 @@ class Dialog {
 
         // 创建对话框 DOM
         const dialog = document.createElement('div');
-        dialog.className = `dialog dialog--${type}`;
+        dialog.className = `dialog dialog--dynamic dialog--${type}`;
         dialog.innerHTML = `
             <div class="dialog-content">
                 <div class="dialog-header">
@@ -86,16 +119,6 @@ class Dialog {
             }
         });
 
-        // ESC 键关闭
-        const handleEscape = (e) => {
-            if (e.key === 'Escape') {
-                if (onCancel) onCancel();
-                this.close();
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
-        dialog._escapeHandler = handleEscape;
-
         // 触发重排以启动动画
         dialog.offsetHeight;
         dialog.classList.add('active');
@@ -110,17 +133,14 @@ class Dialog {
         const dialog = this.currentDialog;
         dialog.classList.remove('active');
 
-        // 移除 ESC 事件监听
-        if (dialog._escapeHandler) {
-            document.removeEventListener('keydown', dialog._escapeHandler);
+        if (dialog.classList.contains('dialog--dynamic')) {
+            // 动态创建的弹窗：动画结束后移除 DOM
+            setTimeout(() => {
+                if (dialog.parentNode) {
+                    dialog.parentNode.removeChild(dialog);
+                }
+            }, 200);
         }
-
-        // 动画结束后移除 DOM
-        setTimeout(() => {
-            if (dialog.parentNode) {
-                dialog.parentNode.removeChild(dialog);
-            }
-        }, 200);
 
         this.currentDialog = null;
     }

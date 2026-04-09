@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"archive/tar"
 	"bufio"
 	"compress/gzip"
 	"fmt"
@@ -46,18 +47,18 @@ type LogStats struct {
 func resolveLogPath(logDir, category, logType string) (string, error) {
 	switch category {
 	case "http":
-		if logType == "" {
-			logType = "default"
+		if logType == "error" {
+			return filepath.Join(logDir, "http", "error.log"), nil
 		}
-		return filepath.Join(logDir, "http", fmt.Sprintf("site-%s.log", logType)), nil
+		return filepath.Join(logDir, "http", "access.log"), nil
 	case "ftp":
-		if logType == "" {
-			logType = "anonymous"
+		if logType == "error" {
+			return filepath.Join(logDir, "ftp", "error.log"), nil
 		}
-		return filepath.Join(logDir, "ftp", fmt.Sprintf("user-%s.log", logType)), nil
+		return filepath.Join(logDir, "ftp", "access.log"), nil
 	case "panel":
 		if logType == "" {
-			logType = "server"
+			logType = "operation"
 		}
 		return filepath.Join(logDir, "panel", logType+".log"), nil
 	default:
@@ -65,20 +66,22 @@ func resolveLogPath(logDir, category, logType string) (string, error) {
 	}
 }
 
-// resolveDatedPath 查找历史日期文件，若无则回退原路径（由调用方做内容过滤）
-func resolveDatedPath(logPath, date string) string {
+// resolveDatedPath 查找历史日期文件，若无则回退原路径
+// 返回 (文件路径, 是否为日期文件) — 调用方可根据此决定是否按日期过滤
+func resolveDatedPath(logPath, date string) (string, bool) {
 	if date == "" {
-		return logPath
+		return logPath, false
 	}
 	datedPath := strings.TrimSuffix(logPath, ".log") + "." + date + ".log"
 	if _, err := os.Stat(datedPath); err == nil {
-		return datedPath
+		return datedPath, true
 	}
 	gzPath := datedPath + ".gz"
 	if _, err := os.Stat(gzPath); err == nil {
-		return gzPath
+		return gzPath, true
 	}
-	return logPath
+	// 没有找到日期文件，回退到当前文件，不做日期过滤
+	return logPath, false
 }
 
 // ============ 公共：文件读取 & 解析 ============
@@ -238,9 +241,16 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logPath = resolveDatedPath(logPath, date)
+	var isDated bool
+	logPath, isDated = resolveDatedPath(logPath, date)
 
-	entries, total, err := readLogFile(logPath, search, level, date, limit)
+	// åªå¨ä½¿ç¨æ¥ææä»¶æ¶æææ¥æè¿æ»¤åå®¹ï¼å½åæ¥å¿æä»¶åå«å¤å¤©æ°æ®ä¸è¿æ»¤
+	dateFilter := ""
+	if !isDated {
+		dateFilter = date  // current file: filter by date prefix
+	}
+
+	entries, total, err := readLogFile(logPath, search, level, dateFilter, limit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			Success(w, map[string]interface{}{"entries": []LogEntry{}, "total": 0, "file": filepath.Base(logPath)})
@@ -280,7 +290,12 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logPath = resolveDatedPath(logPath, date)
+	var isDated bool
+	logPath, isDated = resolveDatedPath(logPath, date)
+	dateFilter := ""
+	if !isDated {
+		dateFilter = date  // current file: filter by date prefix
+	}
 
 	stat := LogStats{Category: category, Type: logType}
 
@@ -289,7 +304,7 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if !matchLogLine(line, date, search, level) {
+			if !matchLogLine(line, dateFilter, search, level) {
 				continue
 			}
 			stat.Count++
@@ -430,4 +445,158 @@ func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 
 	handlers.SetLogConfig(&h.ConfigManager.Server.Log)
 	Success(w, h.ConfigManager.Server.Log)
+}
+
+// handleLogsBulkClear 批量清理日志
+func (h *Handler) handleLogsBulkClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Category    string `json:"category"`
+		BeforeDate  string `json:"before_date"`
+		Compressed  bool   `json:"compressed"`  // 是否同时清理压缩文件
+	}
+	if err := parseJSONBody(r, &req); err != nil {
+		BadRequest(w, "参数错误: "+err.Error())
+		return
+	}
+
+	logDir := handlers.GetLogBaseDir()
+	if logDir == "" {
+		Error(w, 500, "日志目录未初始化")
+		return
+	}
+
+	cleared := 0
+
+	cats := []string{"http", "ftp", "panel"}
+	if req.Category != "" {
+		cats = []string{req.Category}
+	}
+
+	for _, cat := range cats {
+		catDir := filepath.Join(logDir, cat)
+		entries, err := os.ReadDir(catDir)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			name := entry.Name()
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+
+			// 跳过当前日志文件（无日期后缀）
+			base := strings.TrimSuffix(name, ".gz")
+			if strings.HasSuffix(base, ".log") && !strings.Contains(base[:max(0, len(base)-4)], ".") {
+				continue
+			}
+
+			// 按日期过滤
+			if req.BeforeDate != "" {
+				// 检查文件修改时间是否早于指定日期
+				date, err := time.Parse("2006-01-02", req.BeforeDate)
+				if err == nil && info.ModTime().After(date.Add(24*time.Hour)) {
+					continue
+				}
+			}
+
+			// 如果不清理压缩文件，跳过 .gz
+			if !req.Compressed && strings.HasSuffix(name, ".gz") {
+				continue
+			}
+
+			filePath := filepath.Join(catDir, name)
+			if err := os.Remove(filePath); err == nil {
+				cleared++
+			}
+		}
+	}
+
+	Success(w, map[string]interface{}{
+		"cleared": cleared,
+		"message": fmt.Sprintf("已清理 %d 个日志文件", cleared),
+	})
+}
+
+// handleLogsBulkExport 批量导出日志
+func (h *Handler) handleLogsBulkExport(w http.ResponseWriter, r *http.Request) {
+	category := r.URL.Query().Get("category")
+	if category == "" {
+		category = "panel"
+	}
+
+	logDir := handlers.GetLogBaseDir()
+	if logDir == "" {
+		Error(w, 500, "日志目录未初始化")
+		return
+	}
+
+	catDir := filepath.Join(logDir, category)
+	entries, err := os.ReadDir(catDir)
+	if err != nil {
+		Error(w, 404, "无日志文件")
+		return
+	}
+
+	// 收集所有日志文件路径
+	filePaths := make([]string, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			filePaths = append(filePaths, filepath.Join(catDir, entry.Name()))
+		}
+	}
+
+	if len(filePaths) == 0 {
+		Error(w, 404, "无日志文件可导出")
+		return
+	}
+
+	// 如果只有一个文件，直接下载
+	if len(filePaths) == 1 {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(filePaths[0])))
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeFile(w, r, filePaths[0])
+		return
+	}
+
+	// 多个文件打包为 tar.gz
+	filename := fmt.Sprintf("%s-logs-%s.tar.gz", category, time.Now().Format("2006-01-02"))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	w.Header().Set("Content-Type", "application/gzip")
+
+	gw := gzip.NewWriter(w)
+	defer gw.Close()
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	for _, fp := range filePaths {
+		info, err := os.Stat(fp)
+		if err != nil {
+			continue
+		}
+
+		hdr := &tar.Header{
+			Name: filepath.Base(fp),
+			Size: info.Size(),
+			Mode: 0644,
+		}
+		tw.WriteHeader(hdr)
+
+		f, err := os.Open(fp)
+		if err != nil {
+			continue
+		}
+		io.Copy(tw, f)
+		f.Close()
+	}
 }

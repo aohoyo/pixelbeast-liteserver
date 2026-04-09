@@ -89,12 +89,12 @@ func (r *VirtualHostRouter) createHandler(cfg *config.SiteConfig) (http.Handler,
 		if root == "" {
 			root = filepath.Join(r.sitesDir, cfg.ID)
 		}
-		return NewHTTPServer(root), nil
+		return NewHTTPServer(root, cfg.ID), nil
 	case "proxy":
 		if cfg.Proxy == nil {
 			return nil, fmt.Errorf("proxy type requires proxy config")
 		}
-		handler, err := NewProxyHandler(cfg.Proxy)
+		handler, err := NewProxyHandler(cfg.Proxy, cfg.ID)
 		if err != nil {
 			return nil, fmt.Errorf("create proxy handler: %w", err)
 		}

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -167,13 +168,6 @@ func init() {
 // ==================== 状态 ====================
 
 func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	processMem := handlers.GetProcessMemory()
 
 	// 获取服务器状态
@@ -239,13 +233,6 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 // ==================== 系统监控 API ====================
 
 func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	// 获取进程内存
 	processMem := handlers.GetProcessMemory()
 	memoryMB := float64(processMem) / 1024 / 1024
@@ -289,6 +276,15 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		memAvailableGB = float64(memInfo.Available) / 1024 / 1024 / 1024
 		memSharedMB = float64(memInfo.Shared) / 1024 / 1024
 		memBuffCacheMB = float64(memInfo.Buffers+memInfo.Cached) / 1024 / 1024
+	}
+
+	// Swap 内存
+	swapInfo, _ := mem.SwapMemory()
+	var swapPercent, swapUsedGB, swapTotalGB float64
+	if swapInfo != nil && swapInfo.Total > 0 {
+		swapPercent = swapInfo.UsedPercent
+		swapUsedGB = float64(swapInfo.Used) / 1024 / 1024 / 1024
+		swapTotalGB = float64(swapInfo.Total) / 1024 / 1024 / 1024
 	}
 
 	// 获取所有磁盘分区信息
@@ -383,6 +379,11 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"memory_available_gb":  memAvailableGB,
 		"memory_shared_mb":     memSharedMB,
 		"memory_buff_cache_mb": memBuffCacheMB,
+
+		// Swap
+		"swap_percent":  swapPercent,
+		"swap_used_gb":  swapUsedGB,
+		"swap_total_gb": swapTotalGB,
 
 		// 磁盘（所有磁盘合计）
 		"disk_percent": func() float64 {
@@ -724,102 +725,535 @@ func getDiskType() string {
 	return "--"
 }
 func (h *Handler) freeMemory(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
 		return
 	}
 
-	// TODO: 实现真实的内存释放逻辑
-	// 目前返回模拟数据
-	runtime.GC() // 触发 Go 的垃圾回收
-
-	// 计算释放的内存（模拟）
-	beforeMem := handlers.GetProcessMemory()
-	runtime.GC()
-	time.Sleep(100 * time.Millisecond)
-	afterMem := handlers.GetProcessMemory()
-	freedMB := float64(beforeMem-afterMem) / 1024 / 1024
-	if freedMB < 0 {
-		freedMB = 0
+	// 1. 记录释放前的内存
+	beforeProcess := handlers.GetProcessMemory()
+	memInfoBefore, _ := mem.VirtualMemory()
+	var beforeSystemUsed float64
+	if memInfoBefore != nil {
+		beforeSystemUsed = float64(memInfoBefore.Used)
 	}
 
+	// 2. Go 运行时释放：GC + 归还 OS
+	runtime.GC()
+	debug.FreeOSMemory()
+
+	// 3. 平台特定的系统内存释放
+	osErr := handlers.FreeSystemMemory()
+	osCacheCleared := osErr == nil
+
+	// 4. 记录释放后的内存
+	afterProcess := handlers.GetProcessMemory()
+	memInfoAfter, _ := mem.VirtualMemory()
+	var afterSystemUsed float64
+	if memInfoAfter != nil {
+		afterSystemUsed = float64(memInfoAfter.Used)
+	}
+
+	// 5. 计算释放量
+	processFreedMB := float64(int64(beforeProcess)-int64(afterProcess)) / 1024 / 1024
+	if processFreedMB < 0 {
+		processFreedMB = 0
+	}
+	systemFreedMB := (beforeSystemUsed - afterSystemUsed) / 1024 / 1024
+	if systemFreedMB < 0 {
+		systemFreedMB = 0
+	}
+	totalFreedMB := processFreedMB + systemFreedMB
+
+	username := h.getSessionUsername(r)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[系统] 释放内存: %.1f MB (用户=%s)", totalFreedMB, username)
+
 	Success(w, map[string]interface{}{
-		"freed_mb": freedMB,
-		"message":  fmt.Sprintf("已释放 %.1f MB 内存", freedMB),
+		"freed_mb":         totalFreedMB,
+		"process_freed_mb": processFreedMB,
+		"system_freed_mb":  systemFreedMB,
+		"before_mb":        float64(beforeProcess) / 1024 / 1024,
+		"after_mb":         float64(afterProcess) / 1024 / 1024,
+		"os_cache_cleared": osCacheCleared,
+		"message":          fmt.Sprintf("已释放 %.1f MB 内存（进程 %.1f MB + 系统 %.1f MB）", totalFreedMB, processFreedMB, systemFreedMB),
 	})
 }
 
 func (h *Handler) scanCleanup(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodGet {
 		MethodNotAllowed(w, "Method not allowed")
 		return
 	}
 
-	// TODO: 实现真实的垃圾扫描逻辑
-	// 扫描日志文件、临时文件等
-	logsMB := 0.0
-	tempMB := 0.0
+	items := h.scanSystemJunk()
 
-	// 扫描日志目录
-	logDir := handlers.GetLogBaseDir()
-	if logDir != "" {
-		entries, err := os.ReadDir(logDir)
-		if err == nil {
-			for _, entry := range entries {
-				if !entry.IsDir() {
-					info, err := entry.Info()
-					if err == nil {
-						logsMB += float64(info.Size()) / 1024 / 1024
-					}
-				}
-			}
-		}
+	totalMB := 0.0
+	for _, item := range items {
+		totalMB += item.SizeMB
 	}
 
-	totalMB := logsMB + tempMB
-
 	Success(w, map[string]interface{}{
-		"logs_mb":  logsMB,
-		"temp_mb":  tempMB,
+		"items":    items,
 		"total_mb": totalMB,
 	})
 }
 
 func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
 		return
 	}
 
-	// TODO: 实现真实的清理逻辑
-	// 清理旧的日志文件、临时文件等
+	cleanedMB := h.cleanSystemJunk()
 
-	// 返回模拟的清理结果
+	username := h.getSessionUsername(r)
+	handlers.LogPanelConfigChange(username, fmt.Sprintf("系统清理 %.1f MB", cleanedMB), true)
+
 	Success(w, map[string]interface{}{
-		"cleaned_mb": 128.5,
-		"message":    "已清理 128.5 MB",
+		"cleaned_mb": cleanedMB,
+		"message":    fmt.Sprintf("已清理 %.1f MB", cleanedMB),
 	})
+}
+
+// junkItem 垃圾文件扫描项
+type junkItem struct {
+	Name    string  `json:"name"`
+	Desc    string  `json:"desc"`
+	SizeMB  float64 `json:"size_mb"`
+	Count   int     `json:"count"`
+	Path    string  `json:"path"`
+	Cleanable bool  `json:"cleanable"`
+}
+
+// scanSystemJunk 扫描系统垃圾文件
+func (h *Handler) scanSystemJunk() []junkItem {
+	var items []junkItem
+
+	switch runtime.GOOS {
+	case "linux":
+		items = h.scanLinuxJunk()
+	case "darwin":
+		items = h.scanDarwinJunk()
+	case "windows":
+		items = h.scanWindowsJunk()
+	}
+
+	// 通用：应用自身日志
+	logDir := handlers.GetLogBaseDir()
+	if logDir != "" {
+		sizeMB, count := calcDirSize(logDir)
+		if count > 0 {
+			items = append(items, junkItem{
+				Name:      "app_logs",
+				Desc:      "应用日志",
+				SizeMB:    sizeMB,
+				Count:     count,
+				Path:      logDir,
+				Cleanable: true,
+			})
+		}
+	}
+
+	return items
+}
+
+// scanLinuxJunk 扫描 Linux 系统垃圾
+func (h *Handler) scanLinuxJunk() []junkItem {
+	var items []junkItem
+
+	// 系统临时文件 /tmp
+	if sizeMB, count := scanDirOlderThan("/tmp", 24*time.Hour); count > 0 {
+		items = append(items, junkItem{
+			Name: "system_tmp", Desc: "系统临时文件 (/tmp)",
+			SizeMB: sizeMB, Count: count, Path: "/tmp", Cleanable: true,
+		})
+	}
+
+	// /var/tmp
+	if sizeMB, count := scanDirOlderThan("/var/tmp", 24*time.Hour); count > 0 {
+		items = append(items, junkItem{
+			Name: "var_tmp", Desc: "持久临时文件 (/var/tmp)",
+			SizeMB: sizeMB, Count: count, Path: "/var/tmp", Cleanable: true,
+		})
+	}
+
+	// 包管理器缓存
+	for _, cacheDir := range []string{"/var/cache/apt/archives", "/var/cache/yum", "/var/cache/dnf"} {
+		if sizeMB, count := calcDirSize(cacheDir); count > 0 {
+			name := "pkg_cache"
+			desc := "包管理器缓存"
+			if strings.Contains(cacheDir, "apt") {
+				desc = "APT 缓存 (/var/cache/apt)"
+			} else if strings.Contains(cacheDir, "yum") {
+				desc = "YUM 缓存 (/var/cache/yum)"
+			} else {
+				desc = "DNF 缓存 (/var/cache/dnf)"
+			}
+			items = append(items, junkItem{
+				Name: name, Desc: desc,
+				SizeMB: sizeMB, Count: count, Path: cacheDir, Cleanable: true,
+			})
+			break // 只取第一个存在的
+		}
+	}
+
+	// 系统日志 /var/log
+	if sizeMB, count := scanDirOlderThan("/var/log", 0); count > 0 {
+		// 排除当前活跃日志，只统计旧的和压缩的
+		items = append(items, junkItem{
+			Name: "system_logs", Desc: "系统日志 (/var/log)",
+			SizeMB: sizeMB, Count: count, Path: "/var/log", Cleanable: false,
+		})
+	}
+
+	// systemd journal 日志
+	if out, err := exec.Command("journalctl", "--disk-usage").Output(); err == nil {
+		line := strings.TrimSpace(string(out))
+		// 输出格式: "Archived and active journals take up X.XM on disk."
+		if idx := strings.Index(line, "take up"); idx >= 0 {
+			after := line[idx+8:]
+			if endIdx := strings.Index(after, " "); endIdx > 0 {
+				sizeStr := after[:endIdx]
+				if sizeMB := parseSizeToMB(sizeStr); sizeMB > 0 {
+					items = append(items, junkItem{
+						Name: "journal", Desc: "Systemd 日志",
+						SizeMB: sizeMB, Count: 1, Path: "/var/log/journal", Cleanable: true,
+					})
+				}
+			}
+		}
+	}
+
+	// 缩略图缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		thumbDir := filepath.Join(home, ".cache", "thumbnails")
+		if sizeMB, count := calcDirSize(thumbDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "thumbnails", Desc: "缩略图缓存",
+				SizeMB: sizeMB, Count: count, Path: thumbDir, Cleanable: true,
+			})
+		}
+	}
+
+	// Crash reports / core dumps
+	for _, crashDir := range []string{"/var/crash", "/var/lib/systemd/coredump"} {
+		if sizeMB, count := calcDirSize(crashDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "crash_dumps", Desc: "崩溃转储文件",
+				SizeMB: sizeMB, Count: count, Path: crashDir, Cleanable: true,
+			})
+			break
+		}
+	}
+
+	return items
+}
+
+// scanDarwinJunk 扫描 macOS 系统垃圾
+func (h *Handler) scanDarwinJunk() []junkItem {
+	var items []junkItem
+
+	// 系统临时目录
+	for _, tmpDir := range []string{"/tmp", "/private/tmp", "/var/folders"} {
+		if sizeMB, count := scanDirOlderThan(tmpDir, 24*time.Hour); count > 0 {
+			items = append(items, junkItem{
+				Name: "system_tmp", Desc: "系统临时文件",
+				SizeMB: sizeMB, Count: count, Path: tmpDir, Cleanable: true,
+			})
+			break
+		}
+	}
+
+	// 用户缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		cacheDir := filepath.Join(home, "Library", "Caches")
+		if sizeMB, count := calcDirSize(cacheDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "user_cache", Desc: "用户缓存 (Library/Caches)",
+				SizeMB: sizeMB, Count: count, Path: cacheDir, Cleanable: false,
+			})
+		}
+	}
+
+	// 系统日志
+	if sizeMB, count := calcDirSize("/var/log"); count > 0 {
+		items = append(items, junkItem{
+			Name: "system_logs", Desc: "系统日志 (/var/log)",
+			SizeMB: sizeMB, Count: count, Path: "/var/log", Cleanable: false,
+		})
+	}
+
+	return items
+}
+
+// scanWindowsJunk 扫描 Windows 系统垃圾
+func (h *Handler) scanWindowsJunk() []junkItem {
+	var items []junkItem
+
+	// Windows Temp
+	for _, tmpDir := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), `C:\Windows\Temp`} {
+		if tmpDir == "" {
+			continue
+		}
+		if sizeMB, count := scanDirOlderThan(tmpDir, 24*time.Hour); count > 0 {
+			items = append(items, junkItem{
+				Name: "system_tmp", Desc: "系统临时文件",
+				SizeMB: sizeMB, Count: count, Path: tmpDir, Cleanable: true,
+			})
+			break
+		}
+	}
+
+	// Windows Update 缓存
+	if sizeMB, count := calcDirSize(`C:\Windows\SoftwareDistribution\Download`); count > 0 {
+		items = append(items, junkItem{
+			Name: "update_cache", Desc: "Windows 更新缓存",
+			SizeMB: sizeMB, Count: count, Path: `C:\Windows\SoftwareDistribution\Download`, Cleanable: false,
+		})
+	}
+
+	return items
+}
+
+// cleanSystemJunk 执行系统垃圾清理
+func (h *Handler) cleanSystemJunk() float64 {
+	var totalCleaned float64
+
+	switch runtime.GOOS {
+	case "linux":
+		totalCleaned += h.cleanLinuxJunk()
+	case "darwin":
+		totalCleaned += h.cleanDarwinJunk()
+	case "windows":
+		totalCleaned += h.cleanWindowsJunk()
+	}
+
+	// 清理应用日志
+	handlers.CleanupNow()
+	totalCleaned += h.truncateAppLogs()
+
+	return totalCleaned
+}
+
+func (h *Handler) cleanLinuxJunk() float64 {
+	var cleaned float64
+
+	// 清理 /tmp 旧文件
+	cleaned += cleanDirOlderThan("/tmp", 24*time.Hour)
+	// 清理 /var/tmp 旧文件
+	cleaned += cleanDirOlderThan("/var/tmp", 24*time.Hour)
+
+	// 清理包管理器缓存
+	for _, cacheDir := range []string{"/var/cache/apt/archives", "/var/cache/yum", "/var/cache/dnf"} {
+		if _, err := os.Stat(cacheDir); err == nil {
+			if strings.Contains(cacheDir, "apt") {
+				// apt: 只删除 .deb 包，保留锁文件
+				cleaned += cleanFilesByExt(cacheDir, ".deb")
+			} else {
+				cleaned += cleanFilesByExt(cacheDir, ".rpm")
+			}
+		}
+	}
+
+	// 清理 systemd journal（保留最近 3 天）
+	if _, err := exec.LookPath("journalctl"); err == nil {
+		exec.Command("journalctl", "--vacuum-time=3d").Run()
+	}
+
+	// 清理缩略图缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		thumbDir := filepath.Join(home, ".cache", "thumbnails")
+		cleaned += cleanDirContents(thumbDir)
+	}
+
+	// 清理崩溃转储
+	for _, dir := range []string{"/var/crash", "/var/lib/systemd/coredump"} {
+		cleaned += cleanDirContents(dir)
+	}
+
+	return cleaned
+}
+
+func (h *Handler) cleanDarwinJunk() float64 {
+	var cleaned float64
+	cleaned += cleanDirOlderThan("/tmp", 24*time.Hour)
+	cleaned += cleanDirOlderThan("/private/tmp", 24*time.Hour)
+	return cleaned
+}
+
+func (h *Handler) cleanWindowsJunk() float64 {
+	var cleaned float64
+	for _, tmpDir := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), `C:\Windows\Temp`} {
+		if tmpDir != "" {
+			cleaned += cleanDirOlderThan(tmpDir, 24*time.Hour)
+		}
+	}
+	return cleaned
+}
+
+// ==================== 垃圾扫描/清理工具函数 ====================
+
+// calcDirSize 计算目录总大小和文件数
+func calcDirSize(dir string) (totalMB float64, count int) {
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		totalMB += float64(info.Size()) / 1024 / 1024
+		count++
+		return nil
+	})
+	return
+}
+
+// scanDirOlderThan 扫描目录中超过指定时间的文件大小
+func scanDirOlderThan(dir string, age time.Duration) (totalMB float64, count int) {
+	cutoff := time.Now().Add(-age)
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if info.ModTime().Before(cutoff) {
+			totalMB += float64(info.Size()) / 1024 / 1024
+			count++
+		}
+		return nil
+	})
+	return
+}
+
+// cleanDirOlderThan 清理目录中超过指定时间的文件
+func cleanDirOlderThan(dir string, age time.Duration) float64 {
+	cutoff := time.Now().Add(-age)
+	var cleaned float64
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if info.ModTime().Before(cutoff) {
+			sizeMB := float64(info.Size()) / 1024 / 1024
+			if os.Remove(path) == nil {
+				cleaned += sizeMB
+			}
+		}
+		return nil
+	})
+	return cleaned
+}
+
+// cleanDirContents 清空目录内容（保留目录本身）
+func cleanDirContents(dir string) float64 {
+	var cleaned float64
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		sizeMB := float64(info.Size()) / 1024 / 1024
+		var err2 error
+		if entry.IsDir() {
+			err2 = os.RemoveAll(path)
+		} else {
+			err2 = os.Remove(path)
+		}
+		if err2 == nil {
+			cleaned += sizeMB
+		}
+	}
+	return cleaned
+}
+
+// cleanFilesByExt 清理目录中指定扩展名的文件
+func cleanFilesByExt(dir, ext string) float64 {
+	var cleaned float64
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ext) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if os.Remove(path) == nil {
+			cleaned += float64(info.Size()) / 1024 / 1024
+		}
+	}
+	return cleaned
+}
+
+// truncateAppLogs 截断应用当前日志
+func (h *Handler) truncateAppLogs() float64 {
+	logDir := handlers.GetLogBaseDir()
+	if logDir == "" {
+		return 0
+	}
+	var cleaned float64
+	categories := []string{"http", "ftp", "panel"}
+	for _, cat := range categories {
+		dir := filepath.Join(logDir, cat)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if !strings.HasSuffix(name, ".log") {
+				continue
+			}
+			baseName := strings.TrimSuffix(name, ".log")
+			if strings.Contains(baseName, ".") {
+				continue
+			}
+			filePath := filepath.Join(dir, name)
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			sizeMB := float64(info.Size()) / 1024 / 1024
+			if os.WriteFile(filePath, []byte{}, 0644) == nil {
+				cleaned += sizeMB
+			}
+		}
+	}
+	return cleaned
+}
+
+// parseSizeToMB 解析大小字符串为 MB（如 "3.2G", "500M", "1024K"）
+func parseSizeToMB(s string) float64 {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return 0
+	}
+	unit := strings.ToUpper(s[len(s)-1:])
+	numStr := s[:len(s)-1]
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return 0
+	}
+	switch unit {
+	case "G", "GB":
+		return num * 1024
+	case "M", "MB":
+		return num
+	case "K", "KB":
+		return num / 1024
+	case "B":
+		return num / 1024 / 1024
+	}
+	return 0
 }
 
 // ==================== 配置 ====================
@@ -1230,13 +1664,6 @@ func queryNTP(server string) (*time.Time, error) {
 
 // listBackups 列出备份文件
 func (h *Handler) listBackups(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	backupDir := h.ConfigManager.GetBackupDir()
 	absPath := resolvePath(backupDir)
 
@@ -1286,13 +1713,6 @@ func (h *Handler) listBackups(w http.ResponseWriter, r *http.Request) {
 
 // createBackup 手动创建备份
 func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
 		return
@@ -1377,6 +1797,7 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	username := h.getSessionUsername(r)
 	handlers.LogPanelConfigChange(username, "创建备份 "+backupName, true)
 	Success(w, map[string]interface{}{
 		"name":    backupName,
@@ -1387,13 +1808,6 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 
 // deleteBackup 删除备份
 func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
 		return
@@ -1423,6 +1837,7 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 		InternalServerError(w, "删除备份失败: "+err.Error())
 		return
 	}
+	username := h.getSessionUsername(r)
 
 	handlers.LogPanelConfigChange(username, "删除备份 "+name, true)
 	SuccessMessage(w, "备份已删除")
@@ -1430,9 +1845,6 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 // downloadBackup 下载备份文件
 func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		BadRequest(w, "缺少备份文件名")
@@ -1448,7 +1860,6 @@ func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "备份文件不存在")
 		return
 	}
-	handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, 0)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, absPath)
@@ -1456,13 +1867,6 @@ func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 
 // restoreBackup 从备份恢复
 func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	username := h.getSessionUsername(r)
-	clientIP := getClientIP(r)
-	defer func() {
-		handlers.LogPanelAPI(username, r.Method, r.URL.Path, clientIP, 200, time.Since(start))
-	}()
-
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "Method not allowed")
 		return
@@ -1558,6 +1962,7 @@ func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	username := h.getSessionUsername(r)
 	handlers.LogPanelConfigChange(username, "从备份恢复 "+req.Name, true)
 	SuccessMessage(w, "备份恢复成功，重新加载配置生效")
 }
@@ -1626,6 +2031,9 @@ func (h *Handler) restartServer(w http.ResponseWriter, r *http.Request) {
 		MethodNotAllowed(w, "Method not allowed")
 		return
 	}
+
+	username := h.getSessionUsername(r)
+	handlers.LogPanelRuntime(handlers.LogLevelInfo, "[系统] 服务器重启 (用户=%s)", username)
 
 	SuccessMessage(w, "服务正在重启...")
 

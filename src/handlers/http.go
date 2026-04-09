@@ -12,12 +12,13 @@ import (
 
 // HTTPServer HTTP服务器
 type HTTPServer struct {
-	Root string
+	Root   string
+	SiteID string
 }
 
 // NewHTTPServer 创建HTTP服务器
-func NewHTTPServer(root string) *HTTPServer {
-	return &HTTPServer{Root: root}
+func NewHTTPServer(root string, siteID string) *HTTPServer {
+	return &HTTPServer{Root: root, SiteID: siteID}
 }
 
 // ServeHTTP 处理HTTP请求
@@ -29,7 +30,7 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 防止目录遍历攻击
 	if strings.Contains(path, "..") {
-		LogHTTPError(r.Method, r.URL.Path, r.RemoteAddr, "目录遍历攻击", http.StatusForbidden)
+		s.logHTTPError(r.Method, r.URL.Path, r.RemoteAddr, "目录遍历攻击", http.StatusForbidden)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -59,11 +60,11 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			LogHTTPError(r.Method, r.URL.Path, r.RemoteAddr, "文件不存在", http.StatusNotFound)
+			s.logHTTPError(r.Method, r.URL.Path, r.RemoteAddr, "文件不存在", http.StatusNotFound)
 			http.NotFound(w, r)
 			return
 		}
-		LogHTTPError(r.Method, r.URL.Path, r.RemoteAddr, err.Error(), http.StatusInternalServerError)
+		s.logHTTPError(r.Method, r.URL.Path, r.RemoteAddr, err.Error(), http.StatusInternalServerError)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -73,19 +74,19 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		indexPath := filepath.Join(absPath, "index.html")
 		if _, err := os.Stat(indexPath); err == nil {
 			http.ServeFile(w, r, indexPath)
-			logRequest(r, start, http.StatusOK)
+			s.logRequest(r, start, http.StatusOK)
 			return
 		}
 
 		// 生成目录列表
 		s.serveDirectory(w, r, absPath, path)
-		logRequest(r, start, http.StatusOK)
+		s.logRequest(r, start, http.StatusOK)
 		return
 	}
 
 	// 提供文件
 	http.ServeFile(w, r, absPath)
-	logRequest(r, start, http.StatusOK)
+	s.logRequest(r, start, http.StatusOK)
 }
 
 // serveDirectory 生成目录列表
@@ -177,8 +178,19 @@ func formatSize(bytes int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// logRequest 记录请求日志
-func logRequest(r *http.Request, start time.Time, status int) {
+// logHTTPError 记录HTTP错误（同时写入通用和按站点日志）
+func (s *HTTPServer) logHTTPError(method, path, remoteAddr, errMsg string, statusCode int) {
+	LogHTTPError(method, path, remoteAddr, errMsg, statusCode)
+	if s.SiteID != "" {
+		LogHTTPErrorBySite(s.SiteID, method, path, remoteAddr, errMsg, statusCode)
+	}
+}
+
+// logRequest 记录请求日志（同时写入通用和按站点日志）
+func (s *HTTPServer) logRequest(r *http.Request, start time.Time, status int) {
 	duration := time.Since(start)
 	LogHTTPAccess(r.Method, r.URL.Path, r.RemoteAddr, status, duration)
+	if s.SiteID != "" {
+		LogHTTPAccessBySite(s.SiteID, r.Method, r.URL.Path, r.RemoteAddr, status, duration)
+	}
 }

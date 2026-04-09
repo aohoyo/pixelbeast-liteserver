@@ -19,10 +19,11 @@ type ProxyHandler struct {
 	stripPrefix string
 	wsEnabled   bool
 	timeout     time.Duration
+	SiteID      string
 }
 
 // NewProxyHandler 创建反向代理处理器
-func NewProxyHandler(cfg *config.ProxyConfig) (http.Handler, error) {
+func NewProxyHandler(cfg *config.ProxyConfig, siteID string) (*ProxyHandler, error) {
 	// 解析目标 URL
 	target, err := url.Parse(cfg.Target)
 	if err != nil {
@@ -89,19 +90,47 @@ func NewProxyHandler(cfg *config.ProxyConfig) (http.Handler, error) {
 		stripPrefix: cfg.StripPrefix,
 		wsEnabled:   cfg.Websocket,
 		timeout:     timeout,
+		SiteID:      siteID,
 	}, nil
 }
 
 // ServeHTTP 实现 http.Handler
 func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	// 使用包装 ResponseWriter 捕获状态码
+	rw := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 	// WebSocket 升级检查
 	if h.wsEnabled && isWebSocketUpgrade(r) {
-		h.proxy.ServeHTTP(w, r)
+		h.proxy.ServeHTTP(rw, r)
+		h.logRequest(r, start, rw.statusCode)
 		return
 	}
 
 	// 普通 HTTP 代理
-	h.proxy.ServeHTTP(w, r)
+	h.proxy.ServeHTTP(rw, r)
+	h.logRequest(r, start, rw.statusCode)
+}
+
+// logRequest 记录代理请求日志
+func (h *ProxyHandler) logRequest(r *http.Request, start time.Time, status int) {
+	duration := time.Since(start)
+	LogHTTPAccess(r.Method, r.URL.Path, r.RemoteAddr, status, duration)
+	if h.SiteID != "" {
+		LogHTTPAccessBySite(h.SiteID, r.Method, r.URL.Path, r.RemoteAddr, status, duration)
+	}
+}
+
+// proxyResponseWriter 包装 ResponseWriter 捕获状态码
+type proxyResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *proxyResponseWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
 }
 
 // isWebSocketUpgrade 检查是否为 WebSocket 升级请求
