@@ -138,6 +138,42 @@
                         <span class="form-hint">目标服务器地址</span>
                     </div>
                 </div>
+
+                <!-- SSL 配置 -->
+                <div class="form-section-title" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    SSL 配置
+                </div>
+                <div class="form-group">
+                    <label class="form-label">启用 SSL</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="site-form-ssl-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="site-ssl-fields" style="display:none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">证书模式</label>
+                            <select class="form-select" id="site-form-ssl-mode">
+                                <option value="auto">Let's Encrypt (自动)</option>
+                                <option value="custom">自定义证书</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="site-ssl-email-group">
+                            <label class="form-label">邮箱 (Let's Encrypt)</label>
+                            <input type="email" class="form-input" id="site-form-ssl-email" placeholder="admin@example.com" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">强制 HTTPS</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="site-form-ssl-force">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="form-hint">将 HTTP 请求自动重定向到 HTTPS</span>
+                    </div>
+                </div>
             </form>
         </div>
         <div class="modal-footer">

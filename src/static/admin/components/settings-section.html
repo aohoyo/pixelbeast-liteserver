@@ -31,6 +31,7 @@
         <button class="tab-btn" data-tab="directories">目录设置</button>
         <button class="tab-btn" data-tab="log">日志配置</button>
         <button class="tab-btn" data-tab="backup">备份设置</button>
+        <button class="tab-btn" data-tab="service">服务管理</button>
     </div>
 
     <!-- 设置内容区 -->
@@ -338,6 +339,31 @@
                     <div class="backup-empty" style="text-align: center; padding: 32px; color: var(--text-muted); font-size: 14px;">暂无备份文件</div>
                 </div>
             </div>
+        </div>
+
+        <!-- 服务管理 -->
+        <div class="tab-pane" id="tab-service">
+            <div class="settings-section">
+                <h3 class="section-title">开机自启</h3>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">开机自动启动</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="autostart-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="form-hint-text">系统启动时自动运行 PixelBeast 服务</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">当前平台</label>
+                    <span id="autostart-platform" style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-secondary, #d6d3d1);">检测中...</span>
+                </div>
+                <div class="form-group-inline">
+                    <label class="form-label-inline">注册状态</label>
+                    <span id="autostart-status" style="display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-muted, #78716c);">检测中...</span>
+                </div>
+            </div>
+        </div>
+
         </div>
     </div>
 </div>

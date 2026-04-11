@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "3.1.10"
+	version   = "3.1.11"
 	buildTime = "unknown"
 )
 
@@ -57,6 +57,13 @@ func main() {
 
 	// 创建服务管理器
 	serverManager = handlers.NewServerManager(cm, *configDir)
+
+	// 启动 SSL 管理器
+	if err := serverManager.SSLManager.Start(); err != nil {
+		handlers.LogPanelSystem(handlers.LogLevelWarn, "SSL管理器启动失败: %v", err)
+	}
+	// 加载所有站点的 SSL 证书
+	serverManager.SSLManager.LoadSiteCertificates(cm.Sites.Sites)
 
 	// 创建 FTP 服务器
 	ftpCfg := cm.FTP
@@ -112,6 +119,7 @@ func main() {
 		serverManager.StopSitesServer()
 	}
 	if serverManager.IsAdminRunning() {
+	serverManager.SSLManager.Stop()
 		serverManager.StopAdminPanel()
 	}
 

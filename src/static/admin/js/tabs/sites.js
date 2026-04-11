@@ -184,6 +184,8 @@ class SitesTab extends BaseTab {
         this.$('#site-modal-confirm')?.addEventListener('click', () => this.saveSite());
         this.$('#site-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
+        this.$('#site-form-ssl-enabled')?.addEventListener('change', () => this.onSSLToggle());
+        this.$('#site-form-ssl-mode')?.addEventListener('change', () => this.onSSLModeChange());
 
         // 目录浏览按钮
         this.$$('.directory-picker-btn').forEach(btn => {
@@ -504,6 +506,17 @@ class SitesTab extends BaseTab {
             this.$('#site-form-index-files').value = indexFiles.join(', ');
             const autoIndex = this.$('#site-form-auto-index');
             if (autoIndex) autoIndex.checked = this.editingSite.auto_index !== false;
+            // SSL fields
+            const ssl = this.editingSite.ssl || {};
+            const sslEnabled = this.$('#site-form-ssl-enabled');
+            if (sslEnabled) sslEnabled.checked = ssl.enabled || false;
+            const sslMode = this.$('#site-form-ssl-mode');
+            if (sslMode) sslMode.value = ssl.auto_https ? 'auto' : 'custom';
+            const sslEmail = this.$('#site-form-ssl-email');
+            if (sslEmail) sslEmail.value = ssl.email || '';
+            const sslForce = this.$('#site-form-ssl-force');
+            if (sslForce) sslForce.checked = ssl.force_https || false;
+            this.onSSLToggle();
         } else {
             title.textContent = '添加网站';
             this.$('#site-form')?.reset();
@@ -512,6 +525,10 @@ class SitesTab extends BaseTab {
             this.$('#site-form-index-files').value = 'index.html, index.htm';
             const autoIndex = this.$('#site-form-auto-index');
             if (autoIndex) autoIndex.checked = true;
+            // Reset SSL fields
+            const sslEnabled = this.$('#site-form-ssl-enabled');
+            if (sslEnabled) sslEnabled.checked = false;
+            this.onSSLToggle();
         }
 
         this.onTypeChange();
@@ -529,6 +546,18 @@ class SitesTab extends BaseTab {
         const proxyFields = this.$('#site-proxy-fields');
         if (staticFields) staticFields.style.display = type === 'static' ? 'block' : 'none';
         if (proxyFields) proxyFields.style.display = type === 'proxy' ? 'block' : 'none';
+    }
+
+    onSSLToggle() {
+        const enabled = this.$('#site-form-ssl-enabled')?.checked;
+        const fields = this.$('#site-ssl-fields');
+        if (fields) fields.style.display = enabled ? 'block' : 'none';
+    }
+
+    onSSLModeChange() {
+        const mode = this.$('#site-form-ssl-mode')?.value;
+        const emailGroup = this.$('#site-ssl-email-group');
+        if (emailGroup) emailGroup.style.display = mode === 'auto' ? 'block' : 'none';
     }
 
     async saveSite() {
@@ -557,6 +586,20 @@ class SitesTab extends BaseTab {
         } else {
             if (!proxyTarget) { this.message.error('请输入代理目标'); return; }
             data.proxy = { target: proxyTarget };
+        }
+
+        // SSL config
+        const sslEnabled = this.$('#site-form-ssl-enabled')?.checked;
+        if (sslEnabled) {
+            const sslMode = this.$('#site-form-ssl-mode')?.value;
+            data.ssl = {
+                enabled: true,
+                auto_https: sslMode === 'auto',
+                email: this.$('#site-form-ssl-email')?.value.trim() || '',
+                force_https: this.$('#site-form-ssl-force')?.checked || false,
+            };
+        } else {
+            data.ssl = { enabled: false };
         }
 
         try {

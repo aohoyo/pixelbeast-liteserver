@@ -202,24 +202,27 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建状态数据
+	serverUptime := time.Since(startTime)
 	statusData := map[string]interface{}{
-		"memory_mb":         processMem / 1024 / 1024,
-		"goroutines":        runtime.NumGoroutine(),
-		"go_version":        runtime.Version(),
-		"os":                runtime.GOOS,
-		"arch":              runtime.GOARCH,
-		"os_name":           getOSName(),
-		"os_name_short":     getOSShortName(),
-		"kernel":            getKernelVersion(),
-		"hostname":          getHostname(),
-		"uptime_str": formatUptime(getSystemUptime()),
-		"uptime":            time.Since(startTime).Milliseconds(),
-		"admin_running":     adminRunning,
-		"admin_port":        adminPort,
-		"sites_running":     sitesRunning,
-		"sites_enabled":     countEnabledSites(h.ConfigManager.Sites.Sites),
-		"sites_count":       len(h.ConfigManager.Sites.Sites),
-		"sites":             sites,
+		"memory_mb":       processMem / 1024 / 1024,
+		"goroutines":      runtime.NumGoroutine(),
+		"go_version":      runtime.Version(),
+		"os":              runtime.GOOS,
+		"arch":            runtime.GOARCH,
+		"os_name":         getOSName(),
+		"os_name_short":   getOSShortName(),
+		"kernel":          getKernelVersion(),
+		"hostname":        getHostname(),
+		"server_uptime":   formatUptime(serverUptime),
+		"server_uptime_ms": serverUptime.Milliseconds(),
+		"system_uptime":     formatUptime(getSystemUptime()),
+			"system_uptime_ms":  getSystemUptime().Milliseconds(),
+		"admin_running":   adminRunning,
+		"admin_port":      adminPort,
+		"sites_running":   sitesRunning,
+		"sites_enabled":   countEnabledSites(h.ConfigManager.Sites.Sites),
+		"sites_count":     len(h.ConfigManager.Sites.Sites),
+		"sites":           sites,
 	}
 
 	// 如果有 CSRF token，添加到响应中
@@ -439,7 +442,10 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"process_total":  processTotal,
 
 		// 运行时间
-		"uptime_str": formatUptime(getSystemUptime()),
+		"uptime_str":        formatUptime(time.Since(startTime)),
+		"server_uptime_ms":  time.Since(startTime).Milliseconds(),
+		"system_uptime":     formatUptime(getSystemUptime()),
+		"system_uptime_ms":  getSystemUptime().Milliseconds(),
 
 		// 网络
 		"net_sent_rate_kb":  netSpeedSentKB,
@@ -466,14 +472,14 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"ftp_users":     len(h.ConfigManager.FTP.Users),
 
 		// 保留原有字段
-		"memory_mb":  memoryMB,
-		"goroutines": runtime.NumGoroutine(),
-		"os":         runtime.GOOS,
-		"arch":       runtime.GOARCH,
-		"os_name":    getOSName(),
+		"memory_mb":     memoryMB,
+		"goroutines":    runtime.NumGoroutine(),
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+		"os_name":       getOSName(),
 		"os_name_short": getOSShortName(),
-		"kernel":     getKernelVersion(),
-		"hostname":   getHostname(),
+		"kernel":        getKernelVersion(),
+		"hostname":      getHostname(),
 	}
 
 	Success(w, statusData)
@@ -485,23 +491,22 @@ func formatUptime(d time.Duration) string {
 	days := totalSeconds / 86400
 	hours := (totalSeconds % 86400) / 3600
 	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
 	if days > 0 {
-		return fmt.Sprintf("%d 天 %d 小时", days, hours)
+		return fmt.Sprintf("%d天 %d时 %d分 %d秒", days, hours, minutes, seconds)
 	}
 	if hours > 0 {
-		return fmt.Sprintf("%d 小时 %d 分钟", hours, minutes)
+		return fmt.Sprintf("%d时 %d分 %d秒", hours, minutes, seconds)
 	}
-	return fmt.Sprintf("%d 分钟", minutes)
+	if minutes > 0 {
+		return fmt.Sprintf("%d分 %d秒", minutes, seconds)
+	}
+	return fmt.Sprintf("%d秒", seconds)
 }
 
 // getSystemUptime 获取系统运行时长
-func getSystemUptime() time.Duration {
-	info, err := host.Info()
-	if err == nil && info.Uptime > 0 {
-		return time.Duration(info.Uptime) * time.Second
-	}
-	return 0
-}
+// Windows 实现见 uptime_windows.go (GetTickCount64)
+// Linux/macOS 实现见 uptime_other.go (host.Info BootTime)
 
 // countEnabledSites 统计启用的站点数量
 func countEnabledSites(sites []config.SiteConfig) int {
@@ -598,7 +603,16 @@ func getOSShortName() string {
 		case "darwin":
 			osNameShortCache = readMacOSNameShort()
 		case "windows":
-			osNameShortCache = "Windows"
+			info, err := host.Info()
+			if err == nil && info.Platform != "" {
+				osNameShortCache = info.Platform
+				if info.PlatformVersion != "" {
+					parts := strings.SplitN(info.PlatformVersion, ".", 2)
+					osNameShortCache += " " + parts[0]
+				}
+			} else {
+				osNameShortCache = "Windows"
+			}
 		default:
 			osNameShortCache = runtime.GOOS
 		}
@@ -683,22 +697,29 @@ func readMacOSName() string {
 }
 
 func readWindowsName() string {
-	out, err := exec.Command("cmd", "/c", "ver").Output()
+	info, err := host.Info()
 	if err != nil {
 		return "Windows"
 	}
-	return strings.TrimSpace(string(out))
+	name := info.Platform
+	if info.PlatformVersion != "" {
+		name += " " + info.PlatformVersion
+	}
+	if name == "" {
+		return "Windows"
+	}
+	return name
 }
 
 // getKernelVersion 获取内核版本
 func getKernelVersion() string {
 	switch runtime.GOOS {
 	case "windows":
-		out, err := exec.Command("cmd", "/c", "ver").Output()
+		info, err := host.Info()
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSpace(string(out))
+		return info.KernelVersion
 	default:
 		out, err := exec.Command("uname", "-r").Output()
 		if err != nil {
@@ -789,7 +810,9 @@ func (h *Handler) scanCleanup(w http.ResponseWriter, r *http.Request) {
 
 	totalMB := 0.0
 	for _, item := range items {
-		totalMB += item.SizeMB
+		if !item.NeedAdmin {
+			totalMB += item.SizeMB
+		}
 	}
 
 	Success(w, map[string]interface{}{
@@ -804,7 +827,29 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cleanedMB := h.cleanSystemJunk()
+	// 解析选中的清理项
+	var req struct {
+		Items []string `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	if len(req.Items) == 0 {
+		Success(w, map[string]interface{}{
+			"cleaned_mb": 0,
+			"message":    "未选择清理项",
+		})
+		return
+	}
+
+	selected := make(map[string]bool, len(req.Items))
+	for _, item := range req.Items {
+		selected[item] = true
+	}
+
+	cleanedMB := h.cleanSystemJunk(selected)
 
 	username := h.getSessionUsername(r)
 	handlers.LogPanelConfigChange(username, fmt.Sprintf("系统清理 %.1f MB", cleanedMB), true)
@@ -817,12 +862,13 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 
 // junkItem 垃圾文件扫描项
 type junkItem struct {
-	Name    string  `json:"name"`
-	Desc    string  `json:"desc"`
-	SizeMB  float64 `json:"size_mb"`
-	Count   int     `json:"count"`
-	Path    string  `json:"path"`
-	Cleanable bool  `json:"cleanable"`
+	Name      string  `json:"name"`
+	Desc      string  `json:"desc"`
+	SizeMB    float64 `json:"size_mb"`
+	Count     int     `json:"count"`
+	Path      string  `json:"path"`
+	Cleanable bool    `json:"cleanable"`
+	NeedAdmin bool    `json:"need_admin"` // 需要管理员权限
 }
 
 // scanSystemJunk 扫描系统垃圾文件
@@ -836,22 +882,6 @@ func (h *Handler) scanSystemJunk() []junkItem {
 		items = h.scanDarwinJunk()
 	case "windows":
 		items = h.scanWindowsJunk()
-	}
-
-	// 通用：应用自身日志
-	logDir := handlers.GetLogBaseDir()
-	if logDir != "" {
-		sizeMB, count := calcDirSize(logDir)
-		if count > 0 {
-			items = append(items, junkItem{
-				Name:      "app_logs",
-				Desc:      "应用日志",
-				SizeMB:    sizeMB,
-				Count:     count,
-				Path:      logDir,
-				Cleanable: true,
-			})
-		}
 	}
 
 	return items
@@ -897,33 +927,6 @@ func (h *Handler) scanLinuxJunk() []junkItem {
 		}
 	}
 
-	// 系统日志 /var/log
-	if sizeMB, count := scanDirOlderThan("/var/log", 0); count > 0 {
-		// 排除当前活跃日志，只统计旧的和压缩的
-		items = append(items, junkItem{
-			Name: "system_logs", Desc: "系统日志 (/var/log)",
-			SizeMB: sizeMB, Count: count, Path: "/var/log", Cleanable: false,
-		})
-	}
-
-	// systemd journal 日志
-	if out, err := exec.Command("journalctl", "--disk-usage").Output(); err == nil {
-		line := strings.TrimSpace(string(out))
-		// 输出格式: "Archived and active journals take up X.XM on disk."
-		if idx := strings.Index(line, "take up"); idx >= 0 {
-			after := line[idx+8:]
-			if endIdx := strings.Index(after, " "); endIdx > 0 {
-				sizeStr := after[:endIdx]
-				if sizeMB := parseSizeToMB(sizeStr); sizeMB > 0 {
-					items = append(items, junkItem{
-						Name: "journal", Desc: "Systemd 日志",
-						SizeMB: sizeMB, Count: 1, Path: "/var/log/journal", Cleanable: true,
-					})
-				}
-			}
-		}
-	}
-
 	// 缩略图缓存
 	if home, err := os.UserHomeDir(); err == nil {
 		thumbDir := filepath.Join(home, ".cache", "thumbnails")
@@ -943,6 +946,39 @@ func (h *Handler) scanLinuxJunk() []junkItem {
 				SizeMB: sizeMB, Count: count, Path: crashDir, Cleanable: true,
 			})
 			break
+		}
+	}
+
+	// 回收站
+	if home, err := os.UserHomeDir(); err == nil {
+		trashDir := filepath.Join(home, ".local", "share", "Trash", "files")
+		if sizeMB, count := calcDirSize(trashDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "trash", Desc: "回收站",
+				SizeMB: sizeMB, Count: count, Path: trashDir, Cleanable: true,
+			})
+		}
+	}
+
+	// npm 缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		npmCache := filepath.Join(home, ".npm", "_cacache")
+		if sizeMB, count := calcDirSize(npmCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "npm_cache", Desc: "npm 缓存",
+				SizeMB: sizeMB, Count: count, Path: npmCache, Cleanable: true,
+			})
+		}
+	}
+
+	// pip 缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		pipCache := filepath.Join(home, ".cache", "pip")
+		if sizeMB, count := calcDirSize(pipCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "pip_cache", Desc: "pip 缓存",
+				SizeMB: sizeMB, Count: count, Path: pipCache, Cleanable: true,
+			})
 		}
 	}
 
@@ -970,17 +1006,53 @@ func (h *Handler) scanDarwinJunk() []junkItem {
 		if sizeMB, count := calcDirSize(cacheDir); count > 0 {
 			items = append(items, junkItem{
 				Name: "user_cache", Desc: "用户缓存 (Library/Caches)",
-				SizeMB: sizeMB, Count: count, Path: cacheDir, Cleanable: false,
+				SizeMB: sizeMB, Count: count, Path: cacheDir, Cleanable: true,
 			})
 		}
 	}
 
-	// 系统日志
-	if sizeMB, count := calcDirSize("/var/log"); count > 0 {
-		items = append(items, junkItem{
-			Name: "system_logs", Desc: "系统日志 (/var/log)",
-			SizeMB: sizeMB, Count: count, Path: "/var/log", Cleanable: false,
-		})
+	// 废纸篓
+	if home, err := os.UserHomeDir(); err == nil {
+		trashDir := filepath.Join(home, ".Trash")
+		if sizeMB, count := calcDirSize(trashDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "trash", Desc: "废纸篓",
+				SizeMB: sizeMB, Count: count, Path: trashDir, Cleanable: true,
+			})
+		}
+	}
+
+	// Xcode 编译缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		xcodeDir := filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
+		if sizeMB, count := calcDirSize(xcodeDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "xcode_derived", Desc: "Xcode 编译缓存",
+				SizeMB: sizeMB, Count: count, Path: xcodeDir, Cleanable: true,
+			})
+		}
+	}
+
+	// npm 缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		npmCache := filepath.Join(home, ".npm", "_cacache")
+		if sizeMB, count := calcDirSize(npmCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "npm_cache", Desc: "npm 缓存",
+				SizeMB: sizeMB, Count: count, Path: npmCache, Cleanable: true,
+			})
+		}
+	}
+
+	// pip 缓存
+	if home, err := os.UserHomeDir(); err == nil {
+		pipCache := filepath.Join(home, ".cache", "pip")
+		if sizeMB, count := calcDirSize(pipCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "pip_cache", Desc: "pip 缓存",
+				SizeMB: sizeMB, Count: count, Path: pipCache, Cleanable: true,
+			})
+		}
 	}
 
 	return items
@@ -991,107 +1063,389 @@ func (h *Handler) scanWindowsJunk() []junkItem {
 	var items []junkItem
 
 	// Windows Temp
+	admin := isAdmin()
 	for _, tmpDir := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), `C:\Windows\Temp`} {
 		if tmpDir == "" {
 			continue
 		}
+		// C:\Windows\Temp 需要管理员权限
+		needAdmin := !admin && strings.HasPrefix(tmpDir, `C:\Windows`)
 		if sizeMB, count := scanDirOlderThan(tmpDir, 24*time.Hour); count > 0 {
 			items = append(items, junkItem{
 				Name: "system_tmp", Desc: "系统临时文件",
-				SizeMB: sizeMB, Count: count, Path: tmpDir, Cleanable: true,
+				SizeMB: sizeMB, Count: count, Path: tmpDir, Cleanable: !needAdmin, NeedAdmin: needAdmin,
 			})
 			break
 		}
 	}
 
-	// Windows Update 缓存
+	// Windows Update 缓存（需要管理员权限）
 	if sizeMB, count := calcDirSize(`C:\Windows\SoftwareDistribution\Download`); count > 0 {
 		items = append(items, junkItem{
 			Name: "update_cache", Desc: "Windows 更新缓存",
-			SizeMB: sizeMB, Count: count, Path: `C:\Windows\SoftwareDistribution\Download`, Cleanable: false,
+			SizeMB: sizeMB, Count: count, Path: `C:\Windows\SoftwareDistribution\Download`,
+			Cleanable: admin, NeedAdmin: !admin,
 		})
+	}
+
+	// 崩溃转储
+	crashDir := os.Getenv("LOCALAPPDATA") + `\CrashDumps`
+	if crashDir != `\CrashDumps` {
+		if sizeMB, count := calcDirSize(crashDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "crash_dumps", Desc: "崩溃转储文件",
+				SizeMB: sizeMB, Count: count, Path: crashDir, Cleanable: true,
+			})
+		}
+	}
+
+	// 缩略图缓存
+	thumbDir := os.Getenv("LOCALAPPDATA") + `\Microsoft\Windows\Explorer`
+	if thumbDir != `\Microsoft\Windows\Explorer` {
+		if sizeMB, count := scanFilesByExt(thumbDir, ".db"); count > 0 {
+			items = append(items, junkItem{
+				Name: "thumb_cache", Desc: "缩略图缓存",
+				SizeMB: sizeMB, Count: count, Path: thumbDir, Cleanable: true,
+			})
+		}
+	}
+
+	// 预读取缓存（需要管理员权限）
+	if sizeMB, count := calcDirSize(`C:\Windows\Prefetch`); count > 0 {
+		items = append(items, junkItem{
+			Name: "prefetch", Desc: "预读取缓存",
+			SizeMB: sizeMB, Count: count, Path: `C:\Windows\Prefetch`,
+			Cleanable: admin, NeedAdmin: !admin,
+		})
+	}
+
+	// 回收站
+	if out, err := exec.Command("powershell", "-Command",
+		"(New-Object -ComObject Shell.Application).NameSpace(0xA).Items().Count").Output(); err == nil {
+		if strings.TrimSpace(string(out)) != "0" {
+			items = append(items, junkItem{
+				Name: "recycle_bin", Desc: "回收站",
+				SizeMB: 0, Count: -1, Path: "Recycle Bin", Cleanable: true,
+			})
+		}
 	}
 
 	return items
 }
 
 // cleanSystemJunk 执行系统垃圾清理
-func (h *Handler) cleanSystemJunk() float64 {
+func (h *Handler) cleanSystemJunk(selected map[string]bool) float64 {
 	var totalCleaned float64
 
 	switch runtime.GOOS {
 	case "linux":
-		totalCleaned += h.cleanLinuxJunk()
+		totalCleaned += h.cleanLinuxJunk(selected)
 	case "darwin":
-		totalCleaned += h.cleanDarwinJunk()
+		totalCleaned += h.cleanDarwinJunk(selected)
 	case "windows":
-		totalCleaned += h.cleanWindowsJunk()
+		totalCleaned += h.cleanWindowsJunk(selected)
 	}
-
-	// 清理应用日志
-	handlers.CleanupNow()
-	totalCleaned += h.truncateAppLogs()
 
 	return totalCleaned
 }
 
-func (h *Handler) cleanLinuxJunk() float64 {
+func (h *Handler) cleanLinuxJunk(selected map[string]bool) float64 {
 	var cleaned float64
 
-	// 清理 /tmp 旧文件
-	cleaned += cleanDirOlderThan("/tmp", 24*time.Hour)
-	// 清理 /var/tmp 旧文件
-	cleaned += cleanDirOlderThan("/var/tmp", 24*time.Hour)
+	// 清理临时文件（尝试 sudo，失败则直接清理）
+	if selected["system_tmp"] {
+		cleaned += sudoCleanDirOlderThan("/tmp", 24*time.Hour)
+	}
+	if selected["var_tmp"] {
+		cleaned += sudoCleanDirOlderThan("/var/tmp", 24*time.Hour)
+	}
 
 	// 清理包管理器缓存
-	for _, cacheDir := range []string{"/var/cache/apt/archives", "/var/cache/yum", "/var/cache/dnf"} {
-		if _, err := os.Stat(cacheDir); err == nil {
-			if strings.Contains(cacheDir, "apt") {
-				// apt: 只删除 .deb 包，保留锁文件
-				cleaned += cleanFilesByExt(cacheDir, ".deb")
-			} else {
-				cleaned += cleanFilesByExt(cacheDir, ".rpm")
+	if selected["pkg_cache"] {
+		// 先计算缓存大小，清理后差值即为清理量
+		var beforeMB float64
+		cacheDir := ""
+		for _, d := range []string{"/var/cache/apt/archives", "/var/cache/yum", "/var/cache/dnf"} {
+			if mb, _ := calcDirSize(d); mb > 0 {
+				beforeMB = mb
+				cacheDir = d
+				break
+			}
+		}
+		if cacheDir != "" {
+			if _, err := exec.LookPath("apt-get"); err == nil {
+				exec.Command("sudo", "apt-get", "clean", "-y").Run()
+			} else if _, err := exec.LookPath("yum"); err == nil {
+				exec.Command("sudo", "yum", "clean", "all", "-y").Run()
+			} else if _, err := exec.LookPath("dnf"); err == nil {
+				exec.Command("sudo", "dnf", "clean", "all", "-y").Run()
+			}
+			afterMB, _ := calcDirSize(cacheDir)
+			if afterMB < beforeMB {
+				cleaned += beforeMB - afterMB
 			}
 		}
 	}
 
-	// 清理 systemd journal（保留最近 3 天）
-	if _, err := exec.LookPath("journalctl"); err == nil {
-		exec.Command("journalctl", "--vacuum-time=3d").Run()
+	if selected["thumbnails"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			thumbDir := filepath.Join(home, ".cache", "thumbnails")
+			cleaned += sudoCleanDirContents(thumbDir)
+		}
 	}
 
-	// 清理缩略图缓存
-	if home, err := os.UserHomeDir(); err == nil {
-		thumbDir := filepath.Join(home, ".cache", "thumbnails")
-		cleaned += cleanDirContents(thumbDir)
+	if selected["crash_dumps"] {
+		for _, dir := range []string{"/var/crash", "/var/lib/systemd/coredump"} {
+			cleaned += sudoCleanDirContents(dir)
+		}
 	}
 
-	// 清理崩溃转储
-	for _, dir := range []string{"/var/crash", "/var/lib/systemd/coredump"} {
-		cleaned += cleanDirContents(dir)
+	if selected["trash"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			trashDir := filepath.Join(home, ".local", "share", "Trash", "files")
+			cleaned += sudoCleanDirContents(trashDir)
+		}
+	}
+
+	if selected["npm_cache"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			npmCache := filepath.Join(home, ".npm", "_cacache")
+			cleaned += sudoCleanDirContents(npmCache)
+		}
+	}
+
+	if selected["pip_cache"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			pipCache := filepath.Join(home, ".cache", "pip")
+			cleaned += sudoCleanDirContents(pipCache)
+		}
 	}
 
 	return cleaned
 }
 
-func (h *Handler) cleanDarwinJunk() float64 {
+func (h *Handler) cleanDarwinJunk(selected map[string]bool) float64 {
 	var cleaned float64
-	cleaned += cleanDirOlderThan("/tmp", 24*time.Hour)
-	cleaned += cleanDirOlderThan("/private/tmp", 24*time.Hour)
+
+	if selected["system_tmp"] {
+		cleaned += sudoCleanDirOlderThan("/tmp", 24*time.Hour)
+		cleaned += sudoCleanDirOlderThan("/private/tmp", 24*time.Hour)
+	}
+
+	if selected["user_cache"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			cacheDir := filepath.Join(home, "Library", "Caches")
+			cleaned += sudoCleanDirContents(cacheDir)
+		}
+	}
+
+	if selected["trash"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			trashDir := filepath.Join(home, ".Trash")
+			cleaned += sudoCleanDirContents(trashDir)
+		}
+	}
+
+	if selected["xcode_derived"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			xcodeDir := filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
+			cleaned += sudoCleanDirContents(xcodeDir)
+		}
+	}
+
+	if selected["npm_cache"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			npmCache := filepath.Join(home, ".npm", "_cacache")
+			cleaned += sudoCleanDirContents(npmCache)
+		}
+	}
+
+	if selected["pip_cache"] {
+		if home, err := os.UserHomeDir(); err == nil {
+			pipCache := filepath.Join(home, ".cache", "pip")
+			cleaned += sudoCleanDirContents(pipCache)
+		}
+	}
+
 	return cleaned
 }
 
-func (h *Handler) cleanWindowsJunk() float64 {
+func (h *Handler) cleanWindowsJunk(selected map[string]bool) float64 {
 	var cleaned float64
-	for _, tmpDir := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), `C:\Windows\Temp`} {
-		if tmpDir != "" {
-			cleaned += cleanDirOlderThan(tmpDir, 24*time.Hour)
+
+	if selected["system_tmp"] {
+		for _, tmpDir := range []string{os.Getenv("TEMP"), os.Getenv("TMP"), `C:\Windows\Temp`} {
+			if tmpDir != "" {
+				cleaned += sudoCleanDirOlderThan(tmpDir, 24*time.Hour)
+			}
+		}
+	}
+
+	if selected["update_cache"] {
+		// 停止 Windows Update 服务，释放文件锁
+		runCmdTimeout("net", 10*time.Second, "stop", "wuauserv")
+		cleaned += sudoCleanDirContents(`C:\Windows\SoftwareDistribution\Download`)
+		runCmdTimeout("net", 10*time.Second, "start", "wuauserv")
+	}
+
+	if selected["crash_dumps"] {
+		crashDir := os.Getenv("LOCALAPPDATA") + "\\CrashDumps"
+		if crashDir != "\\CrashDumps" {
+			cleaned += sudoCleanDirContents(crashDir)
+		}
+	}
+
+	if selected["thumb_cache"] {
+		thumbDir := os.Getenv("LOCALAPPDATA") + "\\Microsoft\\Windows\\Explorer"
+		if thumbDir != "\\Microsoft\\Windows\\Explorer" {
+			cleaned += cleanFilesByExt(thumbDir, ".db")
+		}
+	}
+
+	if selected["prefetch"] {
+		// 停止 SysMain 服务，释放文件锁
+		runCmdTimeout("net", 10*time.Second, "stop", "SysMain")
+		cleaned += sudoCleanDirContents(`C:\Windows\Prefetch`)
+		runCmdTimeout("net", 10*time.Second, "start", "SysMain")
+	}
+
+	if selected["recycle_bin"] {
+		runCmdTimeout("powershell", 30*time.Second, "-Command", "Clear-RecycleBin", "-Force")
+	}
+
+	return cleaned
+}
+
+// ==================== 垃圾扫描/清理工具函数 ====================
+
+// cleanFailedItem 清理失败的文件/目录项
+type cleanFailedItem struct {
+	path  string
+	size  float64
+	isDir bool
+}
+
+// sudoCleanDirOlderThan 尝试清理目录中超过指定时间的文件（优先提权）
+func sudoCleanDirOlderThan(dir string, age time.Duration) float64 {
+	cutoff := time.Now().Add(-age)
+	var cleaned float64
+	var failed []cleanFailedItem
+
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !info.ModTime().Before(cutoff) {
+			return nil
+		}
+		sizeMB := float64(info.Size()) / 1024 / 1024
+
+		// 先尝试直接删除
+		if os.Remove(path) == nil {
+			cleaned += sizeMB
+			return nil
+		}
+		// 记录失败项，稍后批量提权删除
+		failed = append(failed, cleanFailedItem{path, sizeMB, false})
+		return nil
+	})
+
+	cleaned += sudoBatchClean(failed)
+	return cleaned
+}
+
+// sudoCleanDirContents 清空目录内容（优先提权）
+func sudoCleanDirContents(dir string) float64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var cleaned float64
+	var failed []cleanFailedItem
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		// 计算实际大小（包括子目录）
+		var sizeMB float64
+		if entry.IsDir() {
+			sizeMB, _ = calcDirSize(path)
+		} else {
+			if info, err := entry.Info(); err == nil {
+				sizeMB = float64(info.Size()) / 1024 / 1024
+			}
+		}
+		// 先尝试直接删除
+		var delErr error
+		if entry.IsDir() {
+			delErr = os.RemoveAll(path)
+		} else {
+			delErr = os.Remove(path)
+		}
+		if delErr == nil {
+			cleaned += sizeMB
+			continue
+		}
+		// 记录失败项，稍后批量提权删除
+		failed = append(failed, cleanFailedItem{path, sizeMB, entry.IsDir()})
+	}
+
+	cleaned += sudoBatchClean(failed)
+	return cleaned
+}
+
+// sudoBatchClean 批量提权删除文件/目录（Windows: 单条 PowerShell; Linux: sudo）
+func sudoBatchClean(items []cleanFailedItem) float64 {
+	if len(items) == 0 {
+		return 0
+	}
+	if runtime.GOOS == "windows" {
+		// 构建一条 PowerShell 命令批量删除
+		var paths []string
+		for _, item := range items {
+			paths = append(paths, fmt.Sprintf("'%s'", item.path))
+		}
+		cmd := fmt.Sprintf("Remove-Item -Path %s -Force -ErrorAction SilentlyContinue", strings.Join(paths, ","))
+		runCmdTimeout("powershell", 30*time.Second, "-Command", cmd)
+		// 检查哪些已删除，统计清理量
+		var cleaned float64
+		for _, item := range items {
+			if _, err := os.Stat(item.path); err != nil {
+				cleaned += item.size
+			}
+		}
+		return cleaned
+	}
+	// Linux/macOS: 逐个 sudo 删除
+	var cleaned float64
+	for _, item := range items {
+		if item.isDir {
+			if exec.Command("sudo", "rm", "-rf", item.path).Run() == nil {
+				cleaned += item.size
+			}
+		} else {
+			if exec.Command("sudo", "rm", "-f", item.path).Run() == nil {
+				cleaned += item.size
+			}
 		}
 	}
 	return cleaned
 }
 
-// ==================== 垃圾扫描/清理工具函数 ====================
+// runCmdTimeout 带超时执行命令，超时则终止进程
+func runCmdTimeout(name string, timeout time.Duration, args ...string) {
+	cmd := exec.Command(name, args...)
+	cmd.Start()
+	done := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		cmd.Process.Kill()
+	}
+}
 
 // calcDirSize 计算目录总大小和文件数
 func calcDirSize(dir string) (totalMB float64, count int) {
@@ -1169,6 +1523,26 @@ func cleanDirContents(dir string) float64 {
 }
 
 // cleanFilesByExt 清理目录中指定扩展名的文件
+// scanFilesByExt 扫描目录中指定扩展名的文件大小
+func scanFilesByExt(dir, ext string) (totalMB float64, count int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ext) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		totalMB += float64(info.Size()) / 1024 / 1024
+		count++
+	}
+	return
+}
+
 func cleanFilesByExt(dir, ext string) float64 {
 	var cleaned float64
 	entries, err := os.ReadDir(dir)

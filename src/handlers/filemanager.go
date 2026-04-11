@@ -33,13 +33,6 @@ func NewFileManager() *FileManager {
 	// 添加默认书签
 	defaultBookmarks := []*Bookmark{
 		{
-			ID:       "data",
-			Name:     "数据目录",
-			Path:     "./data",
-			Readonly: false,
-			Icon:     "folder",
-		},
-		{
 			ID:       "log",
 			Name:     "日志目录",
 			Path:     "./log",

@@ -434,13 +434,155 @@ class HomeTab extends BaseTab {
     }
 
     async scanCleanup() {
-        // 确认对话框
-        this.dialog.confirm('确定要清理系统垃圾吗？将清理日志文件和临时文件。', () => {
-            this.doCleanup();
+        const btn = this.$('#tooltip-cleanup-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '扫描中...'; }
+
+        try {
+            const data = await this.api.getJSON('/api/system/cleanup-scan', { useCache: false });
+            if (!data || !data.items || data.items.length === 0) {
+                this.toast.success('系统很干净，无需清理');
+                return;
+            }
+            this.showCleanupDialog(data.items, data.total_mb);
+        } catch (error) {
+            this.toast.error('扫描失败');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '立即清理'; }
+        }
+    }
+
+    showCleanupDialog(items, totalMB) {
+        const itemsHTML = items.map((item, index) => {
+            const disabled = item.need_admin;
+            const adminTip = disabled ? '<span class="cleanup-item-admin-tip">需管理员权限</span>' : '';
+            return `
+            <div class="cleanup-item${disabled ? ' cleanup-item--disabled' : ''}" data-index="${index}">
+                <label class="cleanup-item-label">
+                    <input type="checkbox" class="cleanup-item-check"
+                           data-name="${item.name}" ${disabled ? 'disabled' : 'checked'}>
+                    <div class="cleanup-item-info">
+                        <span class="cleanup-item-name">${item.desc}${adminTip}</span>
+                        <span class="cleanup-item-path">${item.path}</span>
+                    </div>
+                    <span class="cleanup-item-size">${this.formatCleanupSize(item.size_mb)}</span>
+                </label>
+            </div>
+        `}).join('');
+
+        const totalHTML = `
+            <div class="cleanup-dialog-total">
+                <label class="cleanup-select-all">
+                    <input type="checkbox" id="cleanup-select-all" checked>
+                    <span>全选</span>
+                </label>
+                <span class="cleanup-total-size">共 <strong id="cleanup-total-value">${this.formatCleanupSize(items.filter(i => !i.need_admin).reduce((s, i) => s + i.size_mb, 0))}</strong></span>
+            </div>
+        `;
+
+        const dialogHTML = `
+            <div class="cleanup-dialog-content">
+                <div class="cleanup-dialog-list">${itemsHTML}</div>
+                ${totalHTML}
+            </div>
+        `;
+
+        const dialogEl = document.createElement('div');
+        dialogEl.className = 'dialog dialog--dynamic dialog--info';
+        dialogEl.innerHTML = `
+            <div class="dialog-content cleanup-dialog-wrapper">
+                <div class="dialog-header">
+                    <i class="icon icon-tip"></i>
+                    <h3>垃圾清理</h3>
+                </div>
+                <div class="dialog-body">${dialogHTML}</div>
+                <div class="dialog-footer">
+                    <button class="btn btn-secondary dialog-cancel">取消</button>
+                    <button class="btn btn-danger cleanup-confirm-btn" id="cleanup-confirm-btn">立即清理</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialogEl);
+        this._cleanupDialog = dialogEl;
+        dialogEl.offsetHeight;
+        dialogEl.classList.add('active');
+
+        this.bindCleanupDialogEvents(dialogEl, items);
+    }
+
+    bindCleanupDialogEvents(dialogEl, items) {
+        const selectAll = dialogEl.querySelector('#cleanup-select-all');
+        const checkboxes = dialogEl.querySelectorAll('.cleanup-item-check');
+
+        selectAll.addEventListener('change', () => {
+            checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = selectAll.checked; });
+            this.updateCleanupTotal(dialogEl, items);
+        });
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', () => {
+                const checkable = [...checkboxes].filter(c => !c.disabled);
+                const allChecked = checkable.every(c => c.checked);
+                const anyChecked = checkable.some(c => c.checked);
+                selectAll.checked = allChecked;
+                selectAll.indeterminate = anyChecked && !allChecked;
+                this.updateCleanupTotal(dialogEl, items);
+            });
+        });
+
+        dialogEl.querySelector('#cleanup-confirm-btn').addEventListener('click', () => {
+            const selectedNames = [...checkboxes]
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.name);
+
+            if (selectedNames.length === 0) {
+                this.toast.error('请至少选择一项');
+                return;
+            }
+            this.closeCleanupDialog();
+            this.doCleanupSelected(selectedNames);
+        });
+
+        dialogEl.querySelector('.dialog-cancel').addEventListener('click', () => {
+            this.closeCleanupDialog();
+        });
+
+        dialogEl.addEventListener('click', (e) => {
+            if (e.target === dialogEl) {
+                this.closeCleanupDialog();
+            }
         });
     }
 
-    async doCleanup() {
+    updateCleanupTotal(dialogEl, items) {
+        const checkboxes = dialogEl.querySelectorAll('.cleanup-item-check');
+        let total = 0;
+        checkboxes.forEach(cb => {
+            if (cb.checked && !cb.disabled) {
+                const item = items.find(i => i.name === cb.dataset.name);
+                if (item) total += item.size_mb;
+            }
+        });
+        const totalEl = dialogEl.querySelector('#cleanup-total-value');
+        if (totalEl) totalEl.textContent = this.formatCleanupSize(total);
+    }
+
+    formatCleanupSize(mb) {
+        if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+        if (mb >= 1) return mb.toFixed(1) + ' MB';
+        if (mb > 0) return (mb * 1024).toFixed(0) + ' KB';
+        return '0 KB';
+    }
+
+    closeCleanupDialog() {
+        if (this._cleanupDialog) {
+            this._cleanupDialog.classList.remove('active');
+            const el = this._cleanupDialog;
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+            this._cleanupDialog = null;
+        }
+    }
+
+    async doCleanupSelected(selectedNames) {
         const btn = this.$('#tooltip-cleanup-btn');
         if (btn) { btn.disabled = true; btn.textContent = '清理中...'; }
 
@@ -450,15 +592,11 @@ class HomeTab extends BaseTab {
         await this.animateRingTo('disk', 0, 800);
 
         try {
-            const response = await this.api.post('/api/system/cleanup');
-            if (response?.ok) {
-                const data = await this.api.parseJSON(response);
-
+            const data = await this.api.postJSON('/api/system/cleanup', { items: selectedNames });
+            if (data) {
                 await this.refresh();
-
                 const newPercent = this.currentData?.disk_percent || 0;
                 await this.animateRingTo('disk', newPercent, 800);
-
                 this.toast.success(`成功清理 ${(data?.cleaned_mb || 0).toFixed(1)} MB`);
             }
         } catch (error) {

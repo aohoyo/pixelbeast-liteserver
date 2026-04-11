@@ -1,0 +1,599 @@
+/* ==================== 证书管理 ==================== */
+
+/* 证书页面标签栏 */
+.cert-tabs {
+    display: flex;
+    gap: var(--space-xs);
+    padding: 0;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: var(--space-lg);
+}
+
+.cert-tab-pane {
+    display: none;
+}
+
+.cert-tab-pane.active {
+    display: block;
+}
+
+/* 证书统计栏 */
+.cert-summary {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.cert-summary-item {
+    flex: 1;
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.cert-summary-item .summary-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.cert-summary-item .summary-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.cert-summary-item.warning .summary-value {
+    color: var(--warning);
+}
+
+.cert-summary-item.success .summary-value {
+    color: var(--success);
+}
+
+/* 证书列表 */
+.cert-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.cert-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    transition: border-color var(--transition);
+}
+
+.cert-item:hover {
+    border-color: var(--primary);
+}
+
+.cert-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.cert-item-domain {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cert-item-meta {
+    display: flex;
+    gap: var(--space-md);
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.cert-item-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.cert-item-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+}
+
+/* 证书徽章 */
+.cert-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.cert-badge-auto {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.cert-badge-litessl {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.cert-badge-custom {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.cert-badge-expiring {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.cert-badge-expired {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.cert-badge-selfsigned {
+    background: rgba(120, 113, 108, 0.15);
+    color: #78716c;
+}
+
+/* 天数颜色 */
+.days-safe { color: var(--success); }
+.days-warn { color: var(--warning); }
+.days-danger { color: var(--danger); }
+
+/* 验证方式标签 */
+.cert-challenge-icon {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+/* 证书空状态 */
+.cert-empty {
+    text-align: center;
+    padding: var(--space-lg) 0;
+    color: var(--text-muted);
+}
+
+.cert-empty-icon {
+    font-size: 48px;
+    margin-bottom: var(--space-md);
+    opacity: 0.3;
+}
+
+/* 证书表单 */
+.cert-form-group {
+    margin-bottom: var(--space-md);
+}
+
+.cert-form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.cert-form-group .form-input,
+.cert-form-group .form-select {
+    width: 100%;
+}
+
+/* 注意事项 */
+.cert-request-notes {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-top: 8px;
+}
+
+.cert-note-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.cert-request-notes ul {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding-left: 16px;
+    margin: 0;
+}
+
+/* ==================== 步骤指示器 ==================== */
+
+.cert-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: var(--space-lg);
+    padding: var(--space-sm) 0;
+}
+
+.cert-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+}
+
+.cert-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 2px solid var(--border);
+    transition: all 0.2s ease;
+}
+
+.cert-step-text {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    transition: color 0.2s ease;
+}
+
+.cert-step-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    margin: 0 4px;
+    margin-bottom: 16px;
+    transition: background 0.2s ease;
+}
+
+/* 步骤状态 */
+.cert-step.active .cert-step-num {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+}
+
+.cert-step.active .cert-step-text {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.cert-step.done .cert-step-num {
+    background: var(--success);
+    color: #fff;
+    border-color: var(--success);
+}
+
+.cert-step.done .cert-step-text {
+    color: var(--success);
+}
+
+.cert-step-line.done {
+    background: var(--success);
+}
+
+.cert-step.error .cert-step-num {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+}
+
+.cert-step.error .cert-step-text {
+    color: var(--danger);
+}
+
+/* ==================== 日志面板 ==================== */
+
+.cert-log-box {
+    background: var(--bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.cert-log-title {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 8px 12px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cert-log-content {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 12px 12px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+.cert-log-entry {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.cert-log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    font-size: 11px;
+}
+
+.cert-log-msg {
+    word-break: break-all;
+}
+
+.cert-log-msg.log-info { color: var(--text-secondary); }
+.cert-log-msg.log-success { color: var(--success); }
+.cert-log-msg.log-error { color: var(--danger); }
+.cert-log-msg.log-warn { color: var(--warning); }
+
+/* ==================== DNS 验证信息面板 ==================== */
+
+.cert-dns-info {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.cert-dns-record {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.cert-dns-record:last-child {
+    border-bottom: none;
+}
+
+.cert-dns-record label {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.cert-dns-record code {
+    flex: 1;
+    font-size: 13px;
+    padding: 4px 8px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+    word-break: break-all;
+    user-select: all;
+}
+
+.cert-copy-btn {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+/* 文件验证信息面板 */
+.cert-file-info {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.cert-file-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.cert-file-info code {
+    display: block;
+    font-size: 12px;
+    padding: var(--space-sm);
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+    word-break: break-all;
+    user-select: all;
+    margin: var(--space-xs) 0;
+}
+
+/* DNS 凭证区域 */
+.cert-dns-credentials {
+    margin-top: var(--space-sm);
+    padding: var(--space-md);
+    background: var(--bg);
+    border-radius: var(--radius);
+}
+
+.cert-dns-credentials .cert-form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* ==================== DNS 服务商管理 ==================== */
+
+.dns-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.dns-provider-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    transition: border-color var(--transition), background var(--transition);
+}
+
+.dns-provider-item:hover {
+    border-color: var(--primary);
+}
+
+.dns-provider-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex: 1;
+    min-width: 0;
+}
+
+.dns-provider-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.dns-provider-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+}
+
+.dns-provider-actions .btn {
+    font-size: 11px;
+    padding: 4px 10px;
+}
+
+/* 测试状态内联指示 */
+.dns-test-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    margin-left: var(--space-sm);
+    animation: fadeIn 0.3s ease;
+}
+
+.dns-test-status.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--success);
+}
+
+.dns-test-status.fail {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+
+/* ==================== 上传区域 ==================== */
+
+.cert-upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-lg);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+}
+
+.cert-upload-zone:hover {
+    border-color: var(--primary);
+    background: rgba(249, 115, 22, 0.05);
+}
+
+.cert-upload-zone.dragover {
+    border-color: var(--primary);
+    background: rgba(249, 115, 22, 0.1);
+}
+
+.cert-upload-zone input[type="file"] {
+    display: none;
+}
+
+.cert-upload-zone .upload-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+.cert-upload-zone .upload-text {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.cert-upload-zone .upload-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.cert-upload-zone.file-selected {
+    border-color: var(--success);
+    border-style: solid;
+}
+
+.cert-upload-zone.file-selected .upload-text {
+    color: var(--success);
+}
+
+/* ==================== 输入框眼睛按钮 ==================== */
+
+.input-with-toggle {
+    display: flex;
+    gap: 0;
+}
+
+.input-with-toggle .form-input {
+    flex: 1;
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.input-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.input-toggle-btn:hover {
+    color: var(--primary);
+    background: var(--bg-hover);
+}
+
+.input-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+}

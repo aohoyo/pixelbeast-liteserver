@@ -81,8 +81,8 @@ func (s *FTPServer) Start() error {
 	s.listener = listener
 	s.running = true
 
-	Log(LogCategoryFTP, "access", LogLevelInfo, "[FTP] 服务器启动在端口 %d", s.Config.Port)
-	Log(LogCategoryFTP, "access", LogLevelInfo, "[FTP] 根目录: %s", s.rootDir)
+	LogPanelRuntime(LogLevelInfo, "[FTP] 服务器启动在端口 %d", s.Config.Port)
+	LogPanelRuntime(LogLevelInfo, "[FTP] 根目录: %s", s.rootDir)
 
 	go s.acceptConnections()
 	return nil
@@ -210,7 +210,7 @@ func (c *FTPClient) handleCommand(cmd, args string) {
 		c.conn.Close()
 	case "PWD", "XPWD":
 		if c.checkLogin() {
-			c.sendMessage(fmt.Sprintf("257 \"%s\" is current directory", c.cwd))
+			c.sendMessage(fmt.Sprintf("257 \"%s\" is current directory", c.fromUTF8(c.cwd)))
 		}
 	case "EPSV":
 		if c.checkLogin() {
@@ -266,6 +266,7 @@ func (c *FTPClient) handleCommand(cmd, args string) {
 		}
 	case "FEAT":
 		c.sendMessage("211-Features:")
+		c.sendMessage(" UTF8")
 		c.sendMessage(" PASV")
 		c.sendMessage(" EPSV")
 		c.sendMessage(" PORT")
@@ -465,7 +466,7 @@ func (c *FTPClient) handleCWD(path string) {
 	}
 
 	c.cwd = newPath
-	c.sendMessage("250 Directory changed to " + c.cwd)
+	c.sendMessage("250 Directory changed to " + c.fromUTF8(c.cwd))
 }
 
 // handleCDUP 处理CDUP命令
@@ -476,7 +477,7 @@ func (c *FTPClient) handleCDUP() {
 			c.cwd = "/"
 		}
 	}
-	c.sendMessage("250 Directory changed to " + c.cwd)
+	c.sendMessage("250 Directory changed to " + c.fromUTF8(c.cwd))
 }
 
 // handleOPTS 处理OPTS命令 (选项设置)
@@ -656,7 +657,7 @@ func (c *FTPClient) handleLIST(args string) {
 			mode,
 			info.Size(),
 			info.ModTime().Format("Jan 02 15:04"),
-			entry.Name(),
+			c.fromUTF8(entry.Name()),
 		)
 		dataConn.Write([]byte(line))
 	}
@@ -809,7 +810,7 @@ func (c *FTPClient) handleMKD(dirname string) {
 		return
 	}
 
-	c.sendMessage(fmt.Sprintf("257 \"%s\" created", path))
+	c.sendMessage(fmt.Sprintf("257 \"%s\" created", c.fromUTF8(path)))
 }
 
 // handleRMD 处理RMD命令
@@ -829,6 +830,8 @@ func (c *FTPClient) handleRMD(dirname string) {
 
 // handleDELE 处理DELE命令
 func (c *FTPClient) handleDELE(filename string) {
+	// 转换文件名编码
+	filename = c.toUTF8(filename)
 	path := c.resolvePath(filename)
 	fullPath := filepath.Join(c.rootDir, path)
 

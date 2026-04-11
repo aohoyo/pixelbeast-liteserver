@@ -2,77 +2,93 @@
 
 ## 整体架构
 
-像素兽采用**两层架构**设计，清晰的职责分离：
+像素兽采用**三层架构**设计，清晰的职责分离：
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    协议层 (handlers/)                    │
-│                                                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ HTTP Server │  │ FTP Server  │  │ VHost Router│     │
-│  │  (http.go)  │  │  (ftp.go)   │  │ (vhost.go)  │     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-│                                                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ SSL Manager │  │  Logger     │  │ FileManager │     │
-│  │  (ssl.go)   │  │ (logger.go) │  │(filemanager)│     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│                    业务层 (admin/)                       │
-│                                                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ Sites API   │  │  FTP API    │  │ Files API   │     │
-│  │ (sites.go)  │  │  (ftp.go)   │  │ (files.go)  │     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-│                                                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ System API  │  │  Logs API   │  │ Share API   │     │
-│  │ (system.go) │  │ (logs.go)   │  │ (share.go)  │     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│                    基础层 (config/crypto)                │
-│                                                         │
-│  ┌───────────────────┐  ┌───────────────────┐          │
-│  │  ConfigManager    │  │   AES-256-GCM     │          │
-│  │   (config.go)     │  │   (crypto.go)     │          │
-│  └───────────────────┘  └───────────────────┘          │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                     协议层 (handlers/)                      │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │HTTP Server │ │ FTP Server │ │VHost Router│            │
+│  │ (http.go)  │ │  (ftp.go)  │ │ (vhost.go) │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │SSL Manager │ │   Logger   │ │   System   │            │
+│  │ (ssl.go)   │ │(logger.go) │ │(system.go) │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │   Proxy    │ │FileManager │ │   Utils    │            │
+│  │ (proxy.go) ││(filemanager)│ │ (utils.go) │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+└───────────────────────────────────────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────────┐
+│                      业务层 (admin/)                        │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │ Sites API  │ │  FTP API   │ │ Files API  │            │
+│  │(sites.go)  │ │ (ftp.go)   │ │(files.go)  │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │ System API │ │  Logs API  │ │ Share API  │            │
+│  │ (api.go)   │ │(logs.go)   │ │(share.go)  │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+│                                                           │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐            │
+│  │ Compress   │ │ Response   │ │  Static    │            │
+│  │(compress)  │ │(response)  │ │ (static)   │            │
+│  └────────────┘ └────────────┘ └────────────┘            │
+└───────────────────────────────────────────────────────────┘
+                            ↓
+┌───────────────────────────────────────────────────────────┐
+│                   基础层 (config/crypto)                    │
+│                                                           │
+│  ┌──────────────────────┐ ┌──────────────────────┐       │
+│  │   ConfigManager      │ │    AES-256-GCM       │       │
+│  │   (config.go)        │ │   (crypto.go)        │       │
+│  └──────────────────────┘ └──────────────────────┘       │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ## 模块说明
 
 ### 协议层 (handlers/)
 
-负责网络协议处理，是系统的入口。
+负责网络协议处理和系统底层能力，是系统的入口。
 
 | 文件 | 职责 |
 |------|------|
-| `server.go` | 服务管理器，统一管理所有服务 |
+| `server.go` | ServerManager - 统一管理所有服务（管理面板、站点、FTP） |
 | `http.go` | HTTP 服务器，静态文件服务 |
-| `ftp.go` | FTP 服务器，文件传输 |
-| `vhost.go` | 虚拟主机路由，多站点支持 |
-| `ssl.go` | SSL 证书管理 |
-| `logger.go` | 日志系统 |
-| `filemanager.go` | 文件管理器 |
+| `ftp.go` | FTP 服务器，文件传输协议 |
+| `vhost.go` | 虚拟主机路由，多站点域名匹配和分发 |
+| `proxy.go` | 反向代理，请求转发到目标服务器 |
+| `ssl.go` | SSL 证书管理器，证书加载、续期、TLS 配置 |
+| `logger.go` | 日志系统，三分类日志（Server/Auth/API）+ HTTP/FTP 日志 |
+| `system.go` | 系统监控，CPU/内存/磁盘/网络实时数据采集 |
+| `filemanager.go` | 文件管理器，书签管理、快捷目录 |
+| `utils.go` | 通用工具函数 |
+| `mem_release_*.go` | 平台相关内存释放（Linux/Darwin/Windows） |
 
 ### 业务层 (admin/)
 
-负责业务逻辑处理，提供 API 接口。
+负责业务逻辑处理，提供管理面板 API 接口。
 
 | 文件 | 职责 |
 |------|------|
-| `handler.go` | 路由入口，中间件 |
-| `api.go` | 通用 API |
-| `sites.go` | 站点管理 API |
-| `ftp.go` | FTP 管理 API |
-| `files.go` | 文件管理 API |
-| `logs.go` | 日志查看 API |
-| `share.go` | 分享功能 API |
-| `compress.go` | 压缩功能 |
+| `handler.go` | 路由入口、认证、会话管理、CSRF 防护、静态资源服务 |
+| `api.go` | 通用 API：系统状态、配置管理、备份管理、系统操作（重启/更新/内存释放） |
+| `sites.go` | 站点管理：CRUD、独立启停、批量操作、站点服务控制 |
+| `ftp.go` | FTP 管理：用户 CRUD、状态切换、批量操作、FTP 文件管理、服务控制 |
+| `files.go` | 文件管理：浏览、上传（分块）、下载、复制、移动、重命名、权限、在线编辑 |
+| `logs.go` | 日志管理：查看、统计、清理、下载、批量操作 |
+| `share.go` | 文件分享：创建分享链接、下载验证、过期/密码检查 |
+| `compress.go` | 文件压缩和解压（zip/tar.gz） |
+| `response.go` | HTTP 响应工具（JSON 响应、错误码） |
+| `static.go` | 嵌入式静态资源 FS 声明 |
 
 ### 基础层 (config/crypto/)
 
@@ -80,8 +96,8 @@
 
 | 模块 | 职责 |
 |------|------|
-| `config/` | 配置管理，读写 JSON 文件 |
-| `crypto/` | 加密解密，AES-256-GCM |
+| `config/` | 配置管理器 - JSON 配置文件读写、密码加密存储、站点/FTP 用户 CRUD |
+| `crypto/` | AES-256-GCM 加解密 - 密钥管理、字符串加解密 |
 
 ## 数据流
 
@@ -94,7 +110,7 @@ ServerManager (handlers/server.go)
     ↓
 VirtualHostRouter (handlers/vhost.go)
     ↓
-匹配站点配置
+匹配站点配置（域名 + 端口）
     ↓
 ┌─────────────┬─────────────┐
 │ 静态站点    │ 反向代理    │
@@ -111,14 +127,15 @@ HTTP 请求 :9527
     ↓
 AdminHandler (admin/handler.go)
     ↓
-路由匹配
+域名绑定检查 → 安全入口检查
     ↓
-┌─────────┬─────────┬─────────┐
-│ /api/*  │ /admin/*│ 其他    │
-│ API处理 │ 静态资源│ 404     │
-└─────────┴─────────┴─────────┘
-    ↓
-返回响应
+┌──────────────────┬──────────────────┐
+│ 公开路由          │ 认证路由          │
+│ /login           │ / → index.html   │
+│ /api/login       │ /api/* → API     │
+│ /api/logout      │                  │
+│ /s/* → 分享下载  │                  │
+└──────────────────┴──────────────────┘
 ```
 
 ### 配置保存流程
@@ -141,120 +158,48 @@ ConfigManager (config/config.go)
 
 ```
 config/
-├── server.json      # 服务配置
-├── sites.json       # 站点配置
-├── ftp.json         # FTP 配置
-└── secrets.key      # 加密密钥（自动生成）
+├── server.json      # 服务配置（管理面板、目录、日志、备份）
+├── sites.json       # 站点列表
+├── ftp.json         # FTP 服务和用户配置
+└── secrets.key      # AES-256-GCM 密钥（自动生成，权限 600）
 ```
 
-### ConfigManager 核心方法
-
-```go
-// 创建
-cm, err := config.NewConfigManager("./config")
-
-// 访问
-cm.Server.HTTPPort
-cm.Sites.Sites[0]
-cm.FTP.Users
-
-// 保存
-cm.Save()
-
-// 密码管理
-cm.SetAdminPassword("password")
-cm.ValidateAdmin("admin", "password")
-cm.SetFTPUserPassword("user", "password")
-cm.ValidateFTPUser("user", "password")
-
-// 站点管理
-cm.AddSite(site)
-cm.UpdateSite(id, site)
-cm.DeleteSite(id)
-
-// FTP 用户管理
-cm.AddFTPUser(user, "password")
-cm.UpdateFTPUser("user", user)
-cm.DeleteFTPUser("user")
-```
-
-## 前端架构
-
-### 模块化设计
+### 运行时目录
 
 ```
-前端采用 ES Modules + 组件化设计：
-
-app.js (入口)
-    ↓
-core/ (核心模块)
-    ├── api.js      - API 封装
-    ├── state.js    - 状态管理
-    ├── events.js   - 事件系统
-    └── utils.js    - 工具函数
-    ↓
-components/ (UI 组件)
-    ├── toast.js    - 消息提示
-    ├── dialog.js   - 对话框
-    └── data-table.js - 数据表格
-    ↓
-tabs/ (标签页)
-    ├── BaseTab.js  - 基类
-    ├── home.js     - 首页
-    └── ...         - 其他标签页
-```
-
-### BaseTab 模式
-
-```javascript
-class XxxTab extends BaseTab {
-    constructor(deps) {
-        super(deps, 'xxx');
-    }
-
-    onInit() { }      // 初始化
-    onLoad() { }      // 加载数据
-    onRefresh() { }   // 刷新数据
-    onDestroy() { }   // 销毁
-}
-```
-
-### 数据流
-
-```
-用户操作
-    ↓
-Tab 模块 (tabs/*.js)
-    ↓
-API 调用 (core/api.js)
-    ↓
-后端 API (admin/*.go)
-    ↓
-ConfigManager (config/config.go)
-    ↓
-响应返回
-    ↓
-更新 State (core/state.js)
-    ↓
-UI 更新
+ssl/                 # SSL 证书存储
+log/                 # 运行日志
+  ├── server.log     # 面板服务日志
+  ├── auth.log       # 认证日志
+  ├── api.log        # API 操作日志
+  ├── http/          # HTTP 访问/错误日志
+  └── ftp/           # FTP 访问/错误日志
+sites/               # 站点文件（按 siteID 子目录）
+ftp/                 # FTP 用户文件（按 username 子目录）
+backups/             # 自动备份
 ```
 
 ## 安全设计
 
+### 认证与防护
+
+- **会话管理**: Cookie-based session，24h 过期，自动清理
+- **防暴力破解**: 5 次失败后锁定 15 分钟（按 IP）
+- **CSRF 防护**: Token 机制，2h 过期
+- **安全入口**: 管理面板路径可自定义（默认 `/admin`）
+- **域名绑定**: 可限制管理面板只允许特定域名访问
+- **登录日志**: 记录所有登录/登出事件
+
 ### 敏感信息加密
 
 - 使用 AES-256-GCM 加密
-- 加密字段：`admin_password`、`ftp.users[].password`
+- 加密字段：`admin.password`、`ftp.users[].password`
 - 密钥文件：`secrets.key`（权限 600）
-
-### 安全入口
-
-- 默认 `/admin`，可自定义
-- 隐藏后台存在
-- 防止暴力破解
+- 密钥丢失 = 密码不可恢复
 
 ### 权限控制
 
-- 配置文件权限 600
+- 配置文件权限 600/644
 - 密钥文件不在 web 目录
 - API 需要登录验证
+- 静态资源无需认证

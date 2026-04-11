@@ -135,6 +135,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ACME 文件验证（公开访问，用于 SSL 证书验证，绕过安全入口检查）
+	if strings.HasPrefix(path, "/.well-known/acme-challenge/") {
+		if h.ServerManager != nil && h.ServerManager.SSLManager != nil {
+			h.ServerManager.SSLManager.GetACMEChallengeHandler().ServeHTTP(w, r)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
 	// 安全入口检查：只有匹配 adminPath 的请求才会被处理
 	// 其他请求返回 404，隐藏后台存在
 	adminPath := h.adminPath
@@ -372,9 +382,48 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.restartSitesService(w, r)
 	case "/api/service/sites/reload":
 		h.reloadSitesConfig(w, r)
+		// SSL 证书管理
+		case "/api/certs":
+			h.handleCertsList(w, r)
+		case "/api/certs/request":
+			h.handleCertRequest(w, r)
+		case "/api/certs/renew":
+			h.handleCertRenew(w, r)
+		case "/api/certs/upload":
+			h.handleCertUpload(w, r)
+		case "/api/certs/delete":
+			h.handleCertDelete(w, r)
+		case "/api/certs/dns-prepare":
+			h.handleCertDNSPrepare(w, r)
+		case "/api/certs/dns-complete":
+			h.handleCertDNSComplete(w, r)
+		case "/api/certs/file-prepare":
+			h.handleCertFilePrepare(w, r)
+		case "/api/certs/file-complete":
+			h.handleCertFileComplete(w, r)
+		case "/api/certs/dns-providers":
+			if r.Method == http.MethodPost {
+				h.handleDNSProviderCreate(w, r)
+			} else {
+				h.handleDNSProvidersList(w, r)
+			}
+		// 开机自启
+		case "/api/certs/dns-providers-test":
+			h.handleDNSProviderTestCreds(w, r)
+		case "/api/service/autostart/status":
+			h.getAutoStartStatus(w, r)
+		case "/api/service/autostart/enable":
+			h.enableAutoStart(w, r)
+		case "/api/service/autostart/disable":
+			h.disableAutoStart(w, r)
 	default:
-		// 处理带 ID 的站点路由
-		if strings.HasPrefix(actualPath, "/api/sites/") {
+		// DNS 服务商管理 (带 ID)
+		if strings.HasPrefix(actualPath, "/api/certs/dns-providers/") {
+			h.handleDNSProvidersRoute(w, r)
+		} else if strings.HasPrefix(actualPath, "/api/certs/progress/") {
+			h.handleCertProgress(w, r)
+		} else if strings.HasPrefix(actualPath, "/api/sites/") {
+			// 处理带 ID 的站点路由
 			h.handleSitesDetail(w, r)
 		} else if strings.HasPrefix(actualPath, "/api/ftp/users/") {
 			h.handleFtpUserDetail(w, r)

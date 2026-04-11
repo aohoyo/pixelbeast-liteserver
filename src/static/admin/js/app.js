@@ -278,11 +278,8 @@ function updateHeaderOS(data) {
     const nameEl = document.getElementById('header-os-name');
     if (nameEl) nameEl.textContent = osNameShort;
 
-    // 运行天数（显示在浮窗内，使用后端格式化字符串）
-    const uptimeEl = document.getElementById('os-uptime');
-    if (uptimeEl && data.uptime_str) {
-        uptimeEl.textContent = data.uptime_str;
-    }
+    // 启动双计时器：服务 + 系统
+    startUptimeTickers(data.server_uptime_ms, data.system_uptime_ms);
 
     const iconEl = document.getElementById('header-os-icon');
     if (iconEl) {
@@ -300,6 +297,40 @@ function updateHeaderOS(data) {
     setText('os-name-full', osNameFull);
     setText('os-arch', data.arch);
     setText('os-kernel', data.kernel);
+}
+
+// 运行时间计时器（服务 + 系统）
+let _tickTimer = null;
+let _tickStart = 0;
+let _tickServerMs = 0;
+let _tickSystemMs = 0;
+
+function formatDuration(ms) {
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d > 0) return `${d}天 ${h}时 ${m}分 ${sec}秒`;
+    if (h > 0) return `${h}时 ${m}分 ${sec}秒`;
+    if (m > 0) return `${m}分 ${sec}秒`;
+    return `${sec}秒`;
+}
+
+function startUptimeTickers(serverMs, systemMs) {
+    _tickServerMs = serverMs || 0;
+    _tickSystemMs = systemMs || 0;
+    _tickStart = Date.now();
+    if (_tickTimer) clearInterval(_tickTimer);
+    const tick = () => {
+        const elapsed = Date.now() - _tickStart;
+        const serverEl = document.getElementById('os-uptime');
+        const systemEl = document.getElementById('os-system-uptime');
+        if (serverEl && _tickServerMs > 0) serverEl.textContent = formatDuration(_tickServerMs + elapsed);
+        if (systemEl && _tickSystemMs > 0) systemEl.textContent = formatDuration(_tickSystemMs + elapsed);
+    };
+    tick();
+    _tickTimer = setInterval(tick, 1000);
 }
 
 /**

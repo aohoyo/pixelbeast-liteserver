@@ -99,6 +99,11 @@ class SettingsTab extends BaseTab {
         this.$('#btn-create-backup')?.addEventListener('click', () => this.createBackup());
         this.$('#btn-refresh-backup')?.addEventListener('click', () => this.loadBackups());
 
+        // 开机自启开关
+        this.$('#autostart-enabled')?.addEventListener('change', (e) => {
+            this.toggleAutoStart(e.target.checked);
+        });
+
         // 监听配置变化
         this.$$('.settings-content input, .settings-content select').forEach(input => {
             input.addEventListener('change', () => {
@@ -122,6 +127,12 @@ class SettingsTab extends BaseTab {
         if (tabName === 'backup' && !this._backupLoaded) {
             this.loadBackups();
             this._backupLoaded = true;
+        }
+
+        // 服务管理延迟加载
+        if (tabName === 'service' && !this._serviceLoaded) {
+            this.loadAutoStartStatus();
+            this._serviceLoaded = true;
         }
     }
 
@@ -477,6 +488,61 @@ class SettingsTab extends BaseTab {
             });
         } catch {
             el.textContent = now.toLocaleString('zh-CN', { hour12: false });
+        }
+    }
+
+    // ========== 开机自启管理 ==========
+
+    async loadAutoStartStatus() {
+        try {
+            const data = await this.api.getJSON('/api/service/autostart/status');
+            if (!data) return;
+
+            // 更新开关状态
+            const toggle = this.$('#autostart-enabled');
+            if (toggle) toggle.checked = data.enabled;
+
+            // 更新平台显示
+            const platformNames = { windows: 'Windows', linux: 'Linux', darwin: 'macOS' };
+            const platformEl = this.$('#autostart-platform');
+            if (platformEl) {
+                const name = platformNames[data.platform] || data.platform;
+                platformEl.textContent = name;
+                platformEl.style.color = 'var(--text-secondary, #d6d3d1)';
+            }
+
+            // 更新注册状态
+            const statusEl = this.$('#autostart-status');
+            if (statusEl) {
+                if (data.installed) {
+                    statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success, #22c55e);"></span> 已注册开机自启';
+                    statusEl.style.color = 'var(--success, #22c55e)';
+                } else {
+                    statusEl.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning, #fbbf24);"></span> 未注册';
+                    statusEl.style.color = 'var(--warning, #fbbf24)';
+                }
+            }
+        } catch (error) {
+            console.error('[Settings] 加载自启状态失败:', error);
+            const statusEl = this.$('#autostart-status');
+            if (statusEl) {
+                statusEl.textContent = '检测失败';
+                statusEl.style.color = 'var(--danger, #ef4444)';
+            }
+        }
+    }
+
+    async toggleAutoStart(enabled) {
+        const endpoint = enabled ? '/api/service/autostart/enable' : '/api/service/autostart/disable';
+        try {
+            const data = await this.api.postJSON(endpoint);
+            this.toast?.success(data?.message || (enabled ? '开机自启已开启' : '开机自启已关闭'));
+            this.loadAutoStartStatus();
+        } catch (error) {
+            // 恢复开关状态
+            const toggle = this.$('#autostart-enabled');
+            if (toggle) toggle.checked = !enabled;
+            this.toast?.error((enabled ? '开启' : '关闭') + '开机自启失败：' + error.message);
         }
     }
 

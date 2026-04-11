@@ -34,6 +34,10 @@ type ServerManager struct {
 	portServers      map[int]*http.Server // 独立端口站点监听
 	portSitesRunning bool
 
+	// HTTP 重定向服务器（端口 80，ACME challenge + HTTPS 重定向）
+	redirectServer  *http.Server
+	redirectRunning bool
+
 	// FTP 服务
 	FTPServer  *FTPServer
 	FTPConfig  *config.FTPConfig
@@ -104,7 +108,7 @@ func (m *ServerManager) StartAdminPanel() error {
 	m.adminRunning = true
 
 	go func() {
-		log.Printf("[Admin] 管理面板启动在端口 %d", port)
+		LogPanelRuntime(LogLevelInfo, "[Admin] 管理面板启动在端口 %d", port)
 		if err := m.AdminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[Admin] 服务错误: %v", err)
 		}
@@ -131,7 +135,7 @@ func (m *ServerManager) StopAdminPanel() error {
 	err := m.AdminServer.Shutdown(ctx)
 	m.adminRunning = false
 
-	log.Printf("[Admin] 管理面板已停止")
+	LogPanelRuntime(LogLevelInfo, "[Admin] 管理面板已停止")
 	return err
 }
 
@@ -178,7 +182,7 @@ func (m *ServerManager) RestartAdminPanel() error {
 	m.adminRunning = true
 
 	go func() {
-		log.Printf("[Admin] 管理面板重启在端口 %d", port)
+		LogPanelRuntime(LogLevelInfo, "[Admin] 管理面板重启在端口 %d", port)
 		if err := m.AdminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[Admin] 服务错误: %v", err)
 		}
@@ -189,7 +193,7 @@ func (m *ServerManager) RestartAdminPanel() error {
 
 	m.mu.Unlock()
 
-	log.Printf("[Admin] 管理面板重启完成")
+	LogPanelRuntime(LogLevelInfo, "[Admin] 管理面板重启完成")
 	return nil
 }
 
@@ -244,7 +248,7 @@ func (m *ServerManager) ReloadSites() error {
 	// 重启独立端口站点
 	m.startPortSites()
 
-	log.Printf("[Sites] 站点配置已重新加载")
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点配置已重新加载")
 	return nil
 }
 
@@ -270,15 +274,18 @@ func (m *ServerManager) StartSitesServer() error {
 	}
 
 	if !hasEnabled {
-		log.Printf("[Sites] 无启用的站点，跳过网站服务器启动")
+		LogPanelRuntime(LogLevelInfo, "[Sites] 无启用的站点，跳过网站服务器启动")
 		return nil
 	}
 
 	// 每个站点独立端口监听
 	m.startPortSites()
 
+
+	// 启动 HTTP 重定向（端口 80，ACME challenge + HTTPS 重定向）
+	m.StartHTTPRedirect()
 	m.sitesRunning = true
-	log.Printf("[Sites] 站点服务已启动")
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点服务已启动")
 	return nil
 }
 
@@ -311,14 +318,29 @@ func (m *ServerManager) startPortSites() {
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
 		}
+
+		// SSL/TLS 支持
+		sslEnabled := site.SSL != nil && site.SSL.Enabled
+		if sslEnabled && m.SSLManager != nil {
+			srv.TLSConfig = &tls.Config{
+				GetCertificate: m.SSLManager.GetCertificate,
+			}
+		}
 		m.portServers[site.Port] = srv
 
-		go func(port int, name string) {
-			log.Printf("[Sites] 站点 %s 启动在独立端口 %d", name, port)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+		go func(port int, name string, useTLS bool) {
+			if useTLS {
+				LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动TLS在独立端口 %d", name, port)
+				if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+					log.Printf("[Sites] 端口 %d TLS服务错误: %v", port, err)
+				}
+			} else {
+				LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动在独立端口 %d", name, port)
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+				}
 			}
-		}(site.Port, site.Name)
+		}(site.Port, site.Name, sslEnabled)
 	}
 	m.portSitesRunning = true
 }
@@ -327,7 +349,7 @@ func (m *ServerManager) startPortSites() {
 func (m *ServerManager) stopPortSites() {
 	for port, srv := range m.portServers {
 		srv.Close()
-		log.Printf("[Sites] 独立端口 %d 已停止", port)
+		LogPanelRuntime(LogLevelInfo, "[Sites] 独立端口 %d 已停止", port)
 	}
 	m.portServers = make(map[int]*http.Server)
 	m.portSitesRunning = false
@@ -344,8 +366,9 @@ func (m *ServerManager) StopSitesServer() error {
 	m.mu.Unlock()
 
 	m.stopPortSites()
+	m.stopHTTPRedirect()
 
-	log.Printf("[Sites] 网站服务器已停止")
+	LogPanelRuntime(LogLevelInfo, "[Sites] 网站服务器已停止")
 	return nil
 }
 
@@ -392,7 +415,7 @@ func (m *ServerManager) StartSite(siteID string) error {
 	}
 
 	m.startSitePort(site)
-	log.Printf("[Sites] 站点 %s 已启动", site.Name)
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已启动", site.Name)
 	return nil
 }
 
@@ -420,7 +443,7 @@ func (m *ServerManager) StopSite(siteID string) error {
 		m.ConfigManager.Save()
 	}
 
-	log.Printf("[Sites] 站点 %s 已停止", site.Name)
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已停止", site.Name)
 	return nil
 }
 
@@ -439,7 +462,7 @@ func (m *ServerManager) AddSiteRuntime(site *config.SiteConfig) {
 	}
 
 	m.startSitePort(site)
-	log.Printf("[Sites] 站点 %s 已添加并启动", site.Name)
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已添加并启动", site.Name)
 }
 
 // UpdateSiteRuntime 更新站点（先停旧再启新，无需全量重载）
@@ -451,7 +474,7 @@ func (m *ServerManager) UpdateSiteRuntime(site *config.SiteConfig) {
 	m.stopSitePort(site)
 
 	if !site.Enabled {
-		log.Printf("[Sites] 站点 %s 已更新（停止状态）", site.Name)
+		LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已更新（停止状态）", site.Name)
 		return
 	}
 
@@ -461,7 +484,7 @@ func (m *ServerManager) UpdateSiteRuntime(site *config.SiteConfig) {
 	}
 
 	m.startSitePort(site)
-	log.Printf("[Sites] 站点 %s 已更新并重启", site.Name)
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已更新并重启", site.Name)
 }
 
 // DeleteSiteRuntime 删除站点并立即停止（无需全量重载）
@@ -475,7 +498,7 @@ func (m *ServerManager) DeleteSiteRuntime(siteID string) {
 		m.stopSitePort(site)
 	}
 
-	log.Printf("[Sites] 站点 %s 已删除", siteID)
+	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已删除", siteID)
 }
 
 // startSitePort 启动单个站点的端口监听
@@ -496,14 +519,29 @@ func (m *ServerManager) startSitePort(site *config.SiteConfig) {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
+
+	// SSL/TLS 支持
+	sslEnabled := site.SSL != nil && site.SSL.Enabled
+	if sslEnabled && m.SSLManager != nil {
+		srv.TLSConfig = &tls.Config{
+			GetCertificate: m.SSLManager.GetCertificate,
+		}
+	}
 	m.portServers[site.Port] = srv
 
-	go func(port int, name string) {
-		log.Printf("[Sites] 站点 %s 启动在端口 %d", name, port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+	go func(port int, name string, useTLS bool) {
+		if useTLS {
+			LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动TLS在端口 %d", name, port)
+			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				log.Printf("[Sites] 端口 %d TLS服务错误: %v", port, err)
+			}
+		} else {
+			LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动在端口 %d", name, port)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+			}
 		}
-	}(site.Port, site.Name)
+	}(site.Port, site.Name, sslEnabled)
 }
 
 // stopSitePort 停止单个站点的端口监听
@@ -514,7 +552,7 @@ func (m *ServerManager) stopSitePort(site *config.SiteConfig) {
 	if srv, ok := m.portServers[site.Port]; ok {
 		delete(m.portServers, site.Port)
 		srv.Close()
-		log.Printf("[Sites] 端口 %d 已关闭", site.Port)
+		LogPanelRuntime(LogLevelInfo, "[Sites] 端口 %d 已关闭", site.Port)
 	}
 }
 
@@ -572,7 +610,7 @@ func (m *ServerManager) StartFTP() error {
 
 	m.FTPRunning = true
 
-	log.Printf("[FTP] 服务已启动")
+	LogPanelRuntime(LogLevelInfo, "[FTP] 服务已启动")
 	return nil
 }
 
@@ -591,7 +629,7 @@ func (m *ServerManager) StopFTP() error {
 
 	m.FTPRunning = false
 
-	log.Printf("[FTP] 服务已停止")
+	LogPanelRuntime(LogLevelInfo, "[FTP] 服务已停止")
 	return nil
 }
 
@@ -620,7 +658,7 @@ func (m *ServerManager) RestartFTP() error {
 	}
 
 	m.FTPRunning = true
-	log.Printf("[FTP] 服务重启完成")
+	LogPanelRuntime(LogLevelInfo, "[FTP] 服务重启完成")
 
 	return nil
 }
@@ -630,6 +668,50 @@ func (m *ServerManager) IsFTPRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.FTPRunning
+}
+
+// ==================== HTTP 重定向 ====================
+
+// startHTTPRedirect 启动端口 80 的 HTTP 重定向服务器
+// 用于 ACME challenge 和 HTTP→HTTPS 重定向
+func (m *ServerManager) StartHTTPRedirect() {
+	if m.SSLManager == nil {
+		return
+	}
+	if !m.SSLManager.HasSSLDomains() && !m.SSLManager.HasPendingChallenges() {
+		return
+	}
+	// 检查是否已有运行中的重定向服务
+	if m.redirectRunning && m.redirectServer != nil {
+		return
+	}
+
+	handler := m.SSLManager.GetHTTPSRedirectHandler(nil)
+	m.redirectServer = &http.Server{
+		Addr:    ":80",
+		Handler: handler,
+	}
+	m.redirectRunning = true
+
+	go func() {
+		LogPanelRuntime(LogLevelInfo, "[SSL] HTTP 重定向服务启动在端口 80")
+		if err := m.redirectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[SSL] 端口 80 服务错误: %v", err)
+		}
+		m.mu.Lock()
+		m.redirectRunning = false
+		m.mu.Unlock()
+	}()
+}
+
+// stopHTTPRedirect 停止 HTTP 重定向服务器
+func (m *ServerManager) stopHTTPRedirect() {
+	if m.redirectServer != nil {
+		m.redirectServer.Close()
+		m.redirectServer = nil
+		m.redirectRunning = false
+		LogPanelRuntime(LogLevelInfo, "[SSL] HTTP 重定向服务已停止")
+	}
 }
 
 // ==================== 配置 ====================

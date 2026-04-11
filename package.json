@@ -3,15 +3,14 @@
   "version": "1.0.0",
   "description": "PixelBeast LiteServer - 轻量级 Web+FTP 服务器",
   "scripts": {
-    "dev": "./dev.sh",
-    "dev:go": "air",
-    "build": "go build -o pixelbeast",
-    "build:windows": "GOOS=windows GOARCH=amd64 go build -o pixelbeast.exe",
-    "build:linux": "GOOS=linux GOARCH=amd64 go build -o pixelbeast",
-    "build:arm": "GOOS=linux GOARCH=arm64 go build -o pixelbeast",
-    "run": "./pixelbeast",
-    "clean": "rm -f pixelbeast pixelbeast.exe && rm -rf tmp",
-    "logs:clear": "rm -rf log/*"
+    "dev": "node dev.js",
+    "build": "node dev.js build",
+    "build:win": "node dev.js build:win",
+    "build:linux": "node dev.js build:linux",
+    "build:arm": "node dev.js build:arm",
+    "build:mac": "node dev.js build:mac",
+    "clean": "node dev.js clean",
+    "logs:clear": "node -e \"require('fs').rmSync('log',{recursive:true,force:true});require('fs').mkdirSync('log')\""
   },
   "keywords": [
     "ftp",

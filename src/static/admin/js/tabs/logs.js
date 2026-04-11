@@ -168,6 +168,8 @@ class LogsTab extends BaseTab {
                 this.type = btn.dataset.type;
                 container.querySelectorAll('.logs-subtab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+                const filterEl = this.$('#log-filter');
+                if (filterEl) filterEl.value = '';
                 this.updateFilterVisibility();
                 this.refresh();
             });
@@ -179,9 +181,14 @@ class LogsTab extends BaseTab {
         if (!filterEl) return;
 
         if (this.category === 'panel') {
-            // 面板：显示操作类型筛选
-            filterEl.style.display = '';
-            filterEl.innerHTML = OP_TYPE_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+            // 面板：仅操作日志显示操作类型筛选
+            if (this.type === 'operation') {
+                filterEl.style.display = '';
+                filterEl.innerHTML = OP_TYPE_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+            } else {
+                filterEl.style.display = 'none';
+                filterEl.value = '';
+            }
             if (!PANEL_SUB_TYPES.find(t => t.id === this.type)) {
                 this.type = 'operation';
             }

@@ -15,12 +15,13 @@ import (
 type ConfigManager struct {
 	mu sync.RWMutex
 
-	configDir string
-	key       []byte
+	configDir    string
+	key          []byte
 
-	Server *ServerConfig
-	Sites  *SitesConfig
-	FTP    *FTPConfig
+	Server       *ServerConfig
+	Sites        *SitesConfig
+	FTP          *FTPConfig
+	DNSProviders []DNSProviderConfig
 }
 
 // ServerConfig 服务配置
@@ -31,6 +32,22 @@ type ServerConfig struct {
 	Directories DirectoriesConfig `json:"directories"`
 	Backup      BackupConfig      `json:"backup"`
 	Log         LogConfig         `json:"log"`
+	AutoStart   AutoStartConfig   `json:"auto_start"`
+}
+
+// AutoStartConfig 开机自启配置
+type AutoStartConfig struct {
+	Enabled bool `json:"enabled"` // 是否开机自启，默认 true
+}
+
+// DNSProviderConfig DNS 服务商配置（凭证加密存储）
+type DNSProviderConfig struct {
+	ID          string `json:"id"`                     // 唯一标识
+	Name        string `json:"name"`                   // 显示名称 "阿里云 DNS"
+	Type        string `json:"type"`                   // "alidns" | "tencentcloud" | "baota"
+	Credentials string `json:"credentials"`            // AES-256-GCM 加密的凭证 JSON
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // AdminConfig 管理面板配置
@@ -83,12 +100,50 @@ type ProxyConfig struct {
 
 // SSLConfig SSL 配置
 type SSLConfig struct {
-	Enabled    bool   `json:"enabled"`
-	AutoHTTPS  bool   `json:"auto_https"`
-	Email      string `json:"email"`
-	CertFile   string `json:"cert_file"`
-	KeyFile    string `json:"key_file"`
-	ForceHTTPS bool   `json:"force_https"`
+	Enabled         bool   `json:"enabled"`
+	AutoHTTPS       bool   `json:"auto_https"`
+	Email           string `json:"email"`
+	CertFile        string `json:"cert_file"`
+	KeyFile         string `json:"key_file"`
+	ForceHTTPS      bool   `json:"force_https"`
+	Provider        string `json:"provider,omitempty"`          // "letsencrypt" | "litessl"
+	ChallengeMethod string `json:"challenge_method,omitempty"`  // "http-auto" | "http-file" | "dns"
+	DNSProvider     string `json:"dns_provider,omitempty"`      // "manual" | "alidns" | "tencentcloud" | "baota"
+	DNSCredentials  string `json:"dns_credentials,omitempty"`   // AES 加密的 DNS API 凭证 JSON
+}
+
+// IsAutoCert 是否使用自动证书（Let's Encrypt / LiteSSL HTTP-01）
+func (s *SSLConfig) IsAutoCert() bool {
+	return s != nil && s.Enabled && s.AutoHTTPS && s.ChallengeMethod != "dns"
+}
+
+// IsLegoCert 是否需要 lego 处理（非标准 autocert 场景）
+func (s *SSLConfig) IsLegoCert() bool {
+	if s == nil || !s.Enabled || !s.AutoHTTPS {
+		return false
+	}
+	return s.Provider == "litessl" || s.ChallengeMethod == "http-file" || s.ChallengeMethod == "dns"
+}
+
+// GetProvider 获取证书提供商（默认 letsencrypt）
+func (s *SSLConfig) GetProvider() string {
+	if s == nil || s.Provider == "" {
+		return "letsencrypt"
+	}
+	return s.Provider
+}
+
+// GetChallengeMethod 获取验证方式（默认 http-auto）
+func (s *SSLConfig) GetChallengeMethod() string {
+	if s == nil || s.ChallengeMethod == "" {
+		return "http-auto"
+	}
+	return s.ChallengeMethod
+}
+
+// IsCustomCert 是否使用自定义证书
+func (s *SSLConfig) IsCustomCert() bool {
+	return s != nil && s.Enabled && !s.AutoHTTPS && s.CertFile != "" && s.KeyFile != ""
 }
 
 // FTPConfig FTP 配置
@@ -184,6 +239,10 @@ func (cm *ConfigManager) load() error {
 	if err := cm.loadFTP(); err != nil {
 		return err
 	}
+		// 加载 dns_providers.json
+		if err := cm.loadDNSProviders(); err != nil {
+			return err
+		}
 
 	// 确保默认站点目录存在
 	cm.ensureDefaultDirectories()
@@ -356,6 +415,9 @@ func (cm *ConfigManager) Save() error {
 	if err := cm.saveFTP(); err != nil {
 		return err
 	}
+	if err := cm.saveDNSProviders(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -383,6 +445,61 @@ func (cm *ConfigManager) saveSites() error {
 func (cm *ConfigManager) saveFTP() error {
 	path := filepath.Join(cm.configDir, "ftp.json")
 	data, err := json.MarshalIndent(cm.FTP, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// loadDNSProviders 加载 DNS 服务商配置
+func (cm *ConfigManager) loadDNSProviders() error {
+	path := filepath.Join(cm.configDir, "dns_providers.json")
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err == nil {
+		var providers []DNSProviderConfig
+		if err := json.Unmarshal(data, &providers); err != nil {
+			return err
+		}
+		cm.DNSProviders = providers
+		return nil
+	}
+
+	// dns_providers.json 不存在，尝试从 server.json 迁移旧数据
+	serverPath := filepath.Join(cm.configDir, "server.json")
+	serverData, readErr := os.ReadFile(serverPath)
+	if readErr == nil {
+		var raw map[string]json.RawMessage
+		if json.Unmarshal(serverData, &raw) == nil {
+			if oldField, ok := raw["dns_providers"]; ok {
+				var oldProviders []DNSProviderConfig
+				if json.Unmarshal(oldField, &oldProviders) == nil {
+					cm.DNSProviders = oldProviders
+				}
+			}
+			// 从 server.json 中移除 dns_providers 字段
+			delete(raw, "dns_providers")
+			if newData, err := json.MarshalIndent(raw, "", "  "); err == nil {
+				os.WriteFile(serverPath, newData, 0644)
+			}
+		}
+	}
+	if cm.DNSProviders == nil {
+		cm.DNSProviders = []DNSProviderConfig{}
+	}
+	return cm.saveDNSProviders()
+}
+
+// saveDNSProviders 保存 DNS 服务商配置
+func (cm *ConfigManager) saveDNSProviders() error {
+	path := filepath.Join(cm.configDir, "dns_providers.json")
+	providers := cm.DNSProviders
+	if providers == nil {
+		providers = []DNSProviderConfig{}
+	}
+	data, err := json.MarshalIndent(providers, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -420,6 +537,9 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 			CompressDays:  7,
 			CleanupHour:   3,
 			Level:         "info",
+		},
+		AutoStart: AutoStartConfig{
+			Enabled: true,
 		},
 	}
 }
@@ -734,4 +854,109 @@ func (cm *ConfigManager) DeleteFTPUser(username string) error {
 	}
 
 	return fmt.Errorf("用户不存在: %s", username)
+}
+
+// ========== SSL 辅助 ==========
+
+// GetSSLEnabledSites 获取所有启用了 SSL 的站点
+func (cm *ConfigManager) GetSSLEnabledSites() []*SiteConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	var sites []*SiteConfig
+	for i := range cm.Sites.Sites {
+		if cm.Sites.Sites[i].SSL != nil && cm.Sites.Sites[i].SSL.Enabled {
+			sites = append(sites, &cm.Sites.Sites[i])
+		}
+	}
+	return sites
+}
+
+// ========== DNS 服务商管理 ==========
+
+// GetDNSProviders 获取所有 DNS 服务商配置
+func (cm *ConfigManager) GetDNSProviders() []DNSProviderConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if cm.DNSProviders == nil {
+		return []DNSProviderConfig{}
+	}
+	return append([]DNSProviderConfig{}, cm.DNSProviders...)
+}
+
+// GetDNSProvider 根据 ID 获取 DNS 服务商配置
+func (cm *ConfigManager) GetDNSProvider(id string) *DNSProviderConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	for i := range cm.DNSProviders {
+		if cm.DNSProviders[i].ID == id {
+			cp := cm.DNSProviders[i]
+			return &cp
+		}
+	}
+	return nil
+}
+
+// AddDNSProvider 添加 DNS 服务商配置
+func (cm *ConfigManager) AddDNSProvider(provider DNSProviderConfig) error {
+	cm.mu.Lock()
+	for _, p := range cm.DNSProviders {
+		if p.ID == provider.ID {
+			cm.mu.Unlock()
+			return fmt.Errorf("DNS 服务商 ID 已存在: %s", provider.ID)
+		}
+	}
+	cm.DNSProviders = append(cm.DNSProviders, provider)
+	cm.mu.Unlock()
+	return cm.saveDNSProviders()
+}
+
+// UpdateDNSProvider 更新 DNS 服务商配置
+func (cm *ConfigManager) UpdateDNSProvider(id string, updated DNSProviderConfig) error {
+	cm.mu.Lock()
+	for i := range cm.DNSProviders {
+		if cm.DNSProviders[i].ID == id {
+			updated.ID = id
+			cm.DNSProviders[i] = updated
+			cm.mu.Unlock()
+			return cm.saveDNSProviders()
+		}
+	}
+	cm.mu.Unlock()
+	return fmt.Errorf("DNS 服务商不存在: %s", id)
+}
+
+// DeleteDNSProvider 删除 DNS 服务商配置
+func (cm *ConfigManager) DeleteDNSProvider(id string) error {
+	cm.mu.Lock()
+	for i, p := range cm.DNSProviders {
+		if p.ID == id {
+			cm.DNSProviders = append(cm.DNSProviders[:i], cm.DNSProviders[i+1:]...)
+			cm.mu.Unlock()
+			return cm.saveDNSProviders()
+		}
+	}
+	cm.mu.Unlock()
+	return fmt.Errorf("DNS 服务商不存在: %s", id)
+}
+
+// EncryptDNSCredentials 加密 DNS 凭证
+func (cm *ConfigManager) EncryptDNSCredentials(creds map[string]string) (string, error) {
+	jsonData, err := json.Marshal(creds)
+	if err != nil {
+		return "", fmt.Errorf("序列化凭证失败: %w", err)
+	}
+	return crypto.EncryptString(string(jsonData), cm.key)
+}
+
+// DecryptDNSCredentials 解密 DNS 凭证
+func (cm *ConfigManager) DecryptDNSCredentials(encrypted string) (map[string]string, error) {
+	plain, err := crypto.DecryptString(encrypted, cm.key)
+	if err != nil {
+		return nil, fmt.Errorf("解密凭证失败: %w", err)
+	}
+	var creds map[string]string
+	if err := json.Unmarshal([]byte(plain), &creds); err != nil {
+		return nil, fmt.Errorf("解析凭证失败: %w", err)
+	}
+	return creds, nil
 }

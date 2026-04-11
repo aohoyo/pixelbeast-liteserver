@@ -4,8 +4,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./pixelbeast"
-  bin = "./pixelbeast"
+  cmd = "go build -buildvcs=false -o ./tmp/pixelbeast.exe"
+  bin = "./tmp/pixelbeast.exe"
   args = ["-config", "config"]
   include_ext = ["go", "html", "css", "js"]
   exclude_ext = ["_test.go"]
