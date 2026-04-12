@@ -247,7 +247,7 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 	// åªå¨ä½¿ç¨æ¥ææä»¶æ¶æææ¥æè¿æ»¤åå®¹ï¼å½åæ¥å¿æä»¶åå«å¤å¤©æ°æ®ä¸è¿æ»¤
 	dateFilter := ""
 	if !isDated {
-		dateFilter = date  // current file: filter by date prefix
+		dateFilter = date // current file: filter by date prefix
 	}
 
 	entries, total, err := readLogFile(logPath, search, level, dateFilter, limit)
@@ -294,7 +294,7 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 	logPath, isDated = resolveDatedPath(logPath, date)
 	dateFilter := ""
 	if !isDated {
-		dateFilter = date  // current file: filter by date prefix
+		dateFilter = date // current file: filter by date prefix
 	}
 
 	stat := LogStats{Category: category, Type: logType}
@@ -455,9 +455,9 @@ func (h *Handler) handleLogsBulkClear(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Category    string `json:"category"`
-		BeforeDate  string `json:"before_date"`
-		Compressed  bool   `json:"compressed"`  // 是否同时清理压缩文件
+		Category   string `json:"category"`
+		BeforeDate string `json:"before_date"`
+		Compressed bool   `json:"compressed"` // 是否同时清理压缩文件
 	}
 	if err := parseJSONBody(r, &req); err != nil {
 		BadRequest(w, "参数错误: "+err.Error())

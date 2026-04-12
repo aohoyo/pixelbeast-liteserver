@@ -13,6 +13,7 @@ import message from './components/message.js';
 import dialog from './components/dialog.js';
 import tooltip from './components/tooltip.js';
 import { loadContentSections, loadModal } from './core/loader.js';
+import { escapeHtml } from './core/utils.js';
 
 // 导入标签页模块
 import { initHomeTab } from './tabs/home.js';
@@ -41,8 +42,6 @@ const config = {
  * 初始化应用
  */
 async function init() {
-    console.log('🪶 像素兽 1.0 管理面板初始化...');
-
     try {
         // 1. 加载组件
         await loadComponents();
@@ -65,10 +64,7 @@ async function init() {
 
         // 7. 加载初始数据
         loadInitialData();
-
-        console.log('✅ 像素兽 1.0 初始化完成');
     } catch (error) {
-        console.error('❌ 初始化失败:', error);
         message.error('初始化失败: ' + error.message);
     }
 }
@@ -77,7 +73,6 @@ async function init() {
  * 加载组件
  */
 async function loadComponents() {
-    console.log('📦 加载组件...');
     try {
         // 加载所有内容区域组件
         await loadContentSections();
@@ -85,9 +80,7 @@ async function loadComponents() {
         await loadModal();
         // 初始化 tooltip
         tooltip.init();
-        console.log('✅ 组件加载完成');
     } catch (error) {
-        console.error('❌ 组件加载失败:', error);
         throw error;
     }
 }
@@ -104,10 +97,8 @@ function checkAuth() {
         .then(response => {
             if (response && response.ok) {
                 // 已认证，继续
-                console.log('✅ 用户已认证');
             } else {
                 // 未认证，跳转到登录页
-                console.log('⚠️ 用户未认证，跳转到登录页');
                 window.location.href = loginPath;
             }
         })
@@ -123,11 +114,9 @@ function checkAuth() {
 function initEventListeners() {
     // 全局事件监听
     globalEvents.match('auth:*', (event, data) => {
-        console.log(`[Auth Event] ${event}:`, data);
     });
 
     globalEvents.match('api:*', (event, data) => {
-        console.log(`[API Event] ${event}:`, data);
     });
 
     // 键盘快捷键
@@ -370,7 +359,6 @@ async function loadInitialData() {
             }
         }
     } catch (error) {
-        console.error('加载初始数据失败:', error);
     }
 }
 

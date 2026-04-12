@@ -1,28 +1,24 @@
 /**
- * 站点管理模块 v2
- * 
+ * 站点管理模块 v3
+ *
  * 使用 DataTable 组件实现站点列表、分页、搜索、批量操作
+ * 集成 SSL 证书管理：证书库选择、粘贴证书
  */
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { openFileBrowser } from '../components/file-browser/index.js';
-import { escapeHtml, copyToClipboard } from '../core/utils.js';
+import { escapeHtml, copyToClipboard, openDirPicker } from '../core/utils.js';
 
 class SitesTab extends BaseTab {
     constructor(deps) {
         super(deps, 'sites');
         this.dataTable = null;
         this.sites = [];
+        this.availableCerts = []; // 证书库中可用的证书列表
         this.editingSite = null;
         this.deleteTargetId = null;
-    }
-
-    onInit() {
-        console.log('初始化站点管理...');
-        this.initDataTable();
-        this.bindEvents();
-        this.checkServiceStatus();
+        this._sslTab = 'off'; // 当前 SSL 子选项卡: off | pool | paste
+        this._pasteCertInfo = null; // 粘贴证书解析后的信息
     }
 
     // ========== DataTable ==========
@@ -95,6 +91,25 @@ class SitesTab extends BaseTab {
                 `
             },
             {
+                title: 'SSL',
+                dataIndex: 'ssl',
+                className: 'col-ssl',
+                render: (value) => {
+                    if (!value || !value.enabled) {
+                        return '<span class="ssl-badge off">关</span>';
+                    }
+                    const certDomain = value._cert_domain || '';
+                    const daysLeft = value._days_left;
+                    if (daysLeft !== undefined && daysLeft !== null) {
+                        let cls = 'valid';
+                        if (daysLeft <= 0) cls = 'expired';
+                        else if (daysLeft <= 30) cls = 'expiring';
+                        return `<span class="ssl-badge ${cls}" title="${certDomain ? '证书: ' + escapeHtml(certDomain) : ''}">${daysLeft > 0 ? daysLeft + '天' : '已过期'}</span>`;
+                    }
+                    return '<span class="ssl-badge on">开</span>';
+                }
+            },
+            {
                 title: '端口',
                 dataIndex: 'port',
                 className: 'col-port',
@@ -115,11 +130,13 @@ class SitesTab extends BaseTab {
                 className: 'col-link',
                 render: (value, row) => {
                     let url = '';
+                    const useHttps = row.ssl?.enabled;
+                    const scheme = useHttps ? 'https' : 'http';
                     if (row.domain?.length > 0) {
-                        const port = row.port > 0 && row.port !== 80 ? `:${row.port}` : '';
-                        url = `http://${row.domain[0]}${port}`;
+                        const port = row.port > 0 && row.port !== 80 && row.port !== 443 ? `:${row.port}` : '';
+                        url = `${scheme}://${row.domain[0]}${port}`;
                     } else if (row.port > 0) {
-                        url = `http://${window.location.hostname}:${row.port}`;
+                        url = `${scheme}://${window.location.hostname}:${row.port}`;
                     }
                     if (!url) return '-';
                     return `
@@ -167,7 +184,7 @@ class SitesTab extends BaseTab {
         // 添加、刷新、搜索、过滤
         this.$('#add-site-btn')?.addEventListener('click', () => { this.editingSite = null; this.showEditor(); });
         this.$('#sites-refresh-btn')?.addEventListener('click', () => this.refresh());
-        
+
         let searchTimer;
         this.$('#sites-search')?.addEventListener('input', () => {
             clearTimeout(searchTimer);
@@ -176,45 +193,33 @@ class SitesTab extends BaseTab {
         this.$('#sites-type-filter')?.addEventListener('change', () => this.filterSites());
         this.$('#sites-status-filter')?.addEventListener('change', () => this.filterSites());
 
-        // 批量操作按钮事件已移至 batch-bar 组件内部处理
-
         // 弹窗
         this.$('#site-modal-cancel')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-modal-close')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-modal-confirm')?.addEventListener('click', () => this.saveSite());
         this.$('#site-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
-        this.$('#site-form-ssl-enabled')?.addEventListener('change', () => this.onSSLToggle());
-        this.$('#site-form-ssl-mode')?.addEventListener('change', () => this.onSSLModeChange());
+
+        // SSL 子选项卡
+        this.$$('#site-ssl-tabs .ssl-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.switchSSLTab(btn.dataset.sslTab));
+        });
+
+        // SSL 证书选择
+        this.$('#site-form-ssl-cert-select')?.addEventListener('change', () => this.onCertSelect());
+
+        // SSL 粘贴证书验证
+        this.$('#site-form-ssl-paste-verify')?.addEventListener('click', () => this.verifyAndPasteCert());
 
         // 目录浏览按钮
         this.$$('.directory-picker-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+            btn.addEventListener('click', () => openDirPicker(btn.dataset.dir, this.api));
         });
         // 删除确认弹窗
         this.$('#site-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
         this.$('#site-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
         this.$('#site-delete-confirm')?.addEventListener('click', () => this.confirmDelete());
         this.$('#site-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
-    }
-
-    async openDirPicker(inputId) {
-        const input = this.$(`#${inputId}`);
-        if (!input) return;
-        try {
-            const selected = await openFileBrowser({
-                title: '选择目录',
-                selectMode: 'folder',
-                root: input.value || '.',
-                api: this.api,
-            });
-            if (selected) {
-                input.value = selected;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        } catch (e) {
-            // 用户取消
-        }
     }
 
     bindRowEvents() {
@@ -273,9 +278,28 @@ class SitesTab extends BaseTab {
 
         try {
             this.sites = await this.api.getJSON('/api/sites') || [];
+            this.enrichSitesWithCertInfo();
             this.filterSites();
         } finally {
             this.dataTable.setLoading(false);
+        }
+    }
+
+    // 用证书库信息丰富站点的 SSL 状态
+    enrichSitesWithCertInfo() {
+        for (const site of this.sites) {
+            if (!site.ssl?.enabled || !site.domain?.length) continue;
+            // 查找证书库中匹配的证书
+            for (const cert of this.availableCerts) {
+                if (site.domain.includes(cert.domain)) {
+                    site.ssl._cert_domain = cert.domain;
+                    site.ssl._days_left = cert.days_left;
+                    site.ssl._has_cert = cert.has_cert;
+                    site.ssl._issuer = cert.issuer;
+                    site.ssl._not_after = cert.not_after;
+                    break;
+                }
+            }
         }
     }
 
@@ -318,75 +342,31 @@ class SitesTab extends BaseTab {
 
     // ========== 服务控制 ==========
 
+    onInit() {
+        this._svc = this.createServiceControls({
+            apiPrefix: '/api/service/sites',
+            statusId: 'site-service-status',
+            toggleId: 'site-service-toggle',
+            label: '站点服务',
+        });
+        this.initDataTable();
+        this.bindEvents();
+        this.checkServiceStatus();
+    }
+
     async checkServiceStatus() {
         try {
             const data = await this.api.getJSON('/api/sites/status');
             if (data) {
-                this.updateServiceStatus(data.running);
+                this._svc.updateServiceStatus(data.running);
             }
         } catch (error) {
-            console.error('获取站点服务状态失败:', error);
         }
     }
 
-    async toggleService() {
-        const btn = this.$('#site-service-toggle');
-        const isRunning = btn?.classList.contains('running');
-
-        try {
-            if (isRunning) {
-                await this.api.post('/api/service/sites/stop');
-                this.toast.success('站点服务已停止');
-                this.updateServiceStatus(false);
-            } else {
-                await this.api.post('/api/service/sites/start');
-                this.toast.success('站点服务已启动');
-                this.updateServiceStatus(true);
-            }
-        } catch (error) {
-            this.toast.error('操作失败: ' + error.message);
-        }
-    }
-
-    async restartService() {
-        try {
-            await this.api.post('/api/service/sites/restart');
-            this.toast.success('站点服务已重启');
-            this.updateServiceStatus(true);
-        } catch (error) {
-            this.toast.error('重启失败: ' + error.message);
-        }
-    }
-
-    async reloadConfig() {
-        try {
-            await this.api.post('/api/service/sites/reload');
-            this.toast.success('站点配置已重载');
-            await this.refresh();
-        } catch (error) {
-            this.toast.error('重载失败: ' + error.message);
-        }
-    }
-
-    updateServiceStatus(running) {
-        const statusEl = this.$('#site-service-status');
-        const toggleBtn = this.$('#site-service-toggle');
-
-        if (statusEl) {
-            statusEl.textContent = running ? '运行中' : '已停止';
-            statusEl.classList.toggle('running', running);
-            statusEl.classList.toggle('stopped', !running);
-        }
-
-        if (toggleBtn) {
-            toggleBtn.classList.toggle('running', running);
-            toggleBtn.classList.toggle('stopped', !running);
-            const textSpan = toggleBtn.querySelector('.btn-text');
-            if (textSpan) {
-                textSpan.textContent = running ? '停止' : '启动';
-            }
-        }
-    }
+    toggleService() { return this._svc.toggleService(); }
+    restartService() { return this._svc.restartService(); }
+    async reloadConfig() { await this._svc.reloadConfig(); await this.refresh(); }
 
     showDeleteConfirm(id) {
         const site = this.sites.find(s => s.id === id);
@@ -486,12 +466,216 @@ class SitesTab extends BaseTab {
         }
     }
 
+    // ========== SSL 证书管理 ==========
+
+    // 加载可用证书列表
+    async loadAvailableCerts() {
+        try {
+            this.availableCerts = await this.api.getJSON('/api/certs', { cache: false }) || [];
+        } catch (error) {
+            this.availableCerts = [];
+        }
+    }
+
+    // 填充证书选择下拉框
+    populateCertSelect() {
+        const select = this.$('#site-form-ssl-cert-select');
+        if (!select) return;
+
+        // 保留第一个默认选项
+        select.innerHTML = '<option value="">-- 请选择证书 --</option>';
+
+        for (const cert of this.availableCerts) {
+            const opt = document.createElement('option');
+            opt.value = cert.domain;
+            let label = cert.domain;
+            if (cert.days_left !== undefined && cert.days_left !== null) {
+                if (cert.days_left <= 0) {
+                    label += ' (已过期)';
+                } else if (cert.days_left <= 30) {
+                    label += ` (剩余${cert.days_left}天)`;
+                } else {
+                    label += ` (${cert.days_left}天)`;
+                }
+            }
+            if (cert.issuer) {
+                label += ` - ${cert.issuer}`;
+            }
+            opt.textContent = label;
+            select.appendChild(opt);
+        }
+
+        // 显示/隐藏空提示
+        const emptyHint = this.$('#site-ssl-cert-empty');
+        if (emptyHint) {
+            emptyHint.style.display = this.availableCerts.length === 0 ? 'flex' : 'none';
+        }
+    }
+
+    // 证书选择变更 - 显示证书预览
+    onCertSelect() {
+        const domain = this.$('#site-form-ssl-cert-select')?.value;
+        const preview = this.$('#site-ssl-cert-preview');
+        if (!domain || !preview) {
+            if (preview) preview.style.display = 'none';
+            return;
+        }
+
+        const cert = this.availableCerts.find(c => c.domain === domain);
+        if (!cert) {
+            preview.style.display = 'none';
+            return;
+        }
+
+        preview.style.display = 'block';
+        this.setText('#cert-preview-domain', cert.domain || '-');
+        this.setText('#cert-preview-issuer', cert.issuer || '-');
+
+        if (cert.not_before && cert.not_after) {
+            const from = new Date(cert.not_before).toLocaleDateString();
+            const to = new Date(cert.not_after).toLocaleDateString();
+            this.setText('#cert-preview-validity', `${from} ~ ${to}`);
+        } else {
+            this.setText('#cert-preview-validity', '-');
+        }
+
+        if (cert.days_left !== undefined && cert.days_left !== null) {
+            const daysEl = this.$('#cert-preview-days');
+            if (daysEl) {
+                daysEl.textContent = cert.days_left > 0 ? `${cert.days_left} 天` : '已过期';
+                daysEl.className = 'cert-preview-value ' + (cert.days_left <= 0 ? 'text-danger' : cert.days_left <= 30 ? 'text-warning' : 'text-success');
+            }
+        } else {
+            this.setText('#cert-preview-days', '-');
+        }
+    }
+
+    // ========== SSL 子选项卡 ==========
+
+    // 切换 SSL 子选项卡
+    switchSSLTab(tab) {
+        this._sslTab = tab;
+
+        // 更新按钮状态
+        this.$$('#site-ssl-tabs .ssl-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.sslTab === tab);
+        });
+
+        // 更新面板显示
+        this.$$('.ssl-tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.dataset.sslPanel === tab);
+        });
+
+        // 显示/隐藏通用选项
+        const commonOpts = this.$('#site-ssl-common-options');
+        if (commonOpts) {
+            commonOpts.style.display = tab !== 'off' ? 'block' : 'none';
+        }
+    }
+
+    // 验证并保存粘贴的证书
+    async verifyAndPasteCert() {
+        const certPEM = this.$('#site-form-ssl-paste-cert')?.value?.trim();
+        const keyPEM = this.$('#site-form-ssl-paste-key')?.value?.trim();
+        const statusEl = this.$('#site-ssl-paste-status');
+        const previewEl = this.$('#site-ssl-paste-preview');
+
+        if (!certPEM || !keyPEM) {
+            if (statusEl) statusEl.textContent = '请填写证书和私钥';
+            return;
+        }
+
+        // 检查 PEM 格式
+        if (!certPEM.includes('-----BEGIN')) {
+            if (statusEl) statusEl.textContent = '证书格式错误，需要 PEM 格式';
+            return;
+        }
+        if (!keyPEM.includes('-----BEGIN')) {
+            if (statusEl) statusEl.textContent = '私钥格式错误，需要 PEM 格式';
+            return;
+        }
+
+        // 从证书提取域名
+        const domain = this.extractDomainFromPEM(certPEM);
+        if (!domain) {
+            if (statusEl) statusEl.textContent = '无法解析证书域名';
+            return;
+        }
+
+        if (statusEl) statusEl.textContent = '验证中...';
+
+        try {
+            const result = await this.api.postJSON('/api/certs/paste', {
+                domain,
+                cert_pem: certPEM,
+                key_pem: keyPEM,
+            });
+
+            this._pasteCertInfo = result;
+            if (statusEl) {
+                statusEl.innerHTML = '<span style="color:var(--success)">验证通过</span>';
+            }
+
+            // 显示证书预览
+            if (previewEl && result) {
+                previewEl.style.display = 'block';
+                this.setText('#paste-preview-domain', result.domain || domain);
+                this.setText('#paste-preview-issuer', result.issuer || '-');
+
+                if (result.not_before && result.not_after) {
+                    const from = new Date(result.not_before).toLocaleDateString();
+                    const to = new Date(result.not_after).toLocaleDateString();
+                    this.setText('#paste-preview-validity', `${from} ~ ${to}`);
+                } else {
+                    this.setText('#paste-preview-validity', '-');
+                }
+
+                const daysEl = this.$('#paste-preview-days');
+                if (daysEl && result.days_left !== undefined) {
+                    daysEl.textContent = result.days_left > 0 ? `${result.days_left} 天` : '已过期';
+                    daysEl.className = 'cert-preview-value ' + (result.days_left <= 0 ? 'text-danger' : result.days_left <= 30 ? 'text-warning' : 'text-success');
+                }
+            }
+
+            // 刷新证书库列表
+            await this.loadAvailableCerts();
+            this.populateCertSelect();
+        } catch (error) {
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color:var(--danger)">验证失败: ${escapeHtml(error.message)}</span>`;
+            }
+            if (previewEl) previewEl.style.display = 'none';
+            this._pasteCertInfo = null;
+        }
+    }
+
+    // 从 PEM 证书中提取域名（简单解析 Common Name / SAN）
+    extractDomainFromPEM(pem) {
+        // 尝试从站点域名匹配（优先使用表单中的域名）
+        const domainStr = this.$('#site-form-domain')?.value?.trim();
+        if (domainStr) {
+            const domains = domainStr.split(',').map(d => d.trim()).filter(Boolean);
+            if (domains.length > 0) return domains[0];
+        }
+        // 回退：从 PEM 中提取 CN
+        const cnMatch = pem.match(/CN\s*=\s*([^\s,]+)/);
+        if (cnMatch) return cnMatch[1].replace(/^\*\./, ''); // 去掉通配符前缀
+        return '';
+    }
+
     // ========== 编辑器 ==========
 
-    showEditor() {
+    async showEditor() {
         const modal = this.$('#site-modal');
         const title = this.$('#site-modal-title');
         if (!modal) return;
+
+        // 清理状态
+        this._pasteCertInfo = null;
+
+        // 加载可用证书
+        await this.loadAvailableCerts();
+        this.populateCertSelect();
 
         if (this.editingSite) {
             title.textContent = '编辑网站';
@@ -506,17 +690,44 @@ class SitesTab extends BaseTab {
             this.$('#site-form-index-files').value = indexFiles.join(', ');
             const autoIndex = this.$('#site-form-auto-index');
             if (autoIndex) autoIndex.checked = this.editingSite.auto_index !== false;
-            // SSL fields
+
+            // SSL 字段
             const ssl = this.editingSite.ssl || {};
-            const sslEnabled = this.$('#site-form-ssl-enabled');
-            if (sslEnabled) sslEnabled.checked = ssl.enabled || false;
-            const sslMode = this.$('#site-form-ssl-mode');
-            if (sslMode) sslMode.value = ssl.auto_https ? 'auto' : 'custom';
-            const sslEmail = this.$('#site-form-ssl-email');
-            if (sslEmail) sslEmail.value = ssl.email || '';
+
+            // 判断 SSL 状态，选择对应的子选项卡
+            let sslTab = 'off';
+            if (ssl.enabled) {
+                if (ssl.cert_file && ssl.key_file) {
+                    // 有证书路径 — 检查是否在证书库中
+                    const matchedCert = this.availableCerts.find(c =>
+                        this.editingSite.domain?.includes(c.domain)
+                    );
+                    sslTab = matchedCert ? 'pool' : 'paste';
+                } else {
+                    sslTab = 'pool';
+                }
+            }
+
+            this.switchSSLTab(sslTab);
+
+            // 如果启用 SSL，自动选中匹配的证书
+            if (sslTab !== 'off') {
+                const certSelect = this.$('#site-form-ssl-cert-select');
+                if (certSelect) {
+                    const matchedCert = this.availableCerts.find(c =>
+                        this.editingSite.domain?.includes(c.domain)
+                    );
+                    if (matchedCert) {
+                        certSelect.value = matchedCert.domain;
+                        this.onCertSelect();
+                    }
+                }
+            }
+
             const sslForce = this.$('#site-form-ssl-force');
             if (sslForce) sslForce.checked = ssl.force_https || false;
-            this.onSSLToggle();
+            const sslHsts = this.$('#site-form-ssl-hsts');
+            if (sslHsts) sslHsts.checked = ssl.hsts || false;
         } else {
             title.textContent = '添加网站';
             this.$('#site-form')?.reset();
@@ -525,11 +736,19 @@ class SitesTab extends BaseTab {
             this.$('#site-form-index-files').value = 'index.html, index.htm';
             const autoIndex = this.$('#site-form-auto-index');
             if (autoIndex) autoIndex.checked = true;
-            // Reset SSL fields
-            const sslEnabled = this.$('#site-form-ssl-enabled');
-            if (sslEnabled) sslEnabled.checked = false;
-            this.onSSLToggle();
+            // 默认关闭 SSL
+            this.switchSSLTab('off');
         }
+
+        // 清空粘贴区域
+        const pasteCert = this.$('#site-form-ssl-paste-cert');
+        const pasteKey = this.$('#site-form-ssl-paste-key');
+        if (pasteCert) pasteCert.value = '';
+        if (pasteKey) pasteKey.value = '';
+        const pastePreview = this.$('#site-ssl-paste-preview');
+        if (pastePreview) pastePreview.style.display = 'none';
+        const pasteStatus = this.$('#site-ssl-paste-status');
+        if (pasteStatus) pasteStatus.textContent = '';
 
         this.onTypeChange();
         modal.classList.add('active');
@@ -548,18 +767,61 @@ class SitesTab extends BaseTab {
         if (proxyFields) proxyFields.style.display = type === 'proxy' ? 'block' : 'none';
     }
 
-    onSSLToggle() {
-        const enabled = this.$('#site-form-ssl-enabled')?.checked;
-        const fields = this.$('#site-ssl-fields');
-        if (fields) fields.style.display = enabled ? 'block' : 'none';
+    // ========== 保存站点 ==========
+
+    // 根据 SSL 子选项卡构建 SSL 配置
+    buildSSLConfig() {
+        const sslTab = this._sslTab;
+        const forceHTTPS = this.$('#site-form-ssl-force')?.checked || false;
+        const hsts = this.$('#site-form-ssl-hsts')?.checked || false;
+
+        if (sslTab === 'off') {
+            return { enabled: false };
+        }
+
+        if (sslTab === 'pool') {
+            // 从证书库选择
+            const selectedCertDomain = this.$('#site-form-ssl-cert-select')?.value;
+            if (!selectedCertDomain) {
+                // 未选择证书，视为关闭
+                return { enabled: false };
+            }
+            const cert = this.availableCerts.find(c => c.domain === selectedCertDomain);
+            return {
+                enabled: true,
+                auto_https: false,
+                cert_file: cert?.cert_file || `./ssl/${selectedCertDomain}.crt`,
+                key_file: cert?.key_file || `./ssl/${selectedCertDomain}.key`,
+                force_https: forceHTTPS,
+                hsts,
+            };
+        }
+
+        if (sslTab === 'paste') {
+            // 粘贴证书 — 证书已通过 verifyAndPasteCert 保存
+            if (!this._pasteCertInfo) {
+                // 未验证粘贴证书，视为关闭
+                return { enabled: false };
+            }
+            return {
+                enabled: true,
+                auto_https: false,
+                cert_file: `./ssl/${this._pasteCertInfo.domain}.crt`,
+                key_file: `./ssl/${this._pasteCertInfo.domain}.key`,
+                force_https: forceHTTPS,
+                hsts,
+            };
+        }
+
+        if (sslTab === 'auto') {
+            // 自动申请（已移除，降级为证书库模式）
+            return { enabled: false };
+        }
+
+        return { enabled: false };
     }
 
-    onSSLModeChange() {
-        const mode = this.$('#site-form-ssl-mode')?.value;
-        const emailGroup = this.$('#site-ssl-email-group');
-        if (emailGroup) emailGroup.style.display = mode === 'auto' ? 'block' : 'none';
-    }
-
+    // 保存站点（点击"确定"按钮）
     async saveSite() {
         const name = this.$('#site-form-name')?.value.trim();
         const type = this.$('#site-form-type')?.value;
@@ -588,19 +850,20 @@ class SitesTab extends BaseTab {
             data.proxy = { target: proxyTarget };
         }
 
-        // SSL config
-        const sslEnabled = this.$('#site-form-ssl-enabled')?.checked;
-        if (sslEnabled) {
-            const sslMode = this.$('#site-form-ssl-mode')?.value;
-            data.ssl = {
-                enabled: true,
-                auto_https: sslMode === 'auto',
-                email: this.$('#site-form-ssl-email')?.value.trim() || '',
-                force_https: this.$('#site-form-ssl-force')?.checked || false,
-            };
-        } else {
-            data.ssl = { enabled: false };
+        // SSL 配置
+        const sslTab = this._sslTab;
+        if (sslTab === 'pool') {
+            const selectedCertDomain = this.$('#site-form-ssl-cert-select')?.value;
+            if (!selectedCertDomain) {
+                this.message.error('请选择一个证书');
+                return;
+            }
+        } else if (sslTab === 'paste' && !this._pasteCertInfo) {
+            this.message.error('请先验证并保存粘贴的证书');
+            return;
         }
+
+        data.ssl = this.buildSSLConfig();
 
         try {
             if (this.editingSite) {

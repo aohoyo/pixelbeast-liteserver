@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -105,7 +106,7 @@ func (s *HTTPServer) serveDirectory(w http.ResponseWriter, r *http.Request, dirP
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>目录列表 - `+urlPath+`</title>
+    <title>目录列表 - `+html.EscapeString(urlPath)+`</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
         h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
@@ -120,7 +121,7 @@ func (s *HTTPServer) serveDirectory(w http.ResponseWriter, r *http.Request, dirP
     </style>
 </head>
 <body>
-    <h1>📁 `+urlPath+`</h1>
+    <h1>📁 `+html.EscapeString(urlPath)+`</h1>
 `)
 
 	// 父目录链接
@@ -129,7 +130,7 @@ func (s *HTTPServer) serveDirectory(w http.ResponseWriter, r *http.Request, dirP
 		if parentPath == "." {
 			parentPath = "/"
 		}
-		io.WriteString(w, `<div class="parent"><a href="`+parentPath+`">📁 ..</a></div>`)
+		io.WriteString(w, `<div class="parent"><a href="`+html.EscapeString(parentPath)+`">📁 ..</a></div>`)
 	}
 
 	io.WriteString(w, "<ul>\n")
@@ -156,7 +157,7 @@ func (s *HTTPServer) serveDirectory(w http.ResponseWriter, r *http.Request, dirP
 			}
 		}
 
-		io.WriteString(w, `<li><span class="icon">`+icon+`</span><a href="`+href+`">`+name+`</a><span class="size">`+sizeStr+`</span></li>`+"\n")
+		io.WriteString(w, `<li><span class="icon">`+icon+`</span><a href="`+html.EscapeString(href)+`">`+html.EscapeString(name)+`</a><span class="size">`+sizeStr+`</span></li>`+"\n")
 	}
 
 	io.WriteString(w, `</ul>

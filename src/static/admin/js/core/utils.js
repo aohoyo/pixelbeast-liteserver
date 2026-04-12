@@ -4,6 +4,8 @@
  * 提供项目中常用的工具函数，避免重复代码
  */
 
+import { openFileBrowser } from '../components/file-browser/index.js';
+
 /**
  * HTML 转义，防止 XSS
  * @param {string} text - 要转义的文本
@@ -251,6 +253,70 @@ export function get(obj, path, defaultValue = undefined) {
     return result;
 }
 
+/**
+ * 目录选择器（调用文件浏览器选择文件夹）
+ * @param {string} inputId - 目标 input 元素 ID
+ * @param {Object} api - API 实例
+ */
+export async function openDirPicker(inputId, api) {
+    const input = document.querySelector(`#${inputId}`);
+    if (!input) return;
+    try {
+        const selected = await openFileBrowser({
+            title: '选择目录',
+            selectMode: 'folder',
+            root: input.value || '.',
+            api,
+        });
+        if (selected) {
+            input.value = selected;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    } catch (e) {
+        // 用户取消
+    }
+}
+
+/**
+ * 初始化数字输入组件（上下按钮和键盘快捷键）
+ * @param {HTMLElement} root - 容器元素
+ */
+export function initNumberInputs(root = document) {
+    root.querySelectorAll('.number-input-wrapper').forEach(wrapper => {
+        const input = wrapper.querySelector('input[type="number"]');
+        const upBtn = wrapper.querySelector('[data-action="up"]');
+        const downBtn = wrapper.querySelector('[data-action="down"]');
+
+        if (!input) return;
+
+        const step = parseInt(input.dataset.step) || 1;
+        const min = input.min !== '' ? parseInt(input.min) : null;
+        const max = input.max !== '' ? parseInt(input.max) : null;
+
+        const updateValue = (delta) => {
+            let value = parseInt(input.value) || 0;
+            value += delta;
+            if (min !== null && value < min) value = min;
+            if (max !== null && value > max) value = max;
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        upBtn?.addEventListener('click', () => updateValue(step));
+        downBtn?.addEventListener('click', () => updateValue(-step));
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                updateValue(step);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                updateValue(-step);
+            }
+        });
+    });
+}
+
 // 默认导出所有工具
 export default {
     escapeHtml,
@@ -265,5 +331,7 @@ export default {
     generateId,
     deepClone,
     isEmpty,
-    get
+    get,
+    initNumberInputs,
+    openDirPicker
 };

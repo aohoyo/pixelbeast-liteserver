@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -698,22 +697,25 @@ func (c *FTPClient) handleRETR(filename string) {
 	}
 	defer dataConn.Close()
 
-	data, err := os.ReadFile(fullPath)
+	// 流式传输文件，避免大文件 OOM
+	file, err := os.Open(fullPath)
 	if err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸è½½ "+filename, err.Error())
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "下载 "+filename, err.Error())
 		c.sendMessage("550 Cannot read file")
 		return
 	}
+	defer file.Close()
 
 	start := time.Now()
-	// ä¸è½½éé
+	var transferred int64
+	// 下载限速：流式传输
 	if userCfg := c.getUserConfig(); userCfg != nil && userCfg.SpeedLimit > 0 {
-		c.rateLimitedWrite(dataConn, data, userCfg.SpeedLimit*1024)
+		transferred, _ = c.rateLimitedRead(file, dataConn, userCfg.SpeedLimit*1024)
 	} else {
-		dataConn.Write(data)
+		transferred, _ = io.Copy(dataConn, file)
 	}
 	duration := time.Since(start)
-	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "ä¸è½½", int64(len(data)), duration, true)
+	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "下载", transferred, duration, true)
 	c.sendMessage("226 Transfer complete")
 }
 
@@ -746,55 +748,78 @@ func (c *FTPClient) handleSTOR(filename string) {
 	defer dataConn.Close()
 
 	start := time.Now()
-	var buf bytes.Buffer
 	var totalSize int64
 
-	// ä¸ä¼ éé + åæä»¶å¤§å°æ£æ¥
+	// 上传文件大小限制
 	maxFileSize := int64(0)
 	if userCfg != nil {
 		maxFileSize = userCfg.MaxFileSize * 1024 * 1024
 	}
 
+	// 流式写入文件，避免大文件 OOM
+	dstFile, err := os.Create(fullPath)
+	if err != nil {
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "上传 "+filename, err.Error())
+		c.sendMessage("553 Cannot store file")
+		return
+	}
+
+	sizeExceeded := false
 	if userCfg != nil && userCfg.Bandwidth > 0 {
-		// ééè¯»å
-		var tmpBuf bytes.Buffer
-		totalSize, _ = c.rateLimitedRead(dataConn, &tmpBuf, userCfg.Bandwidth*1024)
-		if maxFileSize > 0 && totalSize > maxFileSize {
-			LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, "è¶è¿åæä»¶å¤§å°éå¶")
-			c.sendMessage("553 File too large")
-			return
+		// 限速流式写入
+		chunkSize := userCfg.Bandwidth * 1024 / 10
+		if chunkSize < 1024 {
+			chunkSize = 1024
 		}
-		buf = tmpBuf
-	} else {
-		// ä¸ééï¼ä½æ£æ¥æä»¶å¤§å°
-		tmpBuf := make([]byte, 0, 64*1024)
-		readBuf := make([]byte, 32*1024)
+		interval := time.Duration(float64(time.Second) * float64(chunkSize) / float64(userCfg.Bandwidth*1024))
+		rateBuf := make([]byte, chunkSize)
 		for {
-			n, err := dataConn.Read(readBuf)
+			n, err := dataConn.Read(rateBuf)
 			if n > 0 {
 				totalSize += int64(n)
 				if maxFileSize > 0 && totalSize > maxFileSize {
-					LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, "è¶è¿åæä»¶å¤§å°éå¶")
-					c.sendMessage("553 File too large")
-					return
+					sizeExceeded = true
+					break
 				}
-				tmpBuf = append(tmpBuf, readBuf[:n]...)
+				dstFile.Write(rateBuf[:n])
+			}
+			if err != nil {
+				break
+			}
+			if int64(n) >= chunkSize {
+				time.Sleep(interval)
+			}
+		}
+	} else {
+		// 流式写入
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := dataConn.Read(buf)
+			if n > 0 {
+				totalSize += int64(n)
+				if maxFileSize > 0 && totalSize > maxFileSize {
+					sizeExceeded = true
+					break
+				}
+				dstFile.Write(buf[:n])
 			}
 			if err != nil {
 				break
 			}
 		}
-		buf = *bytes.NewBuffer(tmpBuf)
 	}
 
-	if err := os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
-		LogFTPError(c.username, c.conn.RemoteAddr().String(), "ä¸ä¼  "+filename, err.Error())
-		c.sendMessage("553 Cannot store file")
+	dstFile.Close()
+
+	if sizeExceeded {
+		os.Remove(fullPath)
+		LogFTPError(c.username, c.conn.RemoteAddr().String(), "上传 "+filename, "超过单文件大小限制")
+		c.sendMessage("553 File too large")
 		return
 	}
 
 	duration := time.Since(start)
-	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "ä¸ä¼ ", totalSize, duration, true)
+	LogFTPTransfer(c.username, c.conn.RemoteAddr().String(), filename, "上传", totalSize, duration, true)
 	c.sendMessage("226 Transfer complete")
 }
 

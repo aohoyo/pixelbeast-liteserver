@@ -75,7 +75,10 @@ func (h *Handler) enableAutoStart(w http.ResponseWriter, r *http.Request) {
 
 	// 更新配置
 	h.ConfigManager.Server.AutoStart.Enabled = true
-	h.ConfigManager.Save()
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, "保存配置失败")
+		return
+	}
 
 	handlers.LogPanelConfigChange(username, "开启开机自启", true)
 	SuccessMessage(w, "开机自启已开启")
@@ -112,7 +115,10 @@ func (h *Handler) disableAutoStart(w http.ResponseWriter, r *http.Request) {
 
 	// 更新配置
 	h.ConfigManager.Server.AutoStart.Enabled = false
-	h.ConfigManager.Save()
+	if err := h.ConfigManager.Save(); err != nil {
+		InternalServerError(w, "保存配置失败")
+		return
+	}
 
 	handlers.LogPanelConfigChange(username, "关闭开机自启", true)
 	SuccessMessage(w, "开机自启已关闭")

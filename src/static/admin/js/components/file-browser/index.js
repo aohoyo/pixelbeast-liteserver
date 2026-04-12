@@ -5,7 +5,7 @@
  * 参考 Windows 资源管理器设计
  */
 
-import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from '../file-icons.js';
+import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from '../vscode-fileicons.js';
 
 // 当前实例
 let currentInstance = null;
@@ -211,11 +211,9 @@ class FileBrowser {
         try {
             // 构建请求 URL
             const url = `/api/files?path=${encodeURIComponent(path)}`;
-            console.log('[FileBrowser] Loading:', path);
-            
+
             const response = await this.options.api.get(url);
             const data = await this.options.api.parseJSON(response);
-            console.log('[FileBrowser] Response:', data);
             
             if (data && Array.isArray(data.files)) {
                 this.items = data.files.map(f => ({

@@ -322,7 +322,6 @@ class API {
                         // 新格式：csrf_token 在 data 字段中
                         if (data.code === 200 && data.data && data.data.csrf_token) {
                             csrfToken = data.data.csrf_token;
-                            console.log('CSRF token updated');
                         }
                     } catch (e) {
                         // JSON 解析失败，忽略
@@ -396,7 +395,6 @@ class API {
         } catch (e) {
             // JSON 解析失败，可能是 404 等错误响应
             // 返回错误信息而不是抛出异常
-            console.warn('JSON parse error:', text.substring(0, 100));
             return { error: true, message: text, code: response.status || 500 };
         }
     }

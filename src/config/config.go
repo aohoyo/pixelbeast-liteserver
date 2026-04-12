@@ -15,8 +15,8 @@ import (
 type ConfigManager struct {
 	mu sync.RWMutex
 
-	configDir    string
-	key          []byte
+	configDir string
+	key       []byte
 
 	Server       *ServerConfig
 	Sites        *SitesConfig
@@ -42,10 +42,10 @@ type AutoStartConfig struct {
 
 // DNSProviderConfig DNS 服务商配置（凭证加密存储）
 type DNSProviderConfig struct {
-	ID          string `json:"id"`                     // 唯一标识
-	Name        string `json:"name"`                   // 显示名称 "阿里云 DNS"
-	Type        string `json:"type"`                   // "alidns" | "tencentcloud" | "baota"
-	Credentials string `json:"credentials"`            // AES-256-GCM 加密的凭证 JSON
+	ID          string `json:"id"`          // 唯一标识
+	Name        string `json:"name"`        // 显示名称 "阿里云 DNS"
+	Type        string `json:"type"`        // "alidns" | "tencentcloud" | "baota"
+	Credentials string `json:"credentials"` // AES-256-GCM 加密的凭证 JSON
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
@@ -106,10 +106,11 @@ type SSLConfig struct {
 	CertFile        string `json:"cert_file"`
 	KeyFile         string `json:"key_file"`
 	ForceHTTPS      bool   `json:"force_https"`
-	Provider        string `json:"provider,omitempty"`          // "letsencrypt" | "litessl"
-	ChallengeMethod string `json:"challenge_method,omitempty"`  // "http-auto" | "http-file" | "dns"
-	DNSProvider     string `json:"dns_provider,omitempty"`      // "manual" | "alidns" | "tencentcloud" | "baota"
-	DNSCredentials  string `json:"dns_credentials,omitempty"`   // AES 加密的 DNS API 凭证 JSON
+	HSTS            bool   `json:"hsts,omitempty"`             // Strict-Transport-Security
+	Provider        string `json:"provider,omitempty"`         // "letsencrypt" | "litessl"
+	ChallengeMethod string `json:"challenge_method,omitempty"` // "http-auto" | "http-file" | "dns"
+	DNSProvider     string `json:"dns_provider,omitempty"`     // "manual" | "alidns" | "tencentcloud" | "baota"
+	DNSCredentials  string `json:"dns_credentials,omitempty"`  // AES 加密的 DNS API 凭证 JSON
 }
 
 // IsAutoCert 是否使用自动证书（Let's Encrypt / LiteSSL HTTP-01）
@@ -239,10 +240,10 @@ func (cm *ConfigManager) load() error {
 	if err := cm.loadFTP(); err != nil {
 		return err
 	}
-		// 加载 dns_providers.json
-		if err := cm.loadDNSProviders(); err != nil {
-			return err
-		}
+	// 加载 dns_providers.json
+	if err := cm.loadDNSProviders(); err != nil {
+		return err
+	}
 
 	// 确保默认站点目录存在
 	cm.ensureDefaultDirectories()
@@ -254,32 +255,43 @@ func (cm *ConfigManager) load() error {
 func (cm *ConfigManager) ensureDefaultDirectories() {
 	for _, site := range cm.Sites.Sites {
 		if site.Type == "static" {
-			os.MkdirAll(cm.GetSiteRoot(&site), 0755)
+			if err := os.MkdirAll(cm.GetSiteRoot(&site), 0755); err != nil {
+				fmt.Printf("[Config] 创建站点目录失败: %v\n", err)
+			}
 		}
 	}
 }
 
-// loadServer 加载服务配置
-func (cm *ConfigManager) loadServer() error {
-	path := filepath.Join(cm.configDir, "server.json")
-
+// loadOrCreate 加载配置文件，文件不存在时初始化默认值并保存
+func (cm *ConfigManager) loadOrCreate(filename string, initDefaults func() error, unmarshal func(data []byte) error) error {
+	path := filepath.Join(cm.configDir, filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			cm.Server = cm.defaultServerConfig()
-			return cm.saveServer()
+			return initDefaults()
 		}
 		return err
 	}
+	return unmarshal(data)
+}
 
-	var cfg ServerConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return err
-	}
-
-	cm.Server = &cfg
-	cm.ensureDefaults()
-	return nil
+// loadServer 加载服务配置
+func (cm *ConfigManager) loadServer() error {
+	return cm.loadOrCreate("server.json",
+		func() error {
+			cm.Server = cm.defaultServerConfig()
+			return cm.saveServer()
+		},
+		func(data []byte) error {
+			var cfg ServerConfig
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return err
+			}
+			cm.Server = &cfg
+			cm.ensureDefaults()
+			return nil
+		},
+	)
 }
 
 // ensureDefaults 确保必要字段有默认值
@@ -314,7 +326,9 @@ func (cm *ConfigManager) ensureDefaults() {
 	}
 
 	if changed {
-		cm.saveServer()
+		if err := cm.saveServer(); err != nil {
+			fmt.Printf("[Config] 保存默认配置失败: %v\n", err)
+		}
 	}
 }
 
@@ -359,46 +373,38 @@ func (cm *ConfigManager) GetBackupDir() string {
 
 // loadSites 加载站点配置
 func (cm *ConfigManager) loadSites() error {
-	path := filepath.Join(cm.configDir, "sites.json")
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
+	return cm.loadOrCreate("sites.json",
+		func() error {
 			cm.Sites = cm.defaultSitesConfig()
 			return cm.saveSites()
-		}
-		return err
-	}
-
-	var cfg SitesConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return err
-	}
-
-	cm.Sites = &cfg
-	return nil
+		},
+		func(data []byte) error {
+			var cfg SitesConfig
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return err
+			}
+			cm.Sites = &cfg
+			return nil
+		},
+	)
 }
 
 // loadFTP 加载 FTP 配置
 func (cm *ConfigManager) loadFTP() error {
-	path := filepath.Join(cm.configDir, "ftp.json")
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
+	return cm.loadOrCreate("ftp.json",
+		func() error {
 			cm.FTP = cm.defaultFTPConfig()
 			return cm.saveFTP()
-		}
-		return err
-	}
-
-	var cfg FTPConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return err
-	}
-
-	cm.FTP = &cfg
-	return nil
+		},
+		func(data []byte) error {
+			var cfg FTPConfig
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return err
+			}
+			cm.FTP = &cfg
+			return nil
+		},
+	)
 }
 
 // Save 保存所有配置
@@ -421,34 +427,29 @@ func (cm *ConfigManager) Save() error {
 	return nil
 }
 
-// saveServer 保存服务配置
-func (cm *ConfigManager) saveServer() error {
-	path := filepath.Join(cm.configDir, "server.json")
-	data, err := json.MarshalIndent(cm.Server, "", "  ")
+// saveJSON 保存 JSON 配置文件
+func (cm *ConfigManager) saveJSON(filename string, data interface{}) error {
+	path := filepath.Join(cm.configDir, filename)
+	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, bytes, 0644)
+}
+
+// saveServer 保存服务配置
+func (cm *ConfigManager) saveServer() error {
+	return cm.saveJSON("server.json", cm.Server)
 }
 
 // saveSites 保存站点配置
 func (cm *ConfigManager) saveSites() error {
-	path := filepath.Join(cm.configDir, "sites.json")
-	data, err := json.MarshalIndent(cm.Sites, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return cm.saveJSON("sites.json", cm.Sites)
 }
 
 // saveFTP 保存 FTP 配置
 func (cm *ConfigManager) saveFTP() error {
-	path := filepath.Join(cm.configDir, "ftp.json")
-	data, err := json.MarshalIndent(cm.FTP, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return cm.saveJSON("ftp.json", cm.FTP)
 }
 
 // loadDNSProviders 加载 DNS 服务商配置
@@ -481,8 +482,12 @@ func (cm *ConfigManager) loadDNSProviders() error {
 			}
 			// 从 server.json 中移除 dns_providers 字段
 			delete(raw, "dns_providers")
-			if newData, err := json.MarshalIndent(raw, "", "  "); err == nil {
-				os.WriteFile(serverPath, newData, 0644)
+			newData, marshalErr := json.MarshalIndent(raw, "", "  ")
+			if marshalErr != nil {
+				return fmt.Errorf("序列化服务器配置失败: %w", marshalErr)
+			}
+			if writeErr := os.WriteFile(serverPath, newData, 0644); writeErr != nil {
+				return writeErr
 			}
 		}
 	}
@@ -494,22 +499,20 @@ func (cm *ConfigManager) loadDNSProviders() error {
 
 // saveDNSProviders 保存 DNS 服务商配置
 func (cm *ConfigManager) saveDNSProviders() error {
-	path := filepath.Join(cm.configDir, "dns_providers.json")
 	providers := cm.DNSProviders
 	if providers == nil {
 		providers = []DNSProviderConfig{}
 	}
-	data, err := json.MarshalIndent(providers, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return cm.saveJSON("dns_providers.json", providers)
 }
 
 // defaultServerConfig 默认服务配置
 func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 	// 生成加密的默认密码
-	encryptedPassword, _ := crypto.EncryptString("admin123", cm.key)
+	encryptedPassword, err := crypto.EncryptString("admin123", cm.key)
+	if err != nil {
+		panic(fmt.Sprintf("加密默认密码失败: %v", err))
+	}
 
 	return &ServerConfig{
 		Name:     "PixelBeast Server",
@@ -899,43 +902,40 @@ func (cm *ConfigManager) GetDNSProvider(id string) *DNSProviderConfig {
 // AddDNSProvider 添加 DNS 服务商配置
 func (cm *ConfigManager) AddDNSProvider(provider DNSProviderConfig) error {
 	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	for _, p := range cm.DNSProviders {
 		if p.ID == provider.ID {
-			cm.mu.Unlock()
 			return fmt.Errorf("DNS 服务商 ID 已存在: %s", provider.ID)
 		}
 	}
 	cm.DNSProviders = append(cm.DNSProviders, provider)
-	cm.mu.Unlock()
 	return cm.saveDNSProviders()
 }
 
 // UpdateDNSProvider 更新 DNS 服务商配置
 func (cm *ConfigManager) UpdateDNSProvider(id string, updated DNSProviderConfig) error {
 	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	for i := range cm.DNSProviders {
 		if cm.DNSProviders[i].ID == id {
 			updated.ID = id
 			cm.DNSProviders[i] = updated
-			cm.mu.Unlock()
 			return cm.saveDNSProviders()
 		}
 	}
-	cm.mu.Unlock()
 	return fmt.Errorf("DNS 服务商不存在: %s", id)
 }
 
 // DeleteDNSProvider 删除 DNS 服务商配置
 func (cm *ConfigManager) DeleteDNSProvider(id string) error {
 	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	for i, p := range cm.DNSProviders {
 		if p.ID == id {
 			cm.DNSProviders = append(cm.DNSProviders[:i], cm.DNSProviders[i+1:]...)
-			cm.mu.Unlock()
 			return cm.saveDNSProviders()
 		}
 	}
-	cm.mu.Unlock()
 	return fmt.Errorf("DNS 服务商不存在: %s", id)
 }
 

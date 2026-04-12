@@ -104,7 +104,6 @@ export async function loadModal() {
 export async function preloadComponents() {
     const promises = Object.keys(COMPONENTS).map(name => loadComponent(name));
     await Promise.allSettled(promises);
-    console.log('所有组件预加载完成');
 }
 
 /**

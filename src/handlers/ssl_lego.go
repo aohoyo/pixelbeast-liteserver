@@ -76,9 +76,9 @@ type CertLogEntry struct {
 // CertProgress 证书申请进度
 type CertProgress struct {
 	Domain   string         `json:"domain"`
-	Step     int            `json:"step"`       // 1-5
-	StepText string         `json:"step_text"`  // "注册账户"
-	Status   string         `json:"status"`     // "running" | "success" | "error" | "waiting"
+	Step     int            `json:"step"`      // 1-5
+	StepText string         `json:"step_text"` // "注册账户"
+	Status   string         `json:"status"`    // "running" | "success" | "error" | "waiting"
 	Logs     []CertLogEntry `json:"logs"`
 }
 
@@ -167,9 +167,9 @@ type LegoUser struct {
 	key   crypto.PrivateKey
 }
 
-func (u *LegoUser) GetEmail() string                      { return u.Email }
+func (u *LegoUser) GetEmail() string                        { return u.Email }
 func (u *LegoUser) GetRegistration() *registration.Resource { return u.Reg }
-func (u *LegoUser) GetPrivateKey() crypto.PrivateKey       { return u.key }
+func (u *LegoUser) GetPrivateKey() crypto.PrivateKey        { return u.key }
 
 // getCADirURL 获取 ACME 目录 URL
 func getCADirURL(provider string) string {
@@ -331,20 +331,18 @@ func (m *SSLManager) ObtainCertificateLego(domain, email, provider string) error
 	m.setCertStep(domain, 2, "准备验证", "running")
 	m.addCertLog(domain, "info", "正在准备 HTTP-01 验证...")
 
-	// HTTP-01: 使用内置 HTTP 服务器（端口 80）
-	httpProvider, err := newHTTPProviderServer("", "80")
-	if err != nil {
-		m.addCertLog(domain, "error", fmt.Sprintf("创建 HTTP Provider 失败: %v", err))
-		m.setCertStep(domain, 2, "准备验证", "error")
-		return fmt.Errorf("create http provider: %w", err)
-	}
-	if err := client.Challenge.SetHTTP01Provider(httpProvider); err != nil {
+	// HTTP-01: 使用 selfHostProvider，通过管理面板的端口 80 服务托管验证文件
+	// selfHostProvider 将 token/keyAuth 存入 acmeFileTokens，由 GetHTTPSRedirectHandler 响应
+	selfProvider := newSelfHostProvider(m)
+	if err := client.Challenge.SetHTTP01Provider(selfProvider); err != nil {
 		m.addCertLog(domain, "error", fmt.Sprintf("设置 HTTP-01 验证失败: %v", err))
 		m.setCertStep(domain, 2, "准备验证", "error")
 		return fmt.Errorf("set http01 provider: %w", err)
 	}
 
-	// 申请证书
+	m.addCertLog(domain, "success", "HTTP-01 验证已就绪，开始申请...")
+
+	// 申请证书（带超时保护）
 	req := certificate.ObtainRequest{
 		Domains: []string{domain},
 		Bundle:  true,
@@ -354,11 +352,9 @@ func (m *SSLManager) ObtainCertificateLego(domain, email, provider string) error
 	m.addCertLog(domain, "info", "正在向 CA 提交验证请求...")
 
 	oldLogger := m.setLegoProgressLogger(domain)
-	certResource, err := client.Certificate.Obtain(req)
+	certResource, err := obtainWithTimeout(client, req, m, domain)
 	restoreLegoLogger(oldLogger)
 	if err != nil {
-		m.addCertLog(domain, "error", fmt.Sprintf("证书获取失败: %v", err))
-		m.setCertStep(domain, 4, "验证获取", "error")
 		return fmt.Errorf("obtain certificate: %w", err)
 	}
 
@@ -545,11 +541,9 @@ func (m *SSLManager) CompleteFileChallenge(domain string) error {
 	}
 
 	oldLogger := m.setLegoProgressLogger(domain)
-	certResource, err := client.Certificate.Obtain(req)
+	certResource, err := obtainWithTimeout(client, req, m, domain)
 	restoreLegoLogger(oldLogger)
 	if err != nil {
-		m.setCertStep(domain, 4, "获取证书", "error")
-		m.addCertLog(domain, "error", "获取证书失败: "+err.Error())
 		return fmt.Errorf("obtain certificate: %w", err)
 	}
 
@@ -662,9 +656,6 @@ func (m *SSLManager) PrepareDNSChallenge(domain, email, provider, dnsProviderNam
 
 	if err := client.Challenge.SetDNS01Provider(dnsProvider,
 		dns01.AddRecursiveNameservers([]string{"8.8.8.8:53", "223.5.5.5:53"}),
-		dns01.WrapPreCheck(func(domain, fqdn, value string, check dns01.PreCheckFunc) (bool, error) {
-			return true, nil // 跳过本地 DNS 传播检查，直接让 CA 验证
-		}),
 	); err != nil {
 		return nil, fmt.Errorf("set dns01 provider: %w", err)
 	}
@@ -754,6 +745,11 @@ func (m *SSLManager) PrepareDNSChallenge(domain, email, provider, dnsProviderNam
 			// 清理 pending challenge
 			delete(m.pendingChallenges, domain)
 			m.mu.Unlock()
+
+			// 通知外部系统更新站点配置
+			if m.onCertObtained != nil {
+				m.onCertObtained(domain, provider, "dns", email)
+			}
 
 			log.Printf("[SSL] DNS 自动验证证书获取成功: %s", domain)
 			m.setCertStep(domain, 5, "完成", "success")
@@ -851,11 +847,9 @@ func (m *SSLManager) CompleteDNSChallenge(domain string) error {
 	}
 
 	oldLogger := m.setLegoProgressLogger(domain)
-	certResource, err := client.Certificate.Obtain(req)
+	certResource, err := obtainWithTimeout(client, req, m, domain)
 	restoreLegoLogger(oldLogger)
 	if err != nil {
-		m.addCertLog(domain, "error", "证书获取失败: "+err.Error())
-		m.setCertStep(domain, 4, "验证获取", "error")
 		return fmt.Errorf("obtain certificate: %w", err)
 	}
 
@@ -971,17 +965,25 @@ func (m *SSLManager) RenewCertificateLego(domain string) error {
 		return fmt.Errorf("read existing key: %w", err)
 	}
 
-	// 续期
+	// 续期（带超时保护）
+	m.initCertProgress(domain)
+	m.addCertLog(domain, "info", fmt.Sprintf("开始续期证书: %s", domain))
+	m.setCertStep(domain, 4, "续期获取", "running")
+
 	oldLogger := m.setLegoProgressLogger(domain)
-	res, err := client.Certificate.Renew(certificate.Resource{
+	res, err := renewWithTimeout(client, certificate.Resource{
 		Domain:      domain,
 		Certificate: certPEM,
 		PrivateKey:  keyPEM,
-	}, true, false, "")
+	}, m, domain)
 	restoreLegoLogger(oldLogger)
 	if err != nil {
+		m.addCertLog(domain, "error", "证书续期失败: "+err.Error())
+		m.setCertStep(domain, 4, "续期获取", "error")
 		return fmt.Errorf("renew certificate: %w", err)
 	}
+
+	m.addCertLog(domain, "success", "证书续期成功，正在保存...")
 
 	if err := m.saveLegoCertResource(domain, res, certDir); err != nil {
 		return err
@@ -1002,25 +1004,6 @@ func (m *SSLManager) RenewCertificateLego(domain string) error {
 }
 
 // ========== HTTP Provider 辅助类型 ==========
-
-// httpProviderServer 端口 80 HTTP-01 provider
-type httpProviderServer struct {
-	server *http.Server
-	port   string
-}
-
-func newHTTPProviderServer(iface, port string) (*httpProviderServer, error) {
-	return &httpProviderServer{port: port}, nil
-}
-
-func (p *httpProviderServer) Present(domain, token, keyAuth string) error {
-	// 使用 lego 内置的 ProviderServer
-	return nil
-}
-
-func (p *httpProviderServer) CleanUp(domain, token, keyAuth string) error {
-	return nil
-}
 
 // fileProviderCapture 捕获 HTTP-01 challenge 信息
 type fileProviderCapture struct {
@@ -1232,6 +1215,30 @@ func obtainWithTimeout(client *lego.Client, req certificate.ObtainRequest, m *SS
 	}
 }
 
+// renewWithTimeout 带超时的 Renew 调用（5 分钟超时）
+func renewWithTimeout(client *lego.Client, res certificate.Resource, m *SSLManager, domain string) (*certificate.Resource, error) {
+	type renewResult struct {
+		resource *certificate.Resource
+		err      error
+	}
+	resultCh := make(chan renewResult, 1)
+
+	go func() {
+		r, err := client.Certificate.Renew(res, true, false, "")
+		resultCh <- renewResult{resource: r, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result.resource, result.err
+	case <-time.After(5 * time.Minute):
+		m.addCertLog(domain, "error", "证书续期超时（5分钟），请检查网络连接后重试")
+		m.setCertStep(domain, 4, "续期获取", "error")
+		go func() { <-resultCh }()
+		return nil, fmt.Errorf("证书续期超时")
+	}
+}
+
 // ========== 宝塔 DNS Provider ==========
 
 // BaotaDNSConfig 宝塔 DNS API 配置
@@ -1315,8 +1322,8 @@ func (p *BaotaDNSProvider) CleanUp(domain, token, keyAuth string) error {
 				if rec["record"] == record && rec["type"] == "TXT" {
 					if id, ok := rec["id"]; ok {
 						delBody := map[string]interface{}{
-							"domain_id":  p.config.DomainID,
-							"record_id":  id,
+							"domain_id": p.config.DomainID,
+							"record_id": id,
 						}
 						p.doRequest("POST", "/api/v1/dns/record/delete", delBody)
 					}

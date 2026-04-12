@@ -7,6 +7,7 @@
  */
 
 import { BaseTab } from './BaseTab.js';
+import { escapeHtml } from '../core/utils.js';
 
 class CertTab extends BaseTab {
     constructor(deps) {
@@ -15,6 +16,8 @@ class CertTab extends BaseTab {
         this.dnsProviders = [];
         this._pendingDomain = null;
         this._pollTimer = null;
+        this._deployDomain = null;
+        this._deploySites = [];
     }
 
     onInit() {
@@ -85,6 +88,12 @@ class CertTab extends BaseTab {
                 }
             });
         });
+
+        // 部署到站点
+        this.$('#cert-deploy-close')?.addEventListener('click', () => this.hideModal('cert-deploy-modal'));
+        this.$('#cert-deploy-cancel')?.addEventListener('click', () => this.hideModal('cert-deploy-modal'));
+        this.$('#cert-deploy-confirm')?.addEventListener('click', () => this.deployCertToSites());
+        this.$('#cert-deploy-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideModal('cert-deploy-modal'));
     }
 
     bindDNSProviderEvents() {
@@ -207,6 +216,7 @@ class CertTab extends BaseTab {
                 const action = btn.dataset.action;
                 if (action === 'renew') this.renewCert(domain);
                 else if (action === 'delete') this.deleteCert(domain);
+                else if (action === 'deploy') this.showDeployModal(domain);
             });
         });
     }
@@ -223,12 +233,12 @@ class CertTab extends BaseTab {
                 <div class="cert-item-info">
                     <div class="cert-item-domain">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                        ${this.escapeHtml(cert.domain)}
+                        ${escapeHtml(cert.domain)}
                         ${challengeIcon}
                     </div>
                     <div class="cert-item-meta">
                         ${cert.has_cert ? `
-                            <span>签发者: ${this.escapeHtml(cert.issuer || '未知')}</span>
+                            <span>签发者: ${escapeHtml(cert.issuer || '未知')}</span>
                             <span>有效期: ${this.formatDate(cert.not_before)} ~ ${this.formatDate(cert.not_after)}</span>
                             <span class="${daysClass}">剩余 ${daysText}</span>
                         ` : `
@@ -238,8 +248,9 @@ class CertTab extends BaseTab {
                 </div>
                 <div class="cert-item-actions">
                     <span class="cert-badge ${badgeClass}">${badgeText}</span>
-                    ${cert.has_cert && cert.auto_https ? `<button class="btn btn-sm" data-action="renew" data-domain="${this.escapeHtml(cert.domain)}">续期</button>` : ''}
-                    <button class="btn btn-sm btn-danger" data-action="delete" data-domain="${this.escapeHtml(cert.domain)}">删除</button>
+                    ${cert.has_cert ? `<button class="btn btn-sm" data-action="deploy" data-domain="${escapeHtml(cert.domain)}">部署到站点</button>` : ''}
+                    ${cert.has_cert && cert.auto_https ? `<button class="btn btn-sm" data-action="renew" data-domain="${escapeHtml(cert.domain)}">续期</button>` : ''}
+                    <button class="btn btn-sm btn-danger" data-action="delete" data-domain="${escapeHtml(cert.domain)}">删除</button>
                 </div>
             </div>`;
     }
@@ -291,13 +302,6 @@ class CertTab extends BaseTab {
         }
     }
 
-    escapeHtml(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     hideModal(id) {
         const modal = this.$(`#${id}`);
         if (modal) modal.classList.remove('active');
@@ -333,15 +337,15 @@ class CertTab extends BaseTab {
         list.innerHTML = `
             <div class="dns-list">
                 ${this.dnsProviders.map(p => `
-                    <div class="dns-provider-item" data-id="${this.escapeHtml(String(p.id))}">
+                    <div class="dns-provider-item" data-id="${escapeHtml(String(p.id))}">
                         <div class="dns-provider-info">
-                            <div class="dns-provider-name">${this.escapeHtml(p.name)}</div>
+                            <div class="dns-provider-name">${escapeHtml(p.name)}</div>
                             <span class="badge ${typeColors[p.type] || 'badge-primary'}">${typeLabels[p.type] || p.type}</span>
                         </div>
                         <div class="dns-provider-actions">
-                            <button class="btn btn-sm" data-dns-action="test" data-dns-id="${this.escapeHtml(String(p.id))}" title="测试连接">测试</button>
-                            <button class="btn btn-sm" data-dns-action="edit" data-dns-id="${this.escapeHtml(String(p.id))}" title="编辑">编辑</button>
-                            <button class="btn btn-sm btn-danger" data-dns-action="delete" data-dns-id="${this.escapeHtml(String(p.id))}" title="删除">删除</button>
+                            <button class="btn btn-sm" data-dns-action="test" data-dns-id="${escapeHtml(String(p.id))}" title="测试连接">测试</button>
+                            <button class="btn btn-sm" data-dns-action="edit" data-dns-id="${escapeHtml(String(p.id))}" title="编辑">编辑</button>
+                            <button class="btn btn-sm btn-danger" data-dns-action="delete" data-dns-id="${escapeHtml(String(p.id))}" title="删除">删除</button>
                         </div>
                     </div>
                 `).join('')}
@@ -779,7 +783,7 @@ class CertTab extends BaseTab {
 
         const line = document.createElement('div');
         line.className = 'cert-log-line';
-        line.innerHTML = `<span class="cert-log-time" style="color:var(--text-muted)">${this.escapeHtml(time)}</span> <span class="cert-log-msg" style="color:${color}">${this.escapeHtml(message)}</span>`;
+        line.innerHTML = `<span class="cert-log-time" style="color:var(--text-muted)">${escapeHtml(time)}</span> <span class="cert-log-msg" style="color:${color}">${escapeHtml(message)}</span>`;
         container.appendChild(line);
 
         // 自动滚动到底部
@@ -864,11 +868,13 @@ class CertTab extends BaseTab {
                 this.updateStepIndicator(5, 'done');
                 this.appendLog(new Date().toLocaleTimeString(), '证书申请成功！', 'success');
                 this.toast?.success('证书申请成功');
-                // 延迟关闭并刷新列表
+                // 延迟关闭申请弹窗，然后弹出部署到站点对话框
                 setTimeout(() => {
                     this.hideModal('cert-request-modal');
-                    this.loadCerts();
-                }, 2000);
+                    this.loadCerts().then(() => {
+                        this.showDeployModal(domain);
+                    });
+                }, 1500);
             } else if (data.status === 'error') {
                 this.stopLogPolling();
                 this.appendLog(new Date().toLocaleTimeString(), data.step_text || '申请失败', 'error');
@@ -876,7 +882,6 @@ class CertTab extends BaseTab {
             }
         } catch (error) {
             // 网络错误不中断轮询，等待下次
-            console.warn('[cert] 进度轮询失败:', error);
         }
     }
 
@@ -1037,8 +1042,8 @@ class CertTab extends BaseTab {
 
         try {
             await this.api.post('/api/certs/dns-complete', { domain });
-            this.appendLog(new Date().toLocaleTimeString(), 'DNS 验证已提交，等待结果...', 'info');
-            // 继续轮询获取最终结果
+            this.appendLog(new Date().toLocaleTimeString(), 'DNS 验证已提交，正在后台执行...', 'info');
+            // 立即开始轮询进度（后端异步执行验证）
             this.startLogPolling(domain);
         } catch (error) {
             this.toast?.error('DNS 验证失败: ' + (error.message || '未知错误'));
@@ -1152,6 +1157,85 @@ class CertTab extends BaseTab {
             await this.loadCerts();
         } catch (error) {
             this.toast?.error('删除失败: ' + (error.message || '未知错误'));
+        }
+    }
+
+    // ========== 部署到站点 ==========
+
+    async showDeployModal(domain) {
+        this._deployDomain = domain;
+        this.setText('#cert-deploy-domain-text', domain);
+
+        // 加载站点列表
+        const listEl = this.$('#cert-deploy-site-list');
+        if (listEl) {
+            listEl.innerHTML = '<div style="padding:var(--space-lg) 0;text-align:center;color:var(--text-muted)">加载中...</div>';
+        }
+
+        try {
+            const sites = await this.api.getJSON('/api/sites') || [];
+            this._deploySites = sites;
+
+            if (sites.length === 0) {
+                if (listEl) {
+                    listEl.innerHTML = '<div style="padding:var(--space-lg) 0;text-align:center;color:var(--text-muted)">暂无站点，请先创建站点</div>';
+                }
+            } else {
+                // 筛选域名匹配的站点用于预选
+                const certDomain = domain.replace(/^\*\./, '');
+                listEl.innerHTML = sites.map(site => {
+                    const domains = site.domain || [];
+                    const match = domains.some(d => {
+                        const sd = d.replace(/^\*\./, '');
+                        return sd === certDomain || certDomain.endsWith('.' + sd) || sd.endsWith('.' + certDomain);
+                    });
+                    const domainStr = domains.length > 0 ? domains.join(', ') : '-';
+                    const checked = match ? 'checked' : '';
+                    const sslBadge = site.ssl?.enabled
+                        ? '<span style="font-size:11px;color:var(--success);margin-left:4px">SSL</span>'
+                        : '';
+                    return `
+                        <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;">
+                            <input type="checkbox" class="cert-deploy-site-check" value="${escapeHtml(site.id)}" ${checked}>
+                            <span style="flex:1;font-size:13px">${escapeHtml(site.name)}${sslBadge}</span>
+                            <span style="font-size:12px;color:var(--text-muted)">${escapeHtml(domainStr)}</span>
+                        </label>
+                    `;
+                }).join('');
+            }
+        } catch (error) {
+            if (listEl) {
+                listEl.innerHTML = '<div style="padding:var(--space-lg) 0;text-align:center;color:var(--danger)">加载站点失败</div>';
+            }
+        }
+
+        this.$('#cert-deploy-modal')?.classList.add('active');
+    }
+
+    async deployCertToSites() {
+        const domain = this._deployDomain;
+        if (!domain) return;
+
+        const checks = this.$$('.cert-deploy-site-check:checked');
+        const siteIds = Array.from(checks).map(el => el.value);
+        if (siteIds.length === 0) {
+            this.toast?.warning('请选择至少一个站点');
+            return;
+        }
+
+        const confirmBtn = this.$('#cert-deploy-confirm');
+        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '部署中...'; }
+
+        try {
+            const data = await this.api.postJSON('/api/certs/deploy', { domain, site_ids: siteIds });
+            this.toast?.success(`证书已部署到 ${data?.deployed || siteIds.length} 个站点`);
+            this.hideModal('cert-deploy-modal');
+            this.api.clearCache('/api/sites');
+            await this.loadCerts();
+        } catch (error) {
+            this.toast?.error('部署失败: ' + (error.message || '未知错误'));
+        } finally {
+            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '部署'; }
         }
     }
 

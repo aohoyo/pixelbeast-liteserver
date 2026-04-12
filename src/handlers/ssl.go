@@ -22,14 +22,15 @@ import (
 // CertInfo 证书详细信息
 type CertInfo struct {
 	Domain          string `json:"domain"`
-	Type            string `json:"type"`             // "auto" | "custom" | "self-signed"
+	Type            string `json:"type"` // "auto" | "custom" | "self-signed"
 	Enabled         bool   `json:"enabled"`
 	AutoHTTPS       bool   `json:"auto_https"`
 	ForceHTTPS      bool   `json:"force_https"`
+	HSTS            bool   `json:"hsts"`
 	Email           string `json:"email"`
-	Issuer          string `json:"issuer"`           // "Let's Encrypt" | "LiteSSL" | "Custom" | ""
-	NotBefore       string `json:"not_before"`       // RFC3339
-	NotAfter        string `json:"not_after"`        // RFC3339
+	Issuer          string `json:"issuer"`     // "Let's Encrypt" | "LiteSSL" | "Custom" | ""
+	NotBefore       string `json:"not_before"` // RFC3339
+	NotAfter        string `json:"not_after"`  // RFC3339
 	DaysLeft        int    `json:"days_left"`
 	CertFile        string `json:"cert_file"`
 	KeyFile         string `json:"key_file"`
@@ -59,8 +60,11 @@ type SSLManager struct {
 	pendingChallenges map[string]*PendingChallenge // domain -> challenge
 	acmeFileTokens    map[string]string            // token -> keyAuthorization (文件验证托管)
 
-		// 证书申请进度（内存临时存储）
-		certProgress map[string]*CertProgress // domain -> progress
+	// 证书申请进度（内存临时存储）
+	certProgress map[string]*CertProgress // domain -> progress
+
+	// 证书获取成功回调（用于通知外部系统更新站点配置）
+	onCertObtained func(domain, provider, challengeMethod, email string)
 
 	// EAB 凭证（LiteSSL 等 ACME 服务商需要）
 	eabKid     string
@@ -94,6 +98,11 @@ func (m *SSLManager) GetEABCredentials() (kid, hmacKey string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.eabKid, m.eabHmacKey
+}
+
+// SetOnCertObtained 设置证书获取成功回调
+func (m *SSLManager) SetOnCertObtained(cb func(domain, provider, challengeMethod, email string)) {
+	m.onCertObtained = cb
 }
 
 // Start 启动 SSL 管理器
@@ -209,10 +218,10 @@ func (m *SSLManager) initACMEManager(domains []string, email string) {
 	}
 
 	m.certManager = &autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		HostPolicy: autocert.HostWhitelist(domains...),
-		Cache:      autocert.DirCache(m.acmeDir),
-		Email:      email,
+		Prompt:      autocert.AcceptTOS,
+		HostPolicy:  autocert.HostWhitelist(domains...),
+		Cache:       autocert.DirCache(m.acmeDir),
+		Email:       email,
 		RenewBefore: 30 * 24 * time.Hour,
 	}
 	m.httpHandler = m.certManager.HTTPHandler(nil)
@@ -439,29 +448,93 @@ func (m *SSLManager) GetCertStatus(domain string) *CertInfo {
 }
 
 // GetAllCertStatuses 获取所有证书状态
+// 遍历站点配置中的域名 + ssl 目录下独立存在的证书文件
 func (m *SSLManager) GetAllCertStatuses() []*CertInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]*CertInfo, 0, len(m.configs))
-	seen := make(map[string]bool)
+	result := make([]*CertInfo, 0)
+	seenDomain := make(map[string]bool)  // 已处理的域名
+	seenCertFile := make(map[string]bool) // 已处理的证书文件路径
 
+	// 1. 遍历站点配置中已注册的域名
 	for domain := range m.configs {
-		if seen[domain] {
+		if seenDomain[domain] {
 			continue
 		}
-		seen[domain] = true
+		seenDomain[domain] = true
 
 		info, ok := m.certInfos[domain]
 		if ok {
-			// 刷新剩余天数
+			// 按证书文件去重
+			if info.CertFile != "" {
+				absPath := filepath.Clean(info.CertFile)
+				if seenCertFile[absPath] {
+					continue
+				}
+				seenCertFile[absPath] = true
+			}
 			if cert, hasCert := m.certs[domain]; hasCert && cert.Leaf != nil {
 				info.DaysLeft = int(time.Until(cert.Leaf.NotAfter).Hours() / 24)
 			}
 			result = append(result, info)
 		} else {
-			result = append(result, m.GetCertStatus(domain))
+			status := m.GetCertStatus(domain)
+			if status.CertFile != "" {
+				absPath := filepath.Clean(status.CertFile)
+				if seenCertFile[absPath] {
+					continue
+				}
+				seenCertFile[absPath] = true
+			}
+			result = append(result, status)
 		}
+	}
+
+	// 2. 扫描 ssl 目录下独立存在的证书文件（不在站点配置中的）
+	entries, err := os.ReadDir(m.certDir)
+	if err != nil {
+		return result
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".crt") {
+			continue
+		}
+		domain := strings.TrimSuffix(entry.Name(), ".crt")
+		if domain == "" || domain == "acme" || seenDomain[domain] {
+			continue
+		}
+
+		// 检查对应的 key 文件
+		keyPath := filepath.Join(m.certDir, domain+".key")
+		if _, err := os.Stat(keyPath); err != nil {
+			continue
+		}
+
+		certPath := filepath.Join(m.certDir, entry.Name())
+		absCertPath := filepath.Clean(certPath)
+
+		// 按证书文件去重
+		if seenCertFile[absCertPath] {
+			continue
+		}
+		seenCertFile[absCertPath] = true
+		seenDomain[domain] = true
+
+		// 尝试加载并解析证书信息
+		certPEM, err := os.ReadFile(certPath)
+		if err != nil {
+			continue
+		}
+		info, err := ParseCertInfoFromPEM(certPEM)
+		if err != nil {
+			info = &CertInfo{
+				Domain:  domain,
+				HasCert: true,
+				Type:    "custom",
+			}
+		}
+		result = append(result, info)
 	}
 
 	return result
@@ -532,7 +605,6 @@ func (m *SSLManager) HasSSLDomains() bool {
 	return false
 }
 
-
 // HasPendingChallenges 检查是否有待验证的挑战（需要端口 80）
 func (m *SSLManager) HasPendingChallenges() bool {
 	m.mu.RLock()
@@ -586,6 +658,7 @@ func (m *SSLManager) updateCertInfoFromCert(domain string, sslCfg *config.SSLCon
 		info.Enabled = sslCfg.Enabled
 		info.AutoHTTPS = sslCfg.AutoHTTPS
 		info.ForceHTTPS = sslCfg.ForceHTTPS
+		info.HSTS = sslCfg.HSTS
 		info.Email = sslCfg.Email
 		info.CertFile = sslCfg.CertFile
 		info.KeyFile = sslCfg.KeyFile
@@ -725,6 +798,8 @@ func isWildcardMatch(pattern, domain string) bool {
 	suffix := pattern[2:]
 	return strings.HasSuffix(domain, suffix)
 }
+
+
 
 // Ensure SSLManager implements autocert.HostPolicy-compatible interface
 var _ context.Context = context.Background()

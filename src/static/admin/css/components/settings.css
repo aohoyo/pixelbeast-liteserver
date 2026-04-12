@@ -7,6 +7,7 @@
     min-height: 0;
     padding: var(--space-lg);
     gap: var(--space-lg);
+    overflow: hidden;
 }
 
 /* 顶部操作栏 */
@@ -16,6 +17,7 @@
     align-items: center;
     padding-bottom: var(--space-md);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .settings-title h2 {
@@ -42,6 +44,7 @@
     gap: var(--space-xs);
     padding: 0;
     border-bottom: 2px solid var(--border);
+    flex-shrink: 0;
 }
 
 .tab-btn {
@@ -74,8 +77,9 @@
 /* 设置内容区 */
 .settings-content {
     flex: 1;
-    overflow: visible;
+    overflow-y: auto;
     padding-right: var(--space-sm);
+    min-height: 0;
 }
 
 .tab-pane {

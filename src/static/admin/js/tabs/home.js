@@ -23,8 +23,6 @@ class HomeTab extends BaseTab {
     }
 
     onInit() {
-        console.log('初始化首页仪表盘...');
-        
         this.bindEvents();
         this.initCollapsible();
         this.startTimers();

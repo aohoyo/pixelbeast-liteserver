@@ -281,7 +281,6 @@ func (m *ServerManager) StartSitesServer() error {
 	// 每个站点独立端口监听
 	m.startPortSites()
 
-
 	// 启动 HTTP 重定向（端口 80，ACME challenge + HTTPS 重定向）
 	m.StartHTTPRedirect()
 	m.sitesRunning = true
@@ -298,49 +297,7 @@ func (m *ServerManager) startPortSites() {
 		if !site.Enabled {
 			continue
 		}
-		if site.Port <= 0 {
-			continue
-		}
-		// 跳过管理面板端口
-		if site.Port == m.ConfigManager.Server.Admin.Port {
-			continue
-		}
-
-		handler, err := m.SitesRouter.createHandler(site)
-		if err != nil {
-			log.Printf("[Sites] 独立端口 %d 创建处理器失败: %v", site.Port, err)
-			continue
-		}
-
-		srv := &http.Server{
-			Addr:         fmt.Sprintf(":%d", site.Port),
-			Handler:      handler,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-		}
-
-		// SSL/TLS 支持
-		sslEnabled := site.SSL != nil && site.SSL.Enabled
-		if sslEnabled && m.SSLManager != nil {
-			srv.TLSConfig = &tls.Config{
-				GetCertificate: m.SSLManager.GetCertificate,
-			}
-		}
-		m.portServers[site.Port] = srv
-
-		go func(port int, name string, useTLS bool) {
-			if useTLS {
-				LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动TLS在独立端口 %d", name, port)
-				if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-					log.Printf("[Sites] 端口 %d TLS服务错误: %v", port, err)
-				}
-			} else {
-				LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 启动在独立端口 %d", name, port)
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
-				}
-			}
-		}(site.Port, site.Name, sslEnabled)
+		m.startSitePort(site)
 	}
 	m.portSitesRunning = true
 }
@@ -411,7 +368,9 @@ func (m *ServerManager) StartSite(siteID string) error {
 	}
 
 	if m.ConfigManager != nil {
-		m.ConfigManager.Save()
+		if err := m.ConfigManager.Save(); err != nil {
+			LogPanelRuntime(LogLevelError, "[Sites] 保存配置失败: %v", err)
+		}
 	}
 
 	m.startSitePort(site)
@@ -440,7 +399,9 @@ func (m *ServerManager) StopSite(siteID string) error {
 	site.UpdatedAt = time.Now().Format(time.RFC3339)
 
 	if m.ConfigManager != nil {
-		m.ConfigManager.Save()
+		if err := m.ConfigManager.Save(); err != nil {
+			LogPanelRuntime(LogLevelError, "[Sites] 保存配置失败: %v", err)
+		}
 	}
 
 	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已停止", site.Name)
@@ -501,6 +462,14 @@ func (m *ServerManager) DeleteSiteRuntime(siteID string) {
 	LogPanelRuntime(LogLevelInfo, "[Sites] 站点 %s 已删除", siteID)
 }
 
+// hstsMiddleware 为 HTTPS 响应添加 Strict-Transport-Security 头
+func (m *ServerManager) hstsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // startSitePort 启动单个站点的端口监听
 func (m *ServerManager) startSitePort(site *config.SiteConfig) {
 	if site.Port <= 0 || site.Port == m.ConfigManager.Server.Admin.Port {
@@ -513,6 +482,15 @@ func (m *ServerManager) startSitePort(site *config.SiteConfig) {
 		return
 	}
 
+	// SSL/TLS 支持
+	sslEnabled := site.SSL != nil && site.SSL.Enabled
+	if sslEnabled && m.SSLManager != nil {
+		// HSTS 中间件：为启用 HSTS 的站点添加 Strict-Transport-Security 头
+		if site.SSL.HSTS {
+			handler = m.hstsMiddleware(handler)
+		}
+	}
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", site.Port),
 		Handler:      handler,
@@ -520,8 +498,6 @@ func (m *ServerManager) startSitePort(site *config.SiteConfig) {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	// SSL/TLS 支持
-	sslEnabled := site.SSL != nil && site.SSL.Enabled
 	if sslEnabled && m.SSLManager != nil {
 		srv.TLSConfig = &tls.Config{
 			GetCertificate: m.SSLManager.GetCertificate,
@@ -695,6 +671,35 @@ func (m *ServerManager) StartHTTPRedirect() {
 
 	go func() {
 		LogPanelRuntime(LogLevelInfo, "[SSL] HTTP 重定向服务启动在端口 80")
+		if err := m.redirectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[SSL] 端口 80 服务错误: %v", err)
+		}
+		m.mu.Lock()
+		m.redirectRunning = false
+		m.mu.Unlock()
+	}()
+}
+
+// EnsureHTTPRedirect 确保端口 80 HTTP 重定向服务器运行（用于 SSL 证书验证）
+// 不检查 HasSSLDomains/HasPendingChallenges，适合证书申请前调用
+func (m *ServerManager) EnsureHTTPRedirect() {
+	if m.SSLManager == nil {
+		return
+	}
+	// 检查是否已有运行中的重定向服务
+	if m.redirectRunning && m.redirectServer != nil {
+		return
+	}
+
+	handler := m.SSLManager.GetHTTPSRedirectHandler(nil)
+	m.redirectServer = &http.Server{
+		Addr:    ":80",
+		Handler: handler,
+	}
+	m.redirectRunning = true
+
+	go func() {
+		LogPanelRuntime(LogLevelInfo, "[SSL] HTTP 重定向服务启动在端口 80（证书验证模式）")
 		if err := m.redirectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[SSL] 端口 80 服务错误: %v", err)
 		}

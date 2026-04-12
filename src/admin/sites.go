@@ -59,6 +59,7 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -91,16 +92,17 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	username := h.getSessionUsername(r)
 	siteName := h.ConfigManager.GetSiteByID(req.ID)
 	siteNameStr := req.ID
-	if siteName != nil { siteNameStr = siteName.Name }
+	if siteName != nil {
+		siteNameStr = siteName.Name
+	}
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 切换状态: %s -> %v (用户=%s)", siteNameStr, req.Enabled, username)
 	SuccessMessage(w, "站点状态已更新")
 }
 
-// handleSiteStart 启动单个站点
-func (h *Handler) handleSiteStart(w http.ResponseWriter, r *http.Request) {
+// handleSiteAction 通用站点操作处理器
+func (h *Handler) handleSiteAction(w http.ResponseWriter, r *http.Request, action func(string) error, actionName string) {
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w, "方法不允许")
 		return
@@ -119,74 +121,29 @@ func (h *Handler) handleSiteStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ServerManager.StartSite(req.ID); err != nil {
+	if err := action(req.ID); err != nil {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
 
 	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 启动: %s (用户=%s)", req.ID, username)
-	SuccessMessage(w, "站点已启动")
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] %s: %s (用户=%s)", actionName, req.ID, username)
+	SuccessMessage(w, "站点已"+actionName)
+}
+
+// handleSiteStart 启动单个站点
+func (h *Handler) handleSiteStart(w http.ResponseWriter, r *http.Request) {
+	h.handleSiteAction(w, r, h.ServerManager.StartSite, "启动")
 }
 
 // handleSiteStop 停止单个站点
 func (h *Handler) handleSiteStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, "方法不允许")
-		return
-	}
-
-	var req struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "参数错误")
-		return
-	}
-
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-
-	if err := h.ServerManager.StopSite(req.ID); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 停止: %s (用户=%s)", req.ID, username)
-	SuccessMessage(w, "站点已停止")
+	h.handleSiteAction(w, r, h.ServerManager.StopSite, "停止")
 }
 
 // handleSiteRestart 重启单个站点
 func (h *Handler) handleSiteRestart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, "方法不允许")
-		return
-	}
-
-	var req struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "参数错误")
-		return
-	}
-
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-
-	if err := h.ServerManager.RestartSite(req.ID); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 重启: %s (用户=%s)", req.ID, username)
-	SuccessMessage(w, "站点已重启")
+	h.handleSiteAction(w, r, h.ServerManager.RestartSite, "重启")
 }
 
 // getSitesStatus 获取站点服务状态
@@ -227,49 +184,34 @@ func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 	SuccessMessage(w, msg)
 }
 
-// startSitesService 启动站点服务
-func (h *Handler) startSitesService(w http.ResponseWriter, r *http.Request) {
+// handleSitesServiceAction 通用站点服务操作处理器
+func (h *Handler) handleSitesServiceAction(w http.ResponseWriter, r *http.Request, action func() error, actionName string) {
 	if h.ServerManager == nil {
 		Error(w, http.StatusOK, "服务管理器未初始化")
 		return
 	}
-	if err := h.ServerManager.StartSitesServer(); err != nil {
+	if err := action(); err != nil {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
 	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 启动站点服务 (用户=%s)", username)
-	SuccessMessage(w, "站点服务已启动")
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] %s站点服务 (用户=%s)", actionName, username)
+	SuccessMessage(w, "站点服务已"+actionName)
+}
+
+// startSitesService 启动站点服务
+func (h *Handler) startSitesService(w http.ResponseWriter, r *http.Request) {
+	h.handleSitesServiceAction(w, r, h.ServerManager.StartSitesServer, "启动")
 }
 
 // stopSitesService 停止站点服务
 func (h *Handler) stopSitesService(w http.ResponseWriter, r *http.Request) {
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-	if err := h.ServerManager.StopSitesServer(); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 停止站点服务 (用户=%s)", username)
-	SuccessMessage(w, "站点服务已停止")
+	h.handleSitesServiceAction(w, r, h.ServerManager.StopSitesServer, "停止")
 }
 
 // restartSitesService 重启站点服务
 func (h *Handler) restartSitesService(w http.ResponseWriter, r *http.Request) {
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-	if err := h.ServerManager.RestartSitesServer(); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重启站点服务 (用户=%s)", username)
-	SuccessMessage(w, "站点服务已重启")
+	h.handleSitesServiceAction(w, r, h.ServerManager.RestartSitesServer, "重启")
 }
 
 // reloadSitesConfig 重载站点配置
@@ -309,6 +251,7 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := h.getSessionUsername(r)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -368,9 +311,7 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 批量%s: %d个站点 (用户=%s)", req.Action, count, username)
-	SuccessMessage(w, fmt.Sprintf("已处理 %d 个站点", count))
 }
 
 // listSites 列出所有站点
@@ -418,6 +359,7 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 		site.IndexFiles = []string{"index.html", "index.htm"}
 	}
 
+	username := h.getSessionUsername(r)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -446,7 +388,6 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 		h.ServerManager.AddSiteRuntime(&site)
 	}
 
-	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 创建站点: %s (用户=%s)", site.Name, username)
 	Success(w, siteToMap(site))
 }
@@ -473,6 +414,7 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 
+	username := h.getSessionUsername(r)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -502,13 +444,13 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 		}
 	}
 
-	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 更新站点: %s (用户=%s)", id, username)
 	SuccessMessage(w, "站点已更新")
 }
 
 // deleteSite 删除站点
 func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) {
+	username := h.getSessionUsername(r)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -542,7 +484,6 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 		h.ServerManager.DeleteSiteRuntime(id)
 	}
 
-	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[站点] 删除站点: %s (用户=%s)", site.Name, username)
 	SuccessMessage(w, "站点已删除")
 }

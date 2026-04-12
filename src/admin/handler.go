@@ -382,40 +382,44 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.restartSitesService(w, r)
 	case "/api/service/sites/reload":
 		h.reloadSitesConfig(w, r)
-		// SSL 证书管理
-		case "/api/certs":
-			h.handleCertsList(w, r)
-		case "/api/certs/request":
-			h.handleCertRequest(w, r)
-		case "/api/certs/renew":
-			h.handleCertRenew(w, r)
-		case "/api/certs/upload":
-			h.handleCertUpload(w, r)
-		case "/api/certs/delete":
-			h.handleCertDelete(w, r)
-		case "/api/certs/dns-prepare":
-			h.handleCertDNSPrepare(w, r)
-		case "/api/certs/dns-complete":
-			h.handleCertDNSComplete(w, r)
-		case "/api/certs/file-prepare":
-			h.handleCertFilePrepare(w, r)
-		case "/api/certs/file-complete":
-			h.handleCertFileComplete(w, r)
-		case "/api/certs/dns-providers":
-			if r.Method == http.MethodPost {
-				h.handleDNSProviderCreate(w, r)
-			} else {
-				h.handleDNSProvidersList(w, r)
-			}
-		// 开机自启
-		case "/api/certs/dns-providers-test":
-			h.handleDNSProviderTestCreds(w, r)
-		case "/api/service/autostart/status":
-			h.getAutoStartStatus(w, r)
-		case "/api/service/autostart/enable":
-			h.enableAutoStart(w, r)
-		case "/api/service/autostart/disable":
-			h.disableAutoStart(w, r)
+	// SSL 证书管理
+	case "/api/certs":
+		h.handleCertsList(w, r)
+	case "/api/certs/request":
+		h.handleCertRequest(w, r)
+	case "/api/certs/renew":
+		h.handleCertRenew(w, r)
+	case "/api/certs/upload":
+		h.handleCertUpload(w, r)
+	case "/api/certs/delete":
+		h.handleCertDelete(w, r)
+	case "/api/certs/paste":
+		h.handleCertPaste(w, r)
+	case "/api/certs/deploy":
+		h.handleCertDeploy(w, r)
+	case "/api/certs/dns-prepare":
+		h.handleCertDNSPrepare(w, r)
+	case "/api/certs/dns-complete":
+		h.handleCertDNSComplete(w, r)
+	case "/api/certs/file-prepare":
+		h.handleCertFilePrepare(w, r)
+	case "/api/certs/file-complete":
+		h.handleCertFileComplete(w, r)
+	case "/api/certs/dns-providers":
+		if r.Method == http.MethodPost {
+			h.handleDNSProviderCreate(w, r)
+		} else {
+			h.handleDNSProvidersList(w, r)
+		}
+	// 开机自启
+	case "/api/certs/dns-providers-test":
+		h.handleDNSProviderTestCreds(w, r)
+	case "/api/service/autostart/status":
+		h.getAutoStartStatus(w, r)
+	case "/api/service/autostart/enable":
+		h.enableAutoStart(w, r)
+	case "/api/service/autostart/disable":
+		h.disableAutoStart(w, r)
 	default:
 		// DNS 服务商管理 (带 ID)
 		if strings.HasPrefix(actualPath, "/api/certs/dns-providers/") {
@@ -613,39 +617,29 @@ func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (h *Handler) serveCSS(w http.ResponseWriter, r *http.Request) {
-	file := strings.TrimPrefix(r.URL.Path, "/css/")
-	data, err := fs.ReadFile(staticFS, "css/"+file)
+// serveStaticFile 通用静态文件服务
+func (h *Handler) serveStaticFile(w http.ResponseWriter, r *http.Request, subdir, contentType string) {
+	file := strings.TrimPrefix(r.URL.Path, "/"+subdir+"/")
+	data, err := fs.ReadFile(staticFS, subdir+"/"+file)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "text/css")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write(data)
+}
+
+func (h *Handler) serveCSS(w http.ResponseWriter, r *http.Request) {
+	h.serveStaticFile(w, r, "css", "text/css")
 }
 
 func (h *Handler) serveJS(w http.ResponseWriter, r *http.Request) {
-	file := strings.TrimPrefix(r.URL.Path, "/js/")
-	data, err := fs.ReadFile(staticFS, "js/"+file)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "application/javascript")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Write(data)
+	h.serveStaticFile(w, r, "js", "application/javascript")
 }
 
 func (h *Handler) serveComponents(w http.ResponseWriter, r *http.Request) {
-	file := strings.TrimPrefix(r.URL.Path, "/components/")
-	data, err := fs.ReadFile(staticFS, "components/"+file)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	h.serveStaticFile(w, r, "components", "text/html; charset=utf-8")
 }
 
 func (h *Handler) serveImages(w http.ResponseWriter, r *http.Request) {

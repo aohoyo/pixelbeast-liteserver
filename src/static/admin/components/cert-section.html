@@ -281,3 +281,28 @@
         </div>
     </div>
 </div>
+
+<!-- 部署证书到站点对话框 -->
+<div class="modal" id="cert-deploy-modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-container" style="width: 480px; max-width: 90vw;">
+        <div class="modal-header">
+            <h3>部署证书到站点</h3>
+            <button class="modal-close" id="cert-deploy-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+                选择要部署证书 <strong id="cert-deploy-domain-text"></strong> 的站点：
+            </p>
+            <div id="cert-deploy-site-list" style="max-height:320px;overflow-y:auto;">
+                <div class="cert-empty" style="padding:var(--space-lg) 0">
+                    <p style="font-size:13px;color:var(--text-muted)">加载中...</p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="cert-deploy-cancel">取消</button>
+            <button class="btn btn-primary" id="cert-deploy-confirm">部署</button>
+        </div>
+    </div>
+</div>

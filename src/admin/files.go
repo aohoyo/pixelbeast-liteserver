@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"pixelbeast/src/handlers"
@@ -14,6 +15,15 @@ import (
 )
 
 // ==================== HTTP 文件管理 ====================
+
+// isPathTraversal 检查路径是否包含目录遍历（URL 解码后再校验）
+func isPathTraversal(path string) bool {
+	decoded, err := url.PathUnescape(path)
+	if err != nil {
+		decoded = path
+	}
+	return strings.Contains(decoded, "..")
+}
 
 // resolvePath 统一路径解析
 // 支持绝对路径、相对路径和 ".." 导航
@@ -302,7 +312,7 @@ func (h *Handler) uploadChunkStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uploadID := r.URL.Query().Get("uploadID")
-	if uploadID == "" || strings.Contains(uploadID, "..") || strings.Contains(uploadID, "/") || strings.Contains(uploadID, "\\") {
+	if uploadID == "" || isPathTraversal(uploadID) || strings.Contains(uploadID, "/") || strings.Contains(uploadID, "\\") {
 		BadRequest(w, "Invalid uploadID")
 		return
 	}
@@ -347,7 +357,7 @@ func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
 
 	destPath := r.FormValue("path")
 	relativePath := r.FormValue("relativePath")
-	if strings.Contains(destPath, "..") || strings.Contains(relativePath, "..") {
+	if isPathTraversal(destPath) || isPathTraversal(relativePath) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -388,7 +398,7 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+	if isPathTraversal(req.Path) || isPathTraversal(req.Name) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -420,7 +430,7 @@ func (h *Handler) mkdir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 安全检查
-	if strings.Contains(req.Path, "..") {
+	if isPathTraversal(req.Path) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -451,7 +461,7 @@ func (h *Handler) renameFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.Path, "..") || strings.Contains(req.OldName, "..") || strings.Contains(req.NewName, "..") {
+	if isPathTraversal(req.Path) || isPathTraversal(req.OldName) || isPathTraversal(req.NewName) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -480,7 +490,7 @@ func (h *Handler) downloadFile(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	name := r.URL.Query().Get("name")
 
-	if strings.Contains(path, "..") || strings.Contains(name, "..") {
+	if isPathTraversal(path) || isPathTraversal(name) {
 		Error(w, http.StatusBadRequest, "Invalid path")
 		return
 	}
@@ -532,7 +542,7 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstPath, "..") || strings.Contains(req.DstName, "..") {
+	if isPathTraversal(req.SrcPath) || isPathTraversal(req.SrcName) || isPathTraversal(req.DstPath) || isPathTraversal(req.DstName) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -653,7 +663,7 @@ func (h *Handler) touchFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+	if isPathTraversal(req.Path) || isPathTraversal(req.Name) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -690,7 +700,7 @@ func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstPath, "..") {
+	if isPathTraversal(req.SrcPath) || isPathTraversal(req.SrcName) || isPathTraversal(req.DstPath) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -736,7 +746,7 @@ func (h *Handler) chmodFile(w http.ResponseWriter, r *http.Request) {
 		BadRequest(w, "Invalid JSON")
 		return
 	}
-	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+	if isPathTraversal(req.Path) || isPathTraversal(req.Name) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -777,7 +787,7 @@ func (h *Handler) getFilePermissions(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	name := r.URL.Query().Get("name")
 
-	if strings.Contains(path, "..") || strings.Contains(name, "..") {
+	if isPathTraversal(path) || isPathTraversal(name) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -811,7 +821,7 @@ func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	name := r.URL.Query().Get("name")
 
-	if strings.Contains(path, "..") || strings.Contains(name, "..") {
+	if isPathTraversal(path) || isPathTraversal(name) {
 		BadRequest(w, "Invalid path")
 		return
 	}
@@ -901,7 +911,7 @@ func (h *Handler) saveFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
+	if isPathTraversal(req.Path) || isPathTraversal(req.Name) {
 		BadRequest(w, "Invalid path")
 		return
 	}

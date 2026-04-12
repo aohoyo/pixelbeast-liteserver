@@ -4,7 +4,7 @@
  * 支持多标签页、仿 Windows 资源管理器
  */
 
-import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './file-icons.js';
+import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './vscode-fileicons.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
 
@@ -859,8 +859,8 @@ export class FileManager {
                 if (isDir) {
                     this.navigate(this.joinPath(tab.path, name));
                 } else {
-                    // 文件：打开编辑器
-                    this.editFile(name);
+                    // 根据文件类型智能打开
+                    this.handleFileOpen(name);
                 }
             });
         });
@@ -1777,6 +1777,226 @@ export class FileManager {
     }
 
     /**
+     * 根据扩展名判断文件类型
+     * @returns {'image'|'video'|'audio'|'pdf'|'text'|'other'}
+     */
+    getFileType(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const types = {
+            image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'],
+            video: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'],
+            audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'wma', 'm4a'],
+            pdf: ['pdf'],
+            text: ['txt', 'md', 'json', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'htm', 'xml', 'yaml', 'yml',
+                'go', 'py', 'sh', 'bash', 'sql', 'conf', 'ini', 'env', 'log', 'cfg', 'toml', 'properties',
+                'java', 'c', 'cpp', 'h', 'hpp', 'rs', 'rb', 'php', 'lua', 'pl', 'r', 'swift', 'kt',
+                'vue', 'svelte', 'scss', 'sass', 'less', 'makefile', 'dockerfile', 'gitignore', 'editorconfig',
+                'bat', 'ps1', 'vbs', 'csv', 'tsv']
+        };
+        for (const [type, exts] of Object.entries(types)) {
+            if (exts.includes(ext)) return type;
+        }
+        // 无扩展名的文件当文本处理
+        if (!filename.includes('.') || filename === 'Makefile' || filename === 'Dockerfile') return 'text';
+        return 'other';
+    }
+
+    /**
+     * 根据文件类型智能打开
+     */
+    handleFileOpen(filename) {
+        const type = this.getFileType(filename);
+        switch (type) {
+            case 'image':
+                this.showImagePreview(filename);
+                break;
+            case 'video':
+                this.showVideoPreview(filename);
+                break;
+            case 'audio':
+                this.showAudioPreview(filename);
+                break;
+            case 'pdf':
+                this.showPdfPreview(filename);
+                break;
+            case 'text':
+                this.editFile(filename);
+                break;
+            default:
+                this.options.toast?.info?.('不支持预览此类型文件，正在下载...');
+                this.downloadFile(filename);
+                break;
+        }
+    }
+
+    /**
+     * 获取文件下载 URL
+     */
+    getFileUrl(filename) {
+        const tab = this.getActiveTab();
+        if (!tab) return '';
+        return `${this.options.apiPath}/download?path=${encodeURIComponent(tab.path)}&name=${encodeURIComponent(filename)}`;
+    }
+
+    /**
+     * 创建预览弹窗遮罩
+     */
+    createPreviewOverlay(className) {
+        const overlay = document.createElement('div');
+        overlay.className = 'preview-overlay';
+        overlay.innerHTML = `
+            <div class="preview-container ${className || ''}">
+                <div class="preview-header">
+                    <span class="preview-title"></span>
+                    <div class="preview-actions">
+                        <button class="preview-btn" id="preview-download" title="下载">${ICONS.download}</button>
+                        <button class="preview-btn close" id="preview-close" title="关闭">${ICONS.close}</button>
+                    </div>
+                </div>
+                <div class="preview-body"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // 关闭事件
+        const close = () => overlay.remove();
+        overlay.querySelector('#preview-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+        });
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') close();
+        });
+        overlay.tabIndex = -1;
+        overlay.focus();
+
+        return overlay;
+    }
+
+    /**
+     * 图片预览弹窗
+     */
+    showImagePreview(filename) {
+        const overlay = this.createPreviewOverlay('preview-image');
+        const url = this.getFileUrl(filename);
+        const title = overlay.querySelector('.preview-title');
+        const body = overlay.querySelector('.preview-body');
+        const close = () => overlay.remove();
+
+        title.textContent = filename;
+
+        // 当前缩放比例
+        let scale = 1;
+        const img = document.createElement('img');
+        img.className = 'preview-img';
+        img.alt = filename;
+        img.src = url;
+        img.style.transform = `scale(${scale})`;
+
+        // 加载失败处理
+        img.onerror = () => {
+            this.options.toast?.error?.('图片加载失败');
+            close();
+        };
+
+        body.appendChild(img);
+
+        // 鼠标滚轮缩放
+        body.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(0.1, Math.min(10, scale + delta));
+            img.style.transform = `scale(${scale})`;
+        }, { passive: false });
+
+        // 下载按钮
+        overlay.querySelector('#preview-download').addEventListener('click', () => this.downloadFile(filename));
+    }
+
+    /**
+     * 视频预览弹窗
+     */
+    showVideoPreview(filename) {
+        const overlay = this.createPreviewOverlay('preview-video');
+        const url = this.getFileUrl(filename);
+        const title = overlay.querySelector('.preview-title');
+        const body = overlay.querySelector('.preview-body');
+
+        title.textContent = filename;
+
+        const video = document.createElement('video');
+        video.className = 'preview-video';
+        video.src = url;
+        video.controls = true;
+        video.autoplay = true;
+        body.appendChild(video);
+
+        // 关闭时暂停视频
+        const originalClose = () => overlay.remove();
+        overlay.querySelector('#preview-close').addEventListener('click', () => { video.pause(); originalClose(); });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { video.pause(); originalClose(); }
+        });
+
+        overlay.querySelector('#preview-download').addEventListener('click', () => this.downloadFile(filename));
+    }
+
+    /**
+     * 音频预览弹窗
+     */
+    showAudioPreview(filename) {
+        const overlay = this.createPreviewOverlay('preview-audio');
+        const url = this.getFileUrl(filename);
+        const title = overlay.querySelector('.preview-title');
+        const body = overlay.querySelector('.preview-body');
+
+        title.textContent = filename;
+
+        body.innerHTML = `
+            <div class="preview-audio-wrap">
+                <div class="preview-audio-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64">
+                        <path d="M9 18V5l12-2v13"/>
+                        <circle cx="6" cy="18" r="3"/>
+                        <circle cx="18" cy="16" r="3"/>
+                    </svg>
+                </div>
+                <div class="preview-audio-name">${this.escapeHtml(filename)}</div>
+                <audio class="preview-audio" src="${url}" controls autoplay></audio>
+            </div>
+        `;
+
+        const audio = body.querySelector('audio');
+        const originalClose = () => overlay.remove();
+        overlay.querySelector('#preview-close').addEventListener('click', () => { audio.pause(); originalClose(); });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { audio.pause(); originalClose(); }
+        });
+
+        overlay.querySelector('#preview-download').addEventListener('click', () => this.downloadFile(filename));
+    }
+
+    /**
+     * PDF 预览弹窗
+     */
+    showPdfPreview(filename) {
+        const url = this.getFileUrl(filename);
+        // 尝试用 iframe 内嵌预览
+        const overlay = this.createPreviewOverlay('preview-pdf');
+        const title = overlay.querySelector('.preview-title');
+        const body = overlay.querySelector('.preview-body');
+
+        title.textContent = filename;
+
+        const iframe = document.createElement('iframe');
+        iframe.className = 'preview-pdf';
+        iframe.src = url;
+        body.appendChild(iframe);
+
+        overlay.querySelector('#preview-download').addEventListener('click', () => this.downloadFile(filename));
+    }
+
+    /**
      * 判断是否为可编辑文件
      */
     isEditableFile(filename) {
@@ -2505,11 +2725,10 @@ export class FileManager {
     }
 
     /**
-     * 打开文件
+     * 打开文件（右键菜单调用，智能判断）
      */
     openFile(filename) {
-        // 默认行为：下载
-        this.downloadFile(filename);
+        this.handleFileOpen(filename);
     }
 
     /**

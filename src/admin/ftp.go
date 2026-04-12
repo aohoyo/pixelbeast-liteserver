@@ -48,57 +48,54 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 
 	// 用户主动切换时保存配置
 	h.ConfigManager.FTP.Enabled = h.ServerManager.IsFTPRunning()
-	h.ConfigManager.Save()
+	if err := h.ConfigManager.Save(); err != nil {
+		Error(w, http.StatusInternalServerError, "保存配置失败")
+		return
+	}
 
 	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 切换FTP服务: %s (用户=%s)", msg, username)
 	SuccessMessage(w, msg)
 }
 
-func (h *Handler) startFTP(w http.ResponseWriter, r *http.Request) {
+// handleFTPServiceAction 通用 FTP 服务操作处理器
+// saveConfig: 需要保存配置时传入（如启停操作），否则传 nil
+func (h *Handler) handleFTPServiceAction(w http.ResponseWriter, r *http.Request, action func() error, actionName string, saveConfig func() error) {
 	if h.ServerManager == nil {
 		Error(w, http.StatusOK, "服务管理器未初始化")
 		return
 	}
-	if err := h.ServerManager.StartFTP(); err != nil {
+	if err := action(); err != nil {
 		Error(w, http.StatusOK, err.Error())
 		return
 	}
-	h.ConfigManager.FTP.Enabled = true
-	h.ConfigManager.Save()
+	if saveConfig != nil {
+		if err := saveConfig(); err != nil {
+			Error(w, http.StatusInternalServerError, "保存配置失败")
+			return
+		}
+	}
 	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 启动FTP服务 (用户=%s)", username)
-	SuccessMessage(w, "FTP服务已启动")
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] %sFTP服务 (用户=%s)", actionName, username)
+	SuccessMessage(w, "FTP服务已"+actionName)
+}
+
+func (h *Handler) startFTP(w http.ResponseWriter, r *http.Request) {
+	h.handleFTPServiceAction(w, r, h.ServerManager.StartFTP, "启动", func() error {
+		h.ConfigManager.FTP.Enabled = true
+		return h.ConfigManager.Save()
+	})
 }
 
 func (h *Handler) stopFTP(w http.ResponseWriter, r *http.Request) {
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-	if err := h.ServerManager.StopFTP(); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-	h.ConfigManager.FTP.Enabled = false
-	h.ConfigManager.Save()
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 停止FTP服务 (用户=%s)", username)
-	SuccessMessage(w, "FTP服务已停止")
+	h.handleFTPServiceAction(w, r, h.ServerManager.StopFTP, "停止", func() error {
+		h.ConfigManager.FTP.Enabled = false
+		return h.ConfigManager.Save()
+	})
 }
 
 func (h *Handler) restartFTP(w http.ResponseWriter, r *http.Request) {
-	if h.ServerManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
-		return
-	}
-	if err := h.ServerManager.RestartFTP(); err != nil {
-		Error(w, http.StatusOK, err.Error())
-		return
-	}
-	username := h.getSessionUsername(r)
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "[服务] 重启FTP服务 (用户=%s)", username)
-	SuccessMessage(w, "FTP服务重启成功")
+	h.handleFTPServiceAction(w, r, h.ServerManager.RestartFTP, "重启", nil)
 }
 
 func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +118,7 @@ func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) saveFtpPort(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, "Method not allowed")
+		MethodNotAllowed(w, "方法不允许")
 		return
 	}
 	var data struct {
@@ -132,7 +129,10 @@ func (h *Handler) saveFtpPort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.ConfigManager.FTP.Port = data.Port
-	h.ConfigManager.Save()
+	if err := h.ConfigManager.Save(); err != nil {
+		Error(w, http.StatusInternalServerError, "保存配置失败")
+		return
+	}
 	username := h.getSessionUsername(r)
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "[FTP] 修改端口: %d (用户=%s)", data.Port, username)
 	SuccessMessage(w, "FTP 端口已更新，重启服务生效")
@@ -145,7 +145,7 @@ func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 	dirsOnly := r.URL.Query().Get("dirsOnly") == "true"
 
 	if strings.Contains(subPath, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -178,7 +178,7 @@ func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	// 增加上传限制到 500MB
@@ -198,7 +198,7 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 
 	destPath := r.FormValue("path")
 	if strings.Contains(destPath, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -222,7 +222,7 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	var req struct {
@@ -230,11 +230,11 @@ func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -243,7 +243,7 @@ func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 	absPath, _ := filepath.Abs(fullPath)
 	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absPath, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -256,7 +256,7 @@ func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) mkdirFtp(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	var req struct {
@@ -264,11 +264,11 @@ func (h *Handler) mkdirFtp(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 	if strings.Contains(req.Path, "..") || strings.Contains(req.Name, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -286,7 +286,7 @@ func (h *Handler) downloadFtpFile(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 
 	if strings.Contains(path, "..") || strings.Contains(name, "..") {
-		Error(w, http.StatusBadRequest, "Invalid path")
+		Error(w, http.StatusBadRequest, "无效路径")
 		return
 	}
 
@@ -295,7 +295,7 @@ func (h *Handler) downloadFtpFile(w http.ResponseWriter, r *http.Request) {
 	absPath, _ := filepath.Abs(fullPath)
 	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absPath, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -329,7 +329,7 @@ func (h *Handler) downloadFtpFile(w http.ResponseWriter, r *http.Request) {
 // renameFtpFile 重命名 FTP 文件
 func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	var req struct {
@@ -338,11 +338,11 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 		NewName string `json:"newName"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 	if strings.Contains(req.Path, "..") || strings.Contains(req.OldName, "..") || strings.Contains(req.NewName, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -351,7 +351,7 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 	absOld, _ := filepath.Abs(oldPath)
 	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absOld, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -359,7 +359,7 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 	newPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.NewName)
 	absNew, _ := filepath.Abs(newPath)
 	if !strings.HasPrefix(absNew, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -374,7 +374,7 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 // copyFtpFile 复制 FTP 文件
 func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	var req struct {
@@ -383,11 +383,11 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 		DstName string `json:"dstName"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 	if strings.Contains(req.SrcPath, "..") || strings.Contains(req.SrcName, "..") || strings.Contains(req.DstName, "..") {
-		BadRequest(w, "Invalid path")
+		BadRequest(w, "无效路径")
 		return
 	}
 
@@ -396,7 +396,7 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 	absSrc, _ := filepath.Abs(srcPath)
 	absRoot, _ := filepath.Abs(h.ConfigManager.GetFTPRoot())
 	if !strings.HasPrefix(absSrc, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -404,7 +404,7 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 	dstPath := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.SrcPath, "/"), req.DstName)
 	absDst, _ := filepath.Abs(dstPath)
 	if !strings.HasPrefix(absDst, absRoot) {
-		Forbidden(w, "Access denied")
+		Forbidden(w, "访问被拒绝")
 		return
 	}
 
@@ -456,9 +456,6 @@ func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
 			status = "enabled"
 		}
 
-		// 解密密码用于显示
-		password, _ := h.ConfigManager.GetFTPUserPassword(u.Username)
-
 		// 计算已用空间
 		var usedSpace int64
 		if u.RootPath != "" {
@@ -469,7 +466,7 @@ func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
 
 		users = append(users, map[string]interface{}{
 			"username":       u.Username,
-			"password":       password,
+			"password":       "••••••••",
 			"rootPath":       u.RootPath,
 			"status":         status,
 			"quota":          u.Quota,
@@ -492,7 +489,7 @@ func (h *Handler) listFtpUsers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 	var req struct {
@@ -505,7 +502,7 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 		Remark     string `json:"remark"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 
@@ -586,7 +583,7 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 
@@ -596,7 +593,7 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 		DeleteFiles bool   `json:"deleteFiles"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 
@@ -649,7 +646,7 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 
@@ -658,7 +655,7 @@ func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 		Enabled  bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 
@@ -703,7 +700,7 @@ func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		Error(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
 
@@ -712,7 +709,7 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 		Usernames []string `json:"usernames"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 
@@ -814,7 +811,7 @@ func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username
 		Remark     string `json:"remark"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 
@@ -865,7 +862,7 @@ func (h *Handler) updateFtpUserConfig(w http.ResponseWriter, r *http.Request, us
 		MaxFileSize    int64 `json:"maxFileSize"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON")
+		BadRequest(w, "参数错误")
 		return
 	}
 

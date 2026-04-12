@@ -6,7 +6,7 @@
  */
 
 import { BaseTab } from './BaseTab.js';
-import { openFileBrowser } from '../components/file-browser/index.js';
+import { escapeHtml, initNumberInputs, openDirPicker } from '../core/utils.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {
@@ -17,46 +17,9 @@ class SettingsTab extends BaseTab {
     }
 
     onInit() {
-        console.log('[Settings] 初始化设置面板...');
-        this.initNumberInputs();
+        initNumberInputs(this.container || document);
         this.bindEvents();
         this.startClock();
-    }
-
-    initNumberInputs() {
-        this.$$('.number-input-wrapper').forEach(wrapper => {
-            const input = wrapper.querySelector('input[type="number"]');
-            const upBtn = wrapper.querySelector('[data-action="up"]');
-            const downBtn = wrapper.querySelector('[data-action="down"]');
-
-            if (!input) return;
-
-            const step = parseInt(input.dataset.step) || 1;
-            const min = input.min !== '' ? parseInt(input.min) : null;
-            const max = input.max !== '' ? parseInt(input.max) : null;
-
-            const updateValue = (delta) => {
-                let value = parseInt(input.value) || 0;
-                value += delta;
-                if (min !== null && value < min) value = min;
-                if (max !== null && value > max) value = max;
-                input.value = value;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            };
-
-            upBtn?.addEventListener('click', () => updateValue(step));
-            downBtn?.addEventListener('click', () => updateValue(-step));
-
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    updateValue(step);
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    updateValue(-step);
-                }
-            });
-        });
     }
 
     bindEvents() {
@@ -92,7 +55,7 @@ class SettingsTab extends BaseTab {
 
         // 目录选择器
         this.$$('.directory-picker-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+            btn.addEventListener('click', () => openDirPicker(btn.dataset.dir, this.api));
         });
 
         // 创建备份按钮
@@ -142,9 +105,7 @@ class SettingsTab extends BaseTab {
             this.config = config;
             this.originalConfig = JSON.parse(JSON.stringify(this.config));
             this.render();
-            console.log('[Settings] 配置加载成功', this.config);
         } catch (error) {
-            console.error('[Settings] 加载配置失败:', error);
             this.toast?.error('加载配置失败：' + error.message);
         }
     }
@@ -238,25 +199,6 @@ class SettingsTab extends BaseTab {
         return config;
     }
 
-    async openDirPicker(inputId) {
-        const input = this.$(`#${inputId}`);
-        if (!input) return;
-        try {
-            const selected = await openFileBrowser({
-                title: '选择目录',
-                selectMode: 'folder',
-                root: input.value || '.',
-                api: this.api,
-            });
-            if (selected) {
-                input.value = selected;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        } catch (e) {
-            // 用户取消或关闭
-        }
-    }
-
 
     // ========== 备份管理 ==========
 
@@ -277,18 +219,18 @@ class SettingsTab extends BaseTab {
                             <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
                                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:var(--warning, #fbbf24);flex-shrink:0;"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
                                 <div style="min-width: 0;">
-                                    <div style="font-size: 14px; color: var(--text, #fafaf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(b.name)}</div>
+                                    <div style="font-size: 14px; color: var(--text, #fafaf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(b.name)}</div>
                                     <div style="font-size: 12px; color: var(--text-muted, #78716c);">${b.modified} · ${this.formatSize(b.size)}</div>
                                 </div>
                             </div>
                             <div style="display: flex; gap: 6px; flex-shrink: 0;">
-                                <button class="btn btn-sm backup-download-btn" data-name="${this.escapeHtml(b.name)}" title="下载">
+                                <button class="btn btn-sm backup-download-btn" data-name="${escapeHtml(b.name)}" title="下载">
                                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 </button>
-                                <button class="btn btn-sm backup-restore-btn" data-name="${this.escapeHtml(b.name)}" title="恢复">
+                                <button class="btn btn-sm backup-restore-btn" data-name="${escapeHtml(b.name)}" title="恢复">
                                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                                 </button>
-                                <button class="btn btn-sm backup-delete-btn" data-name="${this.escapeHtml(b.name)}" style="color:var(--danger, #ef4444);" title="删除">
+                                <button class="btn btn-sm backup-delete-btn" data-name="${escapeHtml(b.name)}" style="color:var(--danger, #ef4444);" title="删除">
                                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 </button>
                             </div>
@@ -307,7 +249,6 @@ class SettingsTab extends BaseTab {
                 btn.addEventListener('click', () => this.deleteBackup(btn.dataset.name));
             });
         } catch (error) {
-            console.error('[Settings] 加载备份列表失败:', error);
         }
     }
 
@@ -371,13 +312,6 @@ class SettingsTab extends BaseTab {
         return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
     }
 
-    escapeHtml(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     async save() {
         if (!this.hasChanges && !this.getValue('#admin-password')) {
             this.toast?.info('没有需要保存的更改');
@@ -392,7 +326,6 @@ class SettingsTab extends BaseTab {
             this.toast?.success('配置保存成功');
             this.events.emit('config:updated', config);
         } catch (error) {
-            console.error('[Settings] 保存失败:', error);
             this.toast?.error('保存失败：' + error.message);
         }
     }
@@ -407,7 +340,6 @@ class SettingsTab extends BaseTab {
                 this.toast?.success('配置已重置');
                 this.events.emit('config:updated', this.config);
             } catch (error) {
-                console.error('[Settings] 重置失败:', error);
                 this.toast?.error('重置失败：' + error.message);
             }
         });
@@ -454,7 +386,6 @@ class SettingsTab extends BaseTab {
                 this.updateClockDisplay();
             }
         } catch (error) {
-            console.error('[Settings] 同步时间失败:', error);
             this.toast?.error('同步时间失败：' + (error.message || '请检查权限'));
         } finally {
             if (icon) icon.classList.remove('spinning');
@@ -523,7 +454,6 @@ class SettingsTab extends BaseTab {
                 }
             }
         } catch (error) {
-            console.error('[Settings] 加载自启状态失败:', error);
             const statusEl = this.$('#autostart-status');
             if (statusEl) {
                 statusEl.textContent = '检测失败';

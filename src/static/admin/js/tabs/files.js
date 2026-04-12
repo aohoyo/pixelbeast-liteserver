@@ -71,7 +71,7 @@ class FilesTab extends BaseTab {
                 this.renderQuickNav(result.dirs);
             }
         } catch (e) {
-            console.warn('[Files] 加载快捷目录失败:', e);
+            // 快捷目录加载失败，忽略
         }
     }
 

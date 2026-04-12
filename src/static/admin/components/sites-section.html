@@ -69,7 +69,7 @@
 </div>
 <div class="modal" id="site-modal">
     <div class="modal-overlay"></div>
-    <div class="modal-container" style="width: 560px; max-width: 90vw;">
+    <div class="modal-container" style="width: 640px; max-width: 90vw;">
         <div class="modal-header">
             <h3 id="site-modal-title">添加网站</h3>
             <button class="modal-close" id="site-modal-close">&times;</button>
@@ -144,34 +144,79 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     SSL 配置
                 </div>
-                <div class="form-group">
-                    <label class="form-label">启用 SSL</label>
-                    <label class="toggle">
-                        <input type="checkbox" id="site-form-ssl-enabled">
-                        <span class="toggle-slider"></span>
-                    </label>
+                <!-- SSL 子选项卡 -->
+                <div class="ssl-tabs" id="site-ssl-tabs">
+                    <button type="button" class="ssl-tab-btn" data-ssl-tab="off">关闭</button>
+                    <button type="button" class="ssl-tab-btn active" data-ssl-tab="pool">证书库</button>
+                    <button type="button" class="ssl-tab-btn" data-ssl-tab="paste">粘贴证书</button>
                 </div>
-                <div id="site-ssl-fields" style="display:none;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">证书模式</label>
-                            <select class="form-select" id="site-form-ssl-mode">
-                                <option value="auto">Let's Encrypt (自动)</option>
-                                <option value="custom">自定义证书</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="site-ssl-email-group">
-                            <label class="form-label">邮箱 (Let's Encrypt)</label>
-                            <input type="email" class="form-input" id="site-form-ssl-email" placeholder="admin@example.com" />
+                <div class="ssl-tab-panels">
+                    <!-- 关闭 SSL -->
+                    <div class="ssl-tab-panel" data-ssl-panel="off">
+                        <div class="ssl-off-hint">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:32px;height:32px;color:var(--text-muted)"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <p>未启用 SSL</p>
+                            <span>所有访问将通过 HTTP 明文传输，建议启用 SSL 保护数据安全</span>
                         </div>
                     </div>
-                    <div class="form-group">
+                    <!-- 证书库 -->
+                    <div class="ssl-tab-panel active" data-ssl-panel="pool">
+                        <div class="form-group">
+                            <label class="form-label">选择证书</label>
+                            <select class="form-select" id="site-form-ssl-cert-select">
+                                <option value="">-- 请选择证书 --</option>
+                            </select>
+                        </div>
+                        <div id="site-ssl-cert-preview" class="ssl-cert-preview" style="display:none;">
+                            <div class="cert-preview-row"><span class="cert-preview-label">域名</span><span class="cert-preview-value" id="cert-preview-domain">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">颁发者</span><span class="cert-preview-value" id="cert-preview-issuer">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">有效期</span><span class="cert-preview-value" id="cert-preview-validity">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">剩余天数</span><span class="cert-preview-value" id="cert-preview-days">-</span></div>
+                        </div>
+                        <div id="site-ssl-cert-empty" class="ssl-empty-hint" style="display:none;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span>证书库中暂无证书，请先在「证书管理」申请或上传，或使用「粘贴证书」</span>
+                        </div>
+                    </div>
+                    <!-- 粘贴证书 -->
+                    <div class="ssl-tab-panel" data-ssl-panel="paste">
+                        <div class="form-group">
+                            <label class="form-label">证书 (PEM) <span class="required">*</span></label>
+                            <textarea class="form-textarea" id="site-form-ssl-paste-cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">私钥 (PEM) <span class="required">*</span></label>
+                            <textarea class="form-textarea" id="site-form-ssl-paste-key" rows="4" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:center;gap:var(--space-sm);">
+                            <button type="button" class="btn btn-sm btn-secondary" id="site-form-ssl-paste-verify">验证并保存</button>
+                            <span id="site-ssl-paste-status" class="form-hint"></span>
+                        </div>
+                        <div id="site-ssl-paste-preview" class="ssl-cert-preview" style="display:none;">
+                            <div class="cert-preview-row"><span class="cert-preview-label">域名</span><span class="cert-preview-value" id="paste-preview-domain">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">颁发者</span><span class="cert-preview-value" id="paste-preview-issuer">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">有效期</span><span class="cert-preview-value" id="paste-preview-validity">-</span></div>
+                            <div class="cert-preview-row"><span class="cert-preview-label">剩余天数</span><span class="cert-preview-value" id="paste-preview-days">-</span></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- SSL 通用选项（证书库/粘贴证书时显示） -->
+                <div id="site-ssl-common-options" style="display:none;">
+                    <div class="form-group" style="margin-top:12px;">
                         <label class="form-label">强制 HTTPS</label>
                         <label class="toggle">
                             <input type="checkbox" id="site-form-ssl-force">
                             <span class="toggle-slider"></span>
                         </label>
                         <span class="form-hint">将 HTTP 请求自动重定向到 HTTPS</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">HSTS</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="site-form-ssl-hsts">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="form-hint">启用 Strict-Transport-Security 头</span>
                     </div>
                 </div>
             </form>

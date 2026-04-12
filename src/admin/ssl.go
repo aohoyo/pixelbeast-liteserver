@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -69,7 +70,7 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 		Domain          string `json:"domain"`
 		Email           string `json:"email"`
 		ChallengeMethod string `json:"challenge_method"`
-		}
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "请求格式错误")
 		return
@@ -96,13 +97,16 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 更新站点配置中的 SSL 设置
-	h.updateSiteSSLConfig(req.Domain, &config.SSLConfig{
+	if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
 		Enabled:         true,
 		AutoHTTPS:       true,
 		Email:           req.Email,
 		Provider:        "letsencrypt",
 		ChallengeMethod: req.ChallengeMethod,
-	})
+	}); err != nil {
+		InternalServerError(w, "保存配置失败: "+err.Error())
+		return
+	}
 
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "证书申请: %s (method: %s)", req.Domain, req.ChallengeMethod)
 	SuccessMessage(w, "证书申请已提交，将在下次 HTTPS 访问时自动获取")
@@ -121,7 +125,7 @@ func (h *Handler) handleCertDNSPrepare(w http.ResponseWriter, r *http.Request) {
 		DNSProvider    string            `json:"dns_provider"`    // "manual" | "saved" | "alidns" | "tencentcloud" | "baota"
 		DNSProviderID  string            `json:"dns_provider_id"` // saved 模式时的服务商 ID
 		DNSCredentials map[string]string `json:"dns_credentials"`
-		}
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "请求格式错误")
 		return
@@ -163,11 +167,11 @@ func (h *Handler) handleCertDNSPrepare(w http.ResponseWriter, r *http.Request) {
 
 	dnsInfo, err := h.ServerManager.SSLManager.PrepareDNSChallenge(req.Domain, req.Email, "letsencrypt", req.DNSProvider, req.DNSCredentials)
 	if err != nil {
-		InternalServerError(w, "DNS 挑战准备失败: "+err.Error())
+		InternalServerError(w, "DNS 验证准备失败: "+err.Error())
 		return
 	}
 
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "DNS 挑战准备: %s", req.Domain)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "DNS 验证准备: %s", req.Domain)
 	Success(w, dnsInfo)
 }
 
@@ -196,21 +200,28 @@ func (h *Handler) handleCertDNSComplete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.ServerManager.SSLManager.CompleteDNSChallenge(req.Domain); err != nil {
-		InternalServerError(w, "DNS 验证失败: "+err.Error())
-		return
-	}
+	// 异步执行 DNS 验证，避免 HTTP 请求超时
+	// 前端通过轮询 /api/certs/progress 获取结果
+	go func() {
+		if err := h.ServerManager.SSLManager.CompleteDNSChallenge(req.Domain); err != nil {
+			log.Printf("[SSL] DNS 验证失败 %s: %v", req.Domain, err)
+			return
+		}
 
-	// 更新站点配置
-	h.updateSiteSSLConfig(req.Domain, &config.SSLConfig{
-		Enabled:         true,
-		AutoHTTPS:       true,
-		Provider:        "letsencrypt", // 会在 CompleteDNSChallenge 中由 SSLManager 更新
-		ChallengeMethod: "dns",
-	})
+		// 验证成功后更新站点配置
+		if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
+			Enabled:         true,
+			AutoHTTPS:       true,
+			Provider:        "letsencrypt",
+			ChallengeMethod: "dns",
+		}); err != nil {
+			log.Printf("[SSL] DNS 验证成功但保存配置失败 %s: %v", req.Domain, err)
+		}
 
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "DNS 验证证书获取成功: %s", req.Domain)
-	SuccessMessage(w, "DNS 验证证书获取成功")
+		handlers.LogPanelOperation(handlers.LogLevelInfo, "DNS 验证证书获取成功: %s", req.Domain)
+	}()
+
+	SuccessMessage(w, "DNS 验证已提交，请通过进度轮询查看结果")
 }
 
 // handleCertFilePrepare 文件验证第一步：生成验证文件内容
@@ -221,8 +232,8 @@ func (h *Handler) handleCertFilePrepare(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req struct {
-		Domain   string `json:"domain"`
-		Email    string `json:"email"`
+		Domain string `json:"domain"`
+		Email  string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "请求格式错误")
@@ -241,14 +252,14 @@ func (h *Handler) handleCertFilePrepare(w http.ResponseWriter, r *http.Request) 
 
 	fileInfo, err := h.ServerManager.SSLManager.PrepareFileChallenge(req.Domain, req.Email, "letsencrypt")
 	if err != nil {
-		InternalServerError(w, "文件挑战准备失败: "+err.Error())
+		InternalServerError(w, "文件验证准备失败: "+err.Error())
 		return
 	}
 
 	// 确保端口 80 已启动（用于 CA 验证 ACME challenge）
 	h.ServerManager.StartHTTPRedirect()
 
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "文件挑战准备: %s", req.Domain)
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "文件验证准备: %s", req.Domain)
 	Success(w, fileInfo)
 }
 
@@ -277,20 +288,27 @@ func (h *Handler) handleCertFileComplete(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.ServerManager.SSLManager.CompleteFileChallenge(req.Domain); err != nil {
-		InternalServerError(w, "文件验证失败: "+err.Error())
-		return
-	}
+	// 异步执行文件验证，避免 HTTP 请求超时
+	// 前端通过轮询 /api/certs/progress 获取结果
+	go func() {
+		if err := h.ServerManager.SSLManager.CompleteFileChallenge(req.Domain); err != nil {
+			log.Printf("[SSL] 文件验证失败 %s: %v", req.Domain, err)
+			return
+		}
 
-	// 更新站点配置
-	h.updateSiteSSLConfig(req.Domain, &config.SSLConfig{
-		Enabled:         true,
-		AutoHTTPS:       true,
-		ChallengeMethod: "http-file",
-	})
+		// 验证成功后更新站点配置
+		if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
+			Enabled:         true,
+			AutoHTTPS:       true,
+			ChallengeMethod: "http-file",
+		}); err != nil {
+			log.Printf("[SSL] 文件验证成功但保存配置失败 %s: %v", req.Domain, err)
+		}
 
-	handlers.LogPanelOperation(handlers.LogLevelInfo, "文件验证证书获取成功: %s", req.Domain)
-	SuccessMessage(w, "文件验证证书获取成功")
+		handlers.LogPanelOperation(handlers.LogLevelInfo, "文件验证证书获取成功: %s", req.Domain)
+	}()
+
+	SuccessMessage(w, "文件验证已提交，请通过进度轮询查看结果")
 }
 
 // handleCertRenew 续期证书
@@ -325,6 +343,52 @@ func (h *Handler) handleCertRenew(w http.ResponseWriter, r *http.Request) {
 
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "证书续期: %s", req.Domain)
 	SuccessMessage(w, "证书续期已触发")
+}
+
+// handleCertPaste 粘贴证书（JSON 格式，用于站点编辑器）
+func (h *Handler) handleCertPaste(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Domain  string `json:"domain"`
+		CertPEM string `json:"cert_pem"`
+		KeyPEM  string `json:"key_pem"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "请求格式错误")
+		return
+	}
+
+	if req.Domain == "" {
+		BadRequest(w, "域名不能为空")
+		return
+	}
+	if req.CertPEM == "" || req.KeyPEM == "" {
+		BadRequest(w, "证书和私钥不能为空")
+		return
+	}
+
+	if h.ServerManager == nil || h.ServerManager.SSLManager == nil {
+		InternalServerError(w, "SSL 管理器未初始化")
+		return
+	}
+
+	// 保存证书到磁盘并加载到内存
+	if err := h.ServerManager.SSLManager.SaveCustomCertificate(
+		req.Domain, []byte(req.CertPEM), []byte(req.KeyPEM),
+	); err != nil {
+		BadRequest(w, "证书保存失败: "+err.Error())
+		return
+	}
+
+	// 返回证书信息
+	status := h.ServerManager.SSLManager.GetCertStatus(req.Domain)
+
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "粘贴证书: %s", req.Domain)
+	Success(w, status)
 }
 
 // handleCertUpload 上传自定义证书
@@ -386,12 +450,15 @@ func (h *Handler) handleCertUpload(w http.ResponseWriter, r *http.Request) {
 	// 更新站点配置中的 SSL 设置
 	certPath := filepath.Join("./ssl", domain+".crt")
 	keyPath := filepath.Join("./ssl", domain+".key")
-	h.updateSiteSSLConfig(domain, &config.SSLConfig{
-		Enabled:  true,
+	if err := h.UpdateSiteSSLConfig(domain, &config.SSLConfig{
+		Enabled:   true,
 		AutoHTTPS: false,
-		CertFile: certPath,
-		KeyFile:  keyPath,
-	})
+		CertFile:  certPath,
+		KeyFile:   keyPath,
+	}); err != nil {
+		InternalServerError(w, "保存配置失败: "+err.Error())
+		return
+	}
 
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "证书上传: %s", domain)
 	SuccessMessage(w, "证书上传成功")
@@ -428,16 +495,95 @@ func (h *Handler) handleCertDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 更新站点配置，禁用 SSL
-	h.updateSiteSSLConfig(req.Domain, nil)
+	if err := h.UpdateSiteSSLConfig(req.Domain, nil); err != nil {
+		InternalServerError(w, "保存配置失败: "+err.Error())
+		return
+	}
 
 	handlers.LogPanelOperation(handlers.LogLevelInfo, "证书删除: %s", req.Domain)
 	SuccessMessage(w, "证书已删除")
 }
 
-// updateSiteSSLConfig 更新站点配置中的 SSL 设置
-func (h *Handler) updateSiteSSLConfig(domain string, ssl *config.SSLConfig) {
-	if h.ConfigManager == nil {
+// handleCertDeploy 部署证书到指定站点
+func (h *Handler) handleCertDeploy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
 		return
+	}
+
+	var req struct {
+		Domain  string   `json:"domain"`
+		SiteIDs []string `json:"site_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "请求格式错误")
+		return
+	}
+
+	if req.Domain == "" {
+		BadRequest(w, "域名不能为空")
+		return
+	}
+	if len(req.SiteIDs) == 0 {
+		BadRequest(w, "请选择要部署的站点")
+		return
+	}
+
+	// 检查证书文件是否存在
+	certPath := filepath.Join("./ssl", req.Domain+".crt")
+	keyPath := filepath.Join("./ssl", req.Domain+".key")
+	if _, err := os.Stat(certPath); os.IsNotExist(err) {
+		BadRequest(w, "证书文件不存在")
+		return
+	}
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		BadRequest(w, "私钥文件不存在")
+		return
+	}
+
+	deployed := 0
+	for i := range h.ConfigManager.Sites.Sites {
+		site := &h.ConfigManager.Sites.Sites[i]
+		for _, id := range req.SiteIDs {
+			if site.ID == id {
+				site.SSL = &config.SSLConfig{
+					Enabled:   true,
+					AutoHTTPS: false,
+					CertFile:  certPath,
+					KeyFile:   keyPath,
+				}
+				deployed++
+				break
+			}
+		}
+	}
+
+	if deployed > 0 {
+		if err := h.ConfigManager.Save(); err != nil {
+			InternalServerError(w, "保存配置失败: "+err.Error())
+			return
+		}
+
+		// 应用运行时变更：重启已部署站点的 HTTP 服务以加载新证书
+		if h.ServerManager != nil {
+			for _, id := range req.SiteIDs {
+				if site := h.ConfigManager.GetSiteByID(id); site != nil {
+					h.ServerManager.UpdateSiteRuntime(site)
+				}
+			}
+		}
+	}
+
+	handlers.LogPanelOperation(handlers.LogLevelInfo, "证书部署: %s → %d 个站点", req.Domain, deployed)
+	Success(w, map[string]interface{}{
+		"deployed": deployed,
+	})
+}
+
+// UpdateSiteSSLConfig 更新站点配置中的 SSL 设置（导出供回调使用）
+func (h *Handler) UpdateSiteSSLConfig(domain string, ssl *config.SSLConfig) error {
+	if h.ConfigManager == nil {
+		return nil
 	}
 
 	changed := false
@@ -460,11 +606,10 @@ func (h *Handler) updateSiteSSLConfig(domain string, ssl *config.SSLConfig) {
 	}
 
 	if changed {
-		h.ConfigManager.Save()
+		return h.ConfigManager.Save()
 	}
+	return nil
 }
-
-
 
 // ==================== DNS 服务商管理 API ====================
 
@@ -499,12 +644,12 @@ func (h *Handler) handleDNSProvidersList(w http.ResponseWriter, r *http.Request)
 
 	// 脱敏凭证
 	type DNSProviderView struct {
-		ID             string                 `json:"id"`
-		Name           string                 `json:"name"`
-		Type           string                 `json:"type"`
-		MaskedCreds    map[string]string      `json:"masked_creds"`
-		CreatedAt      string                 `json:"created_at"`
-		UpdatedAt      string                 `json:"updated_at"`
+		ID          string            `json:"id"`
+		Name        string            `json:"name"`
+		Type        string            `json:"type"`
+		MaskedCreds map[string]string `json:"masked_creds"`
+		CreatedAt   string            `json:"created_at"`
+		UpdatedAt   string            `json:"updated_at"`
 	}
 
 	views := make([]DNSProviderView, 0, len(providers))

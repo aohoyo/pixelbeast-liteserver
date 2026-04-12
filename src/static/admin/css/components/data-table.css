@@ -30,6 +30,7 @@
     border-spacing: 0;
     font-size: 14px;
     color: var(--text);
+    table-layout: fixed;
 }
 
 /* 空数据时 - 表格占满高度 */
@@ -71,6 +72,64 @@
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
     transition: background-color var(--transition-fast);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 操作列固定宽度 */
+.dt-table th.col-actions,
+.dt-table td.col-actions {
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* 名称列溢出省略 */
+.dt-table th.col-name,
+.dt-table td.col-name,
+.dt-table th.col-domain,
+.dt-table td.col-domain,
+.dt-table th.col-root,
+.dt-table td.col-root {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dt-table .actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.dt-table .action-text {
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: var(--radius-sm, 4px);
+    transition: background-color 0.2s;
+}
+
+.dt-table .action-text.edit {
+    color: var(--primary, #6366f1);
+}
+
+.dt-table .action-text.edit:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.dt-table .action-text.delete {
+    color: var(--danger, #ef4444);
+}
+
+.dt-table .action-text.delete:hover {
+    background: rgba(239, 68, 68, 0.1);
 }
 
 .dt-table tbody tr {

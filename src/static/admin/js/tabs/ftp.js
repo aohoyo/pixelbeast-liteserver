@@ -6,8 +6,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { openFileBrowser } from '../components/file-browser/index.js';
-import { escapeHtml, formatDate, copyToClipboard } from '../core/utils.js';
+import { escapeHtml, formatDate, copyToClipboard, initNumberInputs, openDirPicker } from '../core/utils.js';
 
 class FtpTab extends BaseTab {
     constructor(deps) {
@@ -19,32 +18,16 @@ class FtpTab extends BaseTab {
     }
 
     onInit() {
-        console.log('初始化 FTP 用户管理面板...');
+        this._svc = this.createServiceControls({
+            apiPrefix: '/api/service/ftp',
+            statusId: 'ftp-service-status',
+            toggleId: 'ftp-service-toggle',
+            label: 'FTP 服务',
+        });
         this.initDataTable();
-        this.initNumberInputs();
+        initNumberInputs(this.container || document);
         this.bindEvents();
         this.checkServiceStatus();
-    }
-
-    // ========== 目录选择 ==========
-
-    async openDirPicker(inputId) {
-        const input = this.$(`#${inputId}`);
-        if (!input) return;
-        try {
-            const selected = await openFileBrowser({
-                title: '选择目录',
-                selectMode: 'folder',
-                root: input.value || '.',
-                api: this.api,
-            });
-            if (selected) {
-                input.value = selected;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        } catch (e) {
-            // 用户取消
-        }
     }
 
     // ========== DataTable ==========
@@ -83,44 +66,6 @@ class FtpTab extends BaseTab {
                 }
             ],
             onPageChange: () => setTimeout(() => this.bindRowEvents(), 0)
-        });
-    }
-
-    // ========== NumberInputs ==========
-
-    initNumberInputs() {
-        this.$$('.number-input-wrapper').forEach(wrapper => {
-            const input = wrapper.querySelector('input[type="number"]');
-            const upBtn = wrapper.querySelector('[data-action="up"]');
-            const downBtn = wrapper.querySelector('[data-action="down"]');
-
-            if (!input) return;
-
-            const step = parseInt(input.dataset.step) || 1;
-            const min = input.min !== '' ? parseInt(input.min) : null;
-            const max = input.max !== '' ? parseInt(input.max) : null;
-
-            const updateValue = (delta) => {
-                let value = parseInt(input.value) || 0;
-                value += delta;
-                if (min !== null && value < min) value = min;
-                if (max !== null && value > max) value = max;
-                input.value = value;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            };
-
-            upBtn?.addEventListener('click', () => updateValue(step));
-            downBtn?.addEventListener('click', () => updateValue(-step));
-
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    updateValue(step);
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    updateValue(-step);
-                }
-            });
         });
     }
 
@@ -202,7 +147,7 @@ class FtpTab extends BaseTab {
 
         // 目录浏览按钮
         this.$$('.directory-picker-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.openDirPicker(btn.dataset.dir));
+            btn.addEventListener('click', () => openDirPicker(btn.dataset.dir, this.api));
         });
 
         // 生成随机密码
@@ -353,7 +298,7 @@ class FtpTab extends BaseTab {
             if (response?.ok) {
                 const data = await this.api.parseJSON(response);
                 if (data) {
-                    this.updateServiceStatus(data.running);
+                    this._svc.updateServiceStatus(data.running);
                     this.ftpPort = data.port || 2121;
                     const portInput = this.$('#ftp-port-input');
                     if (portInput) {
@@ -362,87 +307,12 @@ class FtpTab extends BaseTab {
                 }
             }
         } catch (error) {
-            console.error('获取服务状态失败:', error);
         }
     }
 
-    async toggleService() {
-        const btn = this.$('#ftp-service-toggle');
-        const isRunning = btn?.classList.contains('running');
-        
-        try {
-            if (isRunning) {
-                await this.api.post('/api/service/ftp/stop');
-                this.message.success('FTP 服务已停止');
-                this.updateServiceStatus(false);
-            } else {
-                await this.api.post('/api/service/ftp/start');
-                this.message.success('FTP 服务已启动');
-                this.updateServiceStatus(true);
-            }
-        } catch (error) {
-            this.message.error('操作失败: ' + error.message);
-        }
-    }
-
-    async startService() {
-        try {
-            await this.api.post('/api/service/ftp/start');
-            this.message.success('FTP 服务已启动');
-            this.updateServiceStatus(true);
-        } catch (error) {
-            this.message.error('启动失败: ' + error.message);
-        }
-    }
-
-    async stopService() {
-        try {
-            await this.api.post('/api/service/ftp/stop');
-            this.message.success('FTP 服务已停止');
-            this.updateServiceStatus(false);
-        } catch (error) {
-            this.message.error('停止失败: ' + error.message);
-        }
-    }
-
-    async restartService() {
-        try {
-            await this.api.post('/api/service/ftp/restart');
-            this.message.success('FTP 服务已重启');
-            this.updateServiceStatus(true);
-        } catch (error) {
-            this.message.error('重启失败: ' + error.message);
-        }
-    }
-
-    async reloadConfig() {
-        try {
-            await this.api.post('/api/service/ftp/reload');
-            this.message.success('配置已重载');
-        } catch (error) {
-            this.message.error('重载失败: ' + error.message);
-        }
-    }
-
-    updateServiceStatus(running) {
-        const statusEl = this.$('#ftp-service-status');
-        const toggleBtn = this.$('#ftp-service-toggle');
-        
-        if (statusEl) {
-            statusEl.textContent = running ? '运行中' : '已停止';
-            statusEl.classList.toggle('running', running);
-            statusEl.classList.toggle('stopped', !running);
-        }
-        
-        if (toggleBtn) {
-            toggleBtn.classList.toggle('running', running);
-            toggleBtn.classList.toggle('stopped', !running);
-            const textSpan = toggleBtn.querySelector('.btn-text');
-            if (textSpan) {
-                textSpan.textContent = running ? '停止' : '启动';
-            }
-        }
-    }
+    toggleService() { return this._svc.toggleService(); }
+    restartService() { return this._svc.restartService(); }
+    reloadConfig() { return this._svc.reloadConfig(); }
 
     async toggleStatus(username, enabled) {
         try {

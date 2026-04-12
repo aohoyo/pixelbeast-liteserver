@@ -12,7 +12,6 @@ class ServicesTab extends BaseTab {
     }
 
     onInit() {
-        console.log('🔌 初始化服务面板...');
         this.bindEvents();
         
         // 监听服务状态更新

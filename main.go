@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "3.1.11"
+	version   = "3.1.12"
 	buildTime = "unknown"
 )
 
@@ -85,6 +85,17 @@ func main() {
 	adminHandler.SetServerManager(serverManager)
 	serverManager.SetAdminHandler(adminHandler)
 
+	// DNS 自动申请证书成功后，自动更新站点 SSL 配置
+	serverManager.SSLManager.SetOnCertObtained(func(domain, provider, challengeMethod, email string) {
+		adminHandler.UpdateSiteSSLConfig(domain, &config.SSLConfig{
+			Enabled:         true,
+			AutoHTTPS:       true,
+			Provider:        provider,
+			ChallengeMethod: challengeMethod,
+			Email:           email,
+		})
+	})
+
 	// 启动管理面板服务器
 	if err := serverManager.StartAdminPanel(); err != nil {
 		handlers.LogPanelSystem(handlers.LogLevelError, "启动管理面板失败: %v", err)
@@ -119,7 +130,7 @@ func main() {
 		serverManager.StopSitesServer()
 	}
 	if serverManager.IsAdminRunning() {
-	serverManager.SSLManager.Stop()
+		serverManager.SSLManager.Stop()
 		serverManager.StopAdminPanel()
 	}
 

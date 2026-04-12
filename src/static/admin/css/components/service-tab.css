@@ -193,7 +193,7 @@
     height: 16px;
 }
 
-/* 根目录路径（通用） */
+/* 验证准备路径（通用） */
 .root-path {
     display: flex;
     align-items: center;

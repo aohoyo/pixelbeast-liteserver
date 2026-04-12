@@ -117,7 +117,7 @@ export class BaseTab {
      * 加载数据（子类必须实现）
      */
     async onLoad() {
-        console.warn(`BaseTab: ${this.name} 未实现 onLoad`);
+        // 子类必须实现
     }
 
     /**
@@ -154,6 +154,75 @@ export class BaseTab {
      */
     $$(selector) {
         return document.querySelectorAll(selector);
+    }
+
+    /**
+     * 创建服务控制方法集合（提取公共的启停/重启/重载逻辑）
+     * @param {Object} config
+     * @param {string} config.apiPrefix - API 前缀, e.g. '/api/service/sites'
+     * @param {string} config.statusId - 状态显示元素 ID
+     * @param {string} config.toggleId - 切换按钮元素 ID
+     * @param {string} config.label - 服务名称 (用于提示, e.g. '站点服务')
+     * @returns {{ toggleService, restartService, reloadConfig, updateServiceStatus }}
+     */
+    createServiceControls({ apiPrefix, statusId, toggleId, label }) {
+        const msg = this.message || this.toast;
+
+        return {
+            toggleService: async () => {
+                const btn = this.$(`#${toggleId}`);
+                const isRunning = btn?.classList.contains('running');
+                try {
+                    if (isRunning) {
+                        await this.api.post(`${apiPrefix}/stop`);
+                        msg.success(`${label}已停止`);
+                    } else {
+                        await this.api.post(`${apiPrefix}/start`);
+                        msg.success(`${label}已启动`);
+                    }
+                } catch (error) {
+                    msg.error('操作失败: ' + error.message);
+                }
+            },
+
+            restartService: async () => {
+                try {
+                    await this.api.post(`${apiPrefix}/restart`);
+                    msg.success(`${label}已重启`);
+                } catch (error) {
+                    msg.error('重启失败: ' + error.message);
+                }
+            },
+
+            reloadConfig: async () => {
+                try {
+                    await this.api.post(`${apiPrefix}/reload`);
+                    msg.success(`${label}配置已重载`);
+                } catch (error) {
+                    msg.error('重载失败: ' + error.message);
+                }
+            },
+
+            updateServiceStatus: (running) => {
+                const statusEl = this.$(`#${statusId}`);
+                const toggleBtn = this.$(`#${toggleId}`);
+
+                if (statusEl) {
+                    statusEl.textContent = running ? '运行中' : '已停止';
+                    statusEl.classList.toggle('running', running);
+                    statusEl.classList.toggle('stopped', !running);
+                }
+
+                if (toggleBtn) {
+                    toggleBtn.classList.toggle('running', running);
+                    toggleBtn.classList.toggle('stopped', running);
+                    const textSpan = toggleBtn.querySelector('.btn-text');
+                    if (textSpan) {
+                        textSpan.textContent = running ? '停止' : '启动';
+                    }
+                }
+            }
+        };
     }
 
     /**

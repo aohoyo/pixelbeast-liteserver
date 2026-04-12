@@ -204,25 +204,25 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	// 构建状态数据
 	serverUptime := time.Since(startTime)
 	statusData := map[string]interface{}{
-		"memory_mb":       processMem / 1024 / 1024,
-		"goroutines":      runtime.NumGoroutine(),
-		"go_version":      runtime.Version(),
-		"os":              runtime.GOOS,
-		"arch":            runtime.GOARCH,
-		"os_name":         getOSName(),
-		"os_name_short":   getOSShortName(),
-		"kernel":          getKernelVersion(),
-		"hostname":        getHostname(),
-		"server_uptime":   formatUptime(serverUptime),
+		"memory_mb":        processMem / 1024 / 1024,
+		"goroutines":       runtime.NumGoroutine(),
+		"go_version":       runtime.Version(),
+		"os":               runtime.GOOS,
+		"arch":             runtime.GOARCH,
+		"os_name":          getOSName(),
+		"os_name_short":    getOSShortName(),
+		"kernel":           getKernelVersion(),
+		"hostname":         getHostname(),
+		"server_uptime":    formatUptime(serverUptime),
 		"server_uptime_ms": serverUptime.Milliseconds(),
-		"system_uptime":     formatUptime(getSystemUptime()),
-			"system_uptime_ms":  getSystemUptime().Milliseconds(),
-		"admin_running":   adminRunning,
-		"admin_port":      adminPort,
-		"sites_running":   sitesRunning,
-		"sites_enabled":   countEnabledSites(h.ConfigManager.Sites.Sites),
-		"sites_count":     len(h.ConfigManager.Sites.Sites),
-		"sites":           sites,
+		"system_uptime":    formatUptime(getSystemUptime()),
+		"system_uptime_ms": getSystemUptime().Milliseconds(),
+		"admin_running":    adminRunning,
+		"admin_port":       adminPort,
+		"sites_running":    sitesRunning,
+		"sites_enabled":    countEnabledSites(h.ConfigManager.Sites.Sites),
+		"sites_count":      len(h.ConfigManager.Sites.Sites),
+		"sites":            sites,
 	}
 
 	// 如果有 CSRF token，添加到响应中
@@ -442,10 +442,10 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"process_total":  processTotal,
 
 		// 运行时间
-		"uptime_str":        formatUptime(time.Since(startTime)),
-		"server_uptime_ms":  time.Since(startTime).Milliseconds(),
-		"system_uptime":     formatUptime(getSystemUptime()),
-		"system_uptime_ms":  getSystemUptime().Milliseconds(),
+		"uptime_str":       formatUptime(time.Since(startTime)),
+		"server_uptime_ms": time.Since(startTime).Milliseconds(),
+		"system_uptime":    formatUptime(getSystemUptime()),
+		"system_uptime_ms": getSystemUptime().Milliseconds(),
 
 		// 网络
 		"net_sent_rate_kb":  netSpeedSentKB,
@@ -2164,8 +2164,11 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					return nil
 				}
-				defer file.Close()
-				io.Copy(tw, file)
+				_, copyErr := io.Copy(tw, file)
+				file.Close()
+				if copyErr != nil {
+					return nil
+				}
 			}
 			return nil
 		})
