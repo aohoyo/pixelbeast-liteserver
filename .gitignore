@@ -14,10 +14,9 @@ pixelbeast.exe
 # Go 工作区
 go.work
 
-# 开发模式临时文件
-web/admin/
-tmp/
+# 开发工具临时文件
 .air.toml.bak
+tmp/
 
 # 编辑器 / IDE
 .vscode/
@@ -26,33 +25,19 @@ tmp/
 *.swo
 *~
 .DS_Store
+.prettierrc
 
 # Claude Code 工作目录
 .claude/
 
-# 运行时数据（保留目录结构，忽略内容）
-sites/*
-!sites/.gitkeep
-data/ssl/*
-!data/ssl/.gitkeep
+# 配置目录（含加密密钥、站点配置等敏感信息）
+config/
 
-# 日志目录
-log/
-logs/
-
-# FTP 上传目录
-ftp/
-
-# HTTP 网站目录
-web/
-
-# 备份目录
-backups/
-
-# SSL 证书目录
+# SSL 证书和私钥（含 ACME 账户密钥）
 ssl/
 
-# 本地配置（可选：如果包含敏感信息）
-# pixelbeast.json
-config/
-/log/
+# 运行时目录
+sites/
+ftp/
+backups/
+log/

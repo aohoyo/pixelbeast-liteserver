@@ -302,11 +302,6 @@ class CertTab extends BaseTab {
         }
     }
 
-    hideModal(id) {
-        const modal = this.$(`#${id}`);
-        if (modal) modal.classList.remove('active');
-    }
-
     // ========== DNS 服务商管理 ==========
 
     async loadDNSProviders() {

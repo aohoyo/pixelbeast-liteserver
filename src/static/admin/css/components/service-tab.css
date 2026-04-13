@@ -140,34 +140,9 @@
     text-decoration: underline;
 }
 
+/* 图标按钮（快速链接复制、打开、通用复制） */
 .quick-link-copy,
-.quick-link-open {
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    color: var(--text-muted);
-    border-radius: var(--radius);
-    transition: all var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.quick-link-copy:hover,
-.quick-link-open:hover {
-    background: var(--bg-hover);
-    color: var(--primary);
-}
-
-.quick-link-copy svg,
-.quick-link-open svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* 复制按钮（通用） */
+.quick-link-open,
 .copy-btn {
     flex-shrink: 0;
     background: none;
@@ -182,11 +157,15 @@
     justify-content: center;
 }
 
+.quick-link-copy:hover,
+.quick-link-open:hover,
 .copy-btn:hover {
     background: var(--bg-hover);
     color: var(--primary);
 }
 
+.quick-link-copy svg,
+.quick-link-open svg,
 .copy-btn svg,
 .copy-btn .icon {
     width: 16px;

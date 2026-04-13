@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -769,19 +770,27 @@ func (cm *ConfigManager) UpdateSite(id string, updated SiteConfig) error {
 	return fmt.Errorf("站点不存在: %s", id)
 }
 
+// deleteFromSlice 从切片中删除匹配元素并保存配置
+func deleteFromSlice[T any](slice *[]T, match func(T) bool, save func() error, notFoundMsg string) error {
+	for i, item := range *slice {
+		if match(item) {
+			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			return save()
+		}
+	}
+	return errors.New(notFoundMsg)
+}
+
 // DeleteSite 删除站点
 func (cm *ConfigManager) DeleteSite(id string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	for i, site := range cm.Sites.Sites {
-		if site.ID == id {
-			cm.Sites.Sites = append(cm.Sites.Sites[:i], cm.Sites.Sites[i+1:]...)
-			return cm.saveSites()
-		}
-	}
-
-	return fmt.Errorf("站点不存在: %s", id)
+	return deleteFromSlice(&cm.Sites.Sites,
+		func(s SiteConfig) bool { return s.ID == id },
+		cm.saveSites,
+		"站点不存在: "+id,
+	)
 }
 
 // ========== FTP 用户管理 ==========
@@ -849,14 +858,11 @@ func (cm *ConfigManager) DeleteFTPUser(username string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	for i, user := range cm.FTP.Users {
-		if user.Username == username {
-			cm.FTP.Users = append(cm.FTP.Users[:i], cm.FTP.Users[i+1:]...)
-			return cm.saveFTP()
-		}
-	}
-
-	return fmt.Errorf("用户不存在: %s", username)
+	return deleteFromSlice(&cm.FTP.Users,
+		func(u FTPUser) bool { return u.Username == username },
+		cm.saveFTP,
+		"用户不存在: "+username,
+	)
 }
 
 // ========== SSL 辅助 ==========
@@ -930,13 +936,12 @@ func (cm *ConfigManager) UpdateDNSProvider(id string, updated DNSProviderConfig)
 func (cm *ConfigManager) DeleteDNSProvider(id string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	for i, p := range cm.DNSProviders {
-		if p.ID == id {
-			cm.DNSProviders = append(cm.DNSProviders[:i], cm.DNSProviders[i+1:]...)
-			return cm.saveDNSProviders()
-		}
-	}
-	return fmt.Errorf("DNS 服务商不存在: %s", id)
+
+	return deleteFromSlice(&cm.DNSProviders,
+		func(p DNSProviderConfig) bool { return p.ID == id },
+		cm.saveDNSProviders,
+		"DNS 服务商不存在: "+id,
+	)
 }
 
 // EncryptDNSCredentials 加密 DNS 凭证

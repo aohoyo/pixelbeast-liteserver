@@ -1,24 +1,21 @@
 {
   "name": "pixelbeast-liteserver",
-  "version": "1.0.0",
+  "version": "3.1.12",
   "description": "PixelBeast LiteServer - 轻量级 Web+FTP 服务器",
   "scripts": {
-    "dev": "node dev.js",
+    "dev": "node dev.js dev",
+    "dev:air": "node dev.js dev:air",
     "build": "node dev.js build",
     "build:win": "node dev.js build:win",
     "build:linux": "node dev.js build:linux",
     "build:arm": "node dev.js build:arm",
     "build:mac": "node dev.js build:mac",
+    "build:mac-arm": "node dev.js build:mac-arm",
     "clean": "node dev.js clean",
-    "logs:clear": "node -e \"require('fs').rmSync('log',{recursive:true,force:true});require('fs').mkdirSync('log')\""
+    "version": "node dev.js version",
+    "logs:clear": "node dev.js logs:clear"
   },
-  "keywords": [
-    "ftp",
-    "http",
-    "server",
-    "go",
-    "lightweight"
-  ],
+  "keywords": ["ftp", "http", "server", "go", "lightweight"],
   "author": "PixelBeast",
   "license": "MIT"
 }

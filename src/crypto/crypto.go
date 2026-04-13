@@ -21,18 +21,21 @@ var (
 // KeySize AES-256 需要 32 字节密钥
 const KeySize = 32
 
-// Encrypt 使用 AES-256-GCM 加密数据
-func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
+// newGCM 创建 AES-256-GCM AEAD 实例
+func newGCM(key []byte) (cipher.AEAD, error) {
 	if len(key) != KeySize {
 		return nil, ErrInvalidKey
 	}
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
+	return cipher.NewGCM(block)
+}
 
-	gcm, err := cipher.NewGCM(block)
+// Encrypt 使用 AES-256-GCM 加密数据
+func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
+	gcm, err := newGCM(key)
 	if err != nil {
 		return nil, err
 	}
@@ -50,16 +53,7 @@ func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
 
 // Decrypt 使用 AES-256-GCM 解密数据
 func Decrypt(ciphertext []byte, key []byte) ([]byte, error) {
-	if len(key) != KeySize {
-		return nil, ErrInvalidKey
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := newGCM(key)
 	if err != nil {
 		return nil, err
 	}

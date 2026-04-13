@@ -6,7 +6,11 @@
  * - 生命周期管理
  * - 事件注册
  * - 数据加载状态
+ * - 模态框操作
+ * - 通用行事件
  */
+
+import { copyToClipboard } from '../core/utils.js';
 
 export class BaseTab {
     /**
@@ -224,6 +228,84 @@ export class BaseTab {
             }
         };
     }
+
+    // ========== 模态框操作 ==========
+
+    /**
+     * 显示模态框
+     * @param {string} id - 模态框 ID
+     */
+    showModal(id) {
+        this.$(`#${id}`)?.classList.add('active');
+    }
+
+    /**
+     * 隐藏模态框
+     * @param {string} id - 模态框 ID
+     */
+    hideModal(id) {
+        this.$(`#${id}`)?.classList.remove('active');
+    }
+
+    /**
+     * 绑定模态框关闭事件（关闭按钮、取消按钮、遮罩层点击）
+     * @param {string} modalId - 模态框 ID
+     * @param {Function} onClose - 关闭回调
+     * @param {Object} [opts] - 可选配置
+     * @param {string} [opts.cancelId] - 取消按钮 ID（默认 {modalId}-cancel）
+     * @param {string} [opts.confirmId] - 确认按钮 ID
+     * @param {Function} [opts.onConfirm] - 确认回调
+     */
+    bindModalClose(modalId, onClose, opts = {}) {
+        const modal = this.$(`#${modalId}`);
+        if (!modal) return;
+
+        // 关闭按钮
+        modal.querySelector('.modal-close')?.addEventListener('click', onClose);
+        // 遮罩层点击关闭
+        modal.querySelector('.modal-overlay')?.addEventListener('click', onClose);
+        // 取消按钮
+        const cancelId = opts.cancelId || `${modalId}-cancel`;
+        this.$(`#${cancelId}`)?.addEventListener('click', onClose);
+        // 确认按钮
+        if (opts.confirmId && opts.onConfirm) {
+            this.$(`#${opts.confirmId}`)?.addEventListener('click', opts.onConfirm);
+        }
+    }
+
+    // ========== 通用行事件 ==========
+
+    /**
+     * 绑定根目录链接（跳转文件管理）
+     */
+    bindBrowseLinks() {
+        this.$$('.root-link[data-browse-path]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const path = link.dataset.browsePath || '.';
+                if (path && window.app?.switchTab) {
+                    window.app.switchTab('files');
+                    setTimeout(() => {
+                        this.events.emit('files:navigate', path);
+                    }, 150);
+                }
+            });
+        });
+    }
+
+    /**
+     * 绑定快速链接复制按钮
+     */
+    bindCopyLinks() {
+        this.$$('.quick-link-copy').forEach(btn => {
+            btn.addEventListener('click', () => {
+                copyToClipboard(btn.dataset.link);
+                this.message.success('链接已复制');
+            });
+        });
+    }
+
+    // ========== UI 状态 ==========
 
     /**
      * 显示加载状态

@@ -7,7 +7,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { escapeHtml, copyToClipboard, openDirPicker } from '../core/utils.js';
+import { escapeHtml, openDirPicker } from '../core/utils.js';
 
 class SitesTab extends BaseTab {
     constructor(deps) {
@@ -194,10 +194,10 @@ class SitesTab extends BaseTab {
         this.$('#sites-status-filter')?.addEventListener('change', () => this.filterSites());
 
         // 弹窗
-        this.$('#site-modal-cancel')?.addEventListener('click', () => this.hideEditor());
-        this.$('#site-modal-close')?.addEventListener('click', () => this.hideEditor());
-        this.$('#site-modal-confirm')?.addEventListener('click', () => this.saveSite());
-        this.$('#site-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
+        this.bindModalClose('site-modal', () => this.hideEditor(), {
+            confirmId: 'site-modal-confirm',
+            onConfirm: () => this.saveSite()
+        });
         this.$('#site-form-type')?.addEventListener('change', () => this.onTypeChange());
 
         // SSL 子选项卡
@@ -216,26 +216,15 @@ class SitesTab extends BaseTab {
             btn.addEventListener('click', () => openDirPicker(btn.dataset.dir, this.api));
         });
         // 删除确认弹窗
-        this.$('#site-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
-        this.$('#site-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
-        this.$('#site-delete-confirm')?.addEventListener('click', () => this.confirmDelete());
-        this.$('#site-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.bindModalClose('site-delete-modal', () => this.hideDeleteConfirm(), {
+            confirmId: 'site-delete-confirm',
+            onConfirm: () => this.confirmDelete()
+        });
     }
 
     bindRowEvents() {
         // 根目录链接（跳转文件管理）
-        this.$$('.root-link[data-browse-path]').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const path = link.dataset.browsePath || '.';
-                if (path && window.app?.switchTab) {
-                    window.app.switchTab('files');
-                    setTimeout(() => {
-                        this.events.emit('files:navigate', path);
-                    }, 150);
-                }
-            });
-        });
+        this.bindBrowseLinks();
 
         // 状态按钮
         this.$$('.status-btn[data-id]').forEach(btn => {
@@ -247,12 +236,7 @@ class SitesTab extends BaseTab {
         });
 
         // 复制链接
-        this.$$('.quick-link-copy').forEach(btn => {
-            btn.addEventListener('click', () => {
-                copyToClipboard(btn.dataset.link);
-                this.message.success('链接已复制');
-            });
-        });
+        this.bindCopyLinks();
 
         // 编辑
         this.$$('.action-text.edit').forEach(btn => {

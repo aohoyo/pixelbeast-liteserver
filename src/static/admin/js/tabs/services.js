@@ -65,16 +65,6 @@ class ServicesTab extends BaseTab {
     }
 
     /**
-     * 设置文本
-     */
-    setText(selector, value) {
-        const el = this.$(selector);
-        if (el && value !== undefined) {
-            el.textContent = value;
-        }
-    }
-
-    /**
      * 更新状态徽章
      */
     setStatusBadge(selector, isRunning) {

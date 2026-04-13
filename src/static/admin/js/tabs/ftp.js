@@ -140,10 +140,11 @@ class FtpTab extends BaseTab {
         // 批量操作（已改用 batch-bar 组件）
         
         // 弹窗
-        this.$('#ftp-modal-cancel')?.addEventListener('click', () => this.hideEditor());
-        this.$('#ftp-modal-close')?.addEventListener('click', () => this.hideEditor());
-        this.$('#ftp-modal-confirm')?.addEventListener('click', () => this.saveUser());
-        this.$('#ftp-user-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideEditor());
+        this.bindModalClose('ftp-user-modal', () => this.hideEditor(), {
+            cancelId: 'ftp-modal-cancel',
+            confirmId: 'ftp-modal-confirm',
+            onConfirm: () => this.saveUser()
+        });
 
         // 目录浏览按钮
         this.$$('.directory-picker-btn').forEach(btn => {
@@ -170,22 +171,22 @@ class FtpTab extends BaseTab {
         });
 
         // 端口设置弹窗
-        this.$('#ftp-port-modal-close')?.addEventListener('click', () => this.hidePortModal());
-        this.$('#ftp-port-cancel')?.addEventListener('click', () => this.hidePortModal());
-        this.$('#ftp-port-confirm')?.addEventListener('click', () => this.savePort());
-        this.$('#ftp-port-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hidePortModal());
+        this.bindModalClose('ftp-port-modal', () => this.hidePortModal(), {
+            confirmId: 'ftp-port-confirm',
+            onConfirm: () => this.savePort()
+        });
 
         // 配置弹窗
-        this.$('#ftp-config-modal-close')?.addEventListener('click', () => this.hideConfigModal());
-        this.$('#ftp-config-cancel')?.addEventListener('click', () => this.hideConfigModal());
-        this.$('#ftp-config-confirm')?.addEventListener('click', () => this.saveConfig());
-        this.$('#ftp-config-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideConfigModal());
+        this.bindModalClose('ftp-config-modal', () => this.hideConfigModal(), {
+            confirmId: 'ftp-config-confirm',
+            onConfirm: () => this.saveConfig()
+        });
 
         // 删除确认弹窗
-        this.$('#ftp-delete-modal-close')?.addEventListener('click', () => this.hideDeleteConfirm());
-        this.$('#ftp-delete-cancel')?.addEventListener('click', () => this.hideDeleteConfirm());
-        this.$('#ftp-delete-confirm')?.addEventListener('click', () => this.confirmDelete());
-        this.$('#ftp-delete-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this.hideDeleteConfirm());
+        this.bindModalClose('ftp-delete-modal', () => this.hideDeleteConfirm(), {
+            confirmId: 'ftp-delete-confirm',
+            onConfirm: () => this.confirmDelete()
+        });
     }
 
     generatePassword() {
@@ -216,12 +217,7 @@ class FtpTab extends BaseTab {
         });
 
         // 复制链接
-        this.$$('.quick-link-copy').forEach(btn => {
-            btn.addEventListener('click', () => {
-                copyToClipboard(btn.dataset.link);
-                this.message.success('链接已复制');
-            });
-        });
+        this.bindCopyLinks();
 
         // 编辑
         this.$$('.action-text.edit').forEach(btn => {
@@ -247,18 +243,7 @@ class FtpTab extends BaseTab {
         });
 
         // 根目录跳转文件管理
-        this.$$('.root-link[data-browse-path]').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const path = link.dataset.browsePath;
-                if (path && window.app?.switchTab) {
-                    window.app.switchTab('files');
-                    setTimeout(() => {
-                        this.events.emit('files:navigate', path);
-                    }, 150);
-                }
-            });
-        });
+        this.bindBrowseLinks();
     }
 
     // ========== 数据操作 ==========
