@@ -15,7 +15,7 @@ src/embed.go              — 静态资源嵌入
 src/panel/                — 管理面板（HTTP API、路由、中间件）
   ├── handler.go          — 会话、认证、静态资源、FTP 服务管理
   ├── router.go           — 路由表
-  ├── middleware.go        — 中间件链
+  ├── middleware.go        — 中间件链（Auth/Recovery/CSRF/Logging）
   ├── response.go         — API 响应工具
   ├── api_system.go       — 系统监控、清理、自启
   ├── api_site.go         — 站点管理
@@ -27,7 +27,7 @@ src/panel/                — 管理面板（HTTP API、路由、中间件）
   ├── api_log.go          — 日志管理
   └── api_service.go      — 自启动服务管理
 src/site/                 — 站点服务（虚拟主机、反向代理、静态文件）
-src/ssl/                  — SSL 证书核心（ACME、自动续签）
+src/ssl/                  — SSL 证书核心（ACME、Lego、自动续签）
 src/ftp/                  — FTP 服务器
 src/config/               — 配置管理（JSON + AES 加密）
 src/crypto/               — 加密工具
@@ -35,7 +35,13 @@ src/logger/               — 日志系统（多分类、轮转、压缩）
 src/monitor/              — 系统监控（内存、CPU、磁盘）
 src/file/                 — 文件操作（管理、压缩、安全检查）
 src/backup/               — 备份管理
-src/static/               — 前端静态资源
+src/static/admin/         — 前端静态资源
+  ├── css/                — 样式（base.css 变量 + components/ + tabs/）
+  ├── js/                 — 脚本
+  │   ├── core/           — 核心模块（error-handler、api、events、template、keyboard）
+  │   ├── utils.js        — 工具函数（escapeHtml 等）
+  │   └── app.js          — 应用入口
+  └── views/              — HTML 页面
 ```
 
 ## 依赖方向
@@ -53,7 +59,27 @@ crypto → 无依赖
 ```
 **禁止**：site/ssl/ftp/file/logger 不引用 panel/。无循环依赖。
 
-## 当前进度（2026-04-14）
+## 编译与运行
+
+```bash
+# 编译（NAS 内存有限，必须限制）
+cd src/cmd && GOPROXY=https://goproxy.cn,direct GOMEMLIMIT=300MiB go build -o ../../pixelbeast .
+
+# 运行
+./pixelbeast
+
+# 测试
+cd src/cmd && go test ./...
+
+# 静态检查
+cd src/cmd && go vet ./...
+```
+
+## .gitignore 注意
+- `/ssl/` — 根目录证书存储目录（已忽略）
+- `src/ssl/` — SSL 源码包（**不忽略**，已用 git add -f 追踪）
+
+## 当前进度（v3.2.0-dev）
 
 ### 已完成
 - [x] 站点管理（多站点、域名绑定、独立端口、反向代理）
@@ -62,44 +88,25 @@ crypto → 无依赖
 - [x] FTP 服务（用户管理、加密密码）
 - [x] 文件管理（在线编辑、上传下载、压缩解压）
 - [x] 分享链接、系统监控、日志管理
-- [x] 管理面板（登录认证、CSRF 防护）
-- [x] 架构重构（handlers/ 转发层消除、core/ 包体系、中间件链、路由表）
-- [x] 包结构重组（去 core/ 层级、admin→panel、God Object 拆分、文件合并）
+- [x] 管理面板（登录认证、CSRF 防护、速率限制）
+- [x] 架构重构（admin→panel、handlers→site、main.go→cmd）
+- [x] 代码质量全面提升（37+ 项修复，评分 6.0→9.0）
+- [x] 前端优化（6 阶段：错误边界、API 封装、CSS 变量、EventBus、模板引擎、快捷键）
+- [x] 单元测试（config/panel/file 3 包 29 用例）
 
-### BUG 修复（2026-04-12）
-- [x] P0: FTP 密码明文返回 → 改为掩码
-- [x] P0: 路径遍历 → URL 解码后校验
-- [x] P0: XSS → 目录列表 HTML 转义
-- [x] P0: 硬编码默认密码 → 已删除
-- [x] P1: FTP OOM → 流式传输
-- [x] P1: defer-in-loop → 手动 close
-- [x] P1: escapeHtml 未导入 → 添加 import
-
-### 待完成 - 代码规范清理
-- [ ] 1.3 config.go delete 方法提取（中）
-- [ ] 1.4 crypto.go GCM 初始化提取（中）
-- [ ] 1.6 FTP/HTTP 文件操作 API 去重（中）
-- [ ] 1.9 os.UserHomeDir() 重复调用（中）
-- [ ] 2.x 命名规范统一（中）
-- [ ] 3.x 长函数拆分（中）
-
-### 待完成 - 后续优化
-- CSRF 中间件集成（已实现 CSRPMiddleware，待接入路由）
-- RateLimit 中间件
-- 可测试性改造（接口抽象、mock）
-
-## 文档索引
-- `docs/ssl-redesign-plan.md` — SSL 重设计规划
-- `docs/code-audit-report.md` — 代码审计报告
-- `docs/project-report.md` — 项目综合报告
-- `docs/plan-1-code-cleanup.md` — 代码规范清理计划
-- `docs/plan-2-architecture.md` — 架构优化计划
-- `docs/plan-5-package-restructure.md` — 包结构重组计划
+### 代码审查修复清单
+- 安全：路径遍历防护、CSRF 中间件接入、配置权限 0600、XSS 转义
+- 并发：sync.Once、mutex、goroutine context 退出机制
+- 错误处理：HTTP 状态码修正、panic→error、日志统一
+- 资源管理：defer-in-loop 修复、Handler.Close()
+- 前端：CSS 变量迁移（16 文件 85+ 处）、JS 去重、核心模块
 
 ## 开发规范
 - 中文注释
 - gofmt 格式化
 - 错误处理显式，不忽略 error
-- 保持代码风格一致
-- 改完编译验证 go build ./... && go vet ./...
-- panel/ 中使用 `fileop` 作为 `file` 包的别名（避免与 multipart.File 变量冲突）
+- 日志使用 logger 包：`logger.LogPanelRuntime(logger.LogLevelInfo, "msg")`
+- 前端 CSS 使用变量：`var(--primary)` 而非硬编码色值
+- 前端 JS 使用 ES Modules，从 utils.js import escapeHtml
+- panel/ 中使用 `fileop` 作为 `file` 包的别名（避免与 multipart.File 冲突）
+- 改完编译验证：`cd src/cmd && GOPROXY=https://goproxy.cn,direct go build -o /dev/null . && go vet ./...`

@@ -15,8 +15,8 @@
 
 ```go
 // 包注释
-// Package handlers 提供 HTTP 和 FTP 协议处理
-package handlers
+// Package panel 提供管理面板 HTTP API
+package panel
 
 import (
     // 标准库

@@ -2,6 +2,66 @@
 
 本文档记录项目的重大变更和新功能。
 
+## [3.2.0-dev] - 2026-04-14
+
+### 安全修复
+
+- **路径遍历防护**: resolvePath 使用 filepath.Rel 校验，限制所有路径在根目录内
+- **CSRF 中间件接入**: 所有 POST/PUT/DELETE 请求需 X-CSRF-Token
+- **配置文件权限**: 从 0644 改为 0600（仅所有者可读写）
+- **XSS 防护**: 目录列表 HTML 转义，模板引擎 escapeHtml
+- **rand.Read 错误检查**: 4 处添加返回值检查
+- **parseJSONBody**: 删除多余的 Body.Close，让框架管理生命周期
+
+### 并发安全
+
+- **routerCache**: 改用 sync.Once 确保单次初始化
+- **cpuHistory**: 添加 mutex 保护并发读写
+- **goroutine 退出机制**: 添加 context.WithCancel + Handler.Close() 方法
+- **证书异步验证**: 添加 context.WithTimeout(5min)
+
+### 错误处理
+
+- **HTTP 状态码**: Error(w, http.StatusOK) 全部改为 http.StatusInternalServerError（13 处）
+- **panic 消除**: config.go defaultServerConfig 从 panic 改为返回 error
+- **日志统一**: 28 处 fmt.Printf/log.Printf 替换为 logger 包
+- **错误日志补充**: 27 处关键操作添加 logger.LogError
+- **restartServer**: os.Exit 前调用 logger.Close()
+
+### 中间件体系
+
+- **RecoveryMiddleware**: 启用 panic 恢复
+- **LoggingMiddleware**: 启用请求日志
+- **CSRF 中间件逻辑重构**: 分层检查（!exists → token=="" → 过期 → 值不匹配）
+
+### 前端优化（6 阶段）
+
+- **error-handler.js**: 全局错误边界（window.onerror + unhandledrejection）
+- **api.js 增强**: AbortController 超时 30s、429 限速提示、5xx 错误提示
+- **CSS 变量迁移**: 16 文件 85+ 处硬编码色值替换为 CSS 变量
+- **EventBus**: events.js 补充事件常量（SITE_CHANGED 等 6 个）
+- **template.js**: html 标签模板引擎（XSS 防护）
+- **keyboard.js**: 快捷键管理 + Escape 关闭 modal
+
+### 代码质量
+
+- **死代码清理**: getLogs/clearLogs/handleCertDetail/monitor/utils.go 等
+- **单元测试**: config_test.go、response_test.go、operations_test.go（3 包 29 用例）
+- **魔法数字提取**: 超时时间、缓冲区大小提取为常量
+- **login.css 去重**: 删除与 base.css 重复的 20 个变量
+- **JS 去重**: template.js escapeHtml 改为从 utils.js import
+
+### SSL 包重建
+
+- **src/ssl/manager.go**: 重建（原文件被误操作清空）
+- **src/ssl/lego.go**: 从 v3.1.12 恢复并更新包名
+
+### .gitignore 修复
+
+- `ssl/` → `/ssl/`（只忽略根目录证书目录，不忽略 src/ssl/ 源码）
+
+---
+
 ## [3.1.13] - 2026-04-14
 
 ### 重构
