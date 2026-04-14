@@ -9,6 +9,18 @@ const CHUNK_SIZE = 5 * 1024 * 1024;           // 5MB per chunk
 const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; // > 50MB 使用分块上传
 const MAX_CONCURRENT = 3;
 
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+}
+
+function fetchWithCSRF(url, options = {}) {
+    if (!options.headers) options.headers = {};
+    const token = getCSRFToken();
+    if (token) options.headers['X-CSRF-Token'] = token;
+    return fetch(url, options);
+}
+
 export class UploadManager {
     constructor(options) {
         this.apiPath = options.apiPath || '/admin/api/files';
@@ -66,8 +78,10 @@ export class UploadManager {
             if (relativePath) formData.append('relativePath', relativePath);
 
             await new Promise((resolve, reject) => {
+                const token = getCSRFToken();
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', `${this.apiPath}/upload/path`);
+                if (token) xhr.setRequestHeader('X-CSRF-Token', token);
 
                 xhr.upload.onprogress = (e) => {
                     if (e.lengthComputable) {
@@ -138,7 +152,7 @@ export class UploadManager {
                 formData.append('uploadID', uploadID);
                 formData.append('chunkIndex', String(i));
 
-                const resp = await fetch(`${this.apiPath}/upload/chunk`, {
+                const resp = await fetchWithCSRF(`${this.apiPath}/upload/chunk`, {
                     method: 'POST', body: formData,
                     signal: abortController.signal
                 });
@@ -149,7 +163,7 @@ export class UploadManager {
             }
 
             // 3. 合并分块
-            const mergeResp = await fetch(`${this.apiPath}/upload/merge`, {
+            const mergeResp = await fetchWithCSRF(`${this.apiPath}/upload/merge`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

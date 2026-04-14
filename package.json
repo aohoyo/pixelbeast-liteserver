@@ -1,6 +1,6 @@
 {
   "name": "pixelbeast-liteserver",
-  "version": "3.1.12",
+  "version": "3.2.0-dev",
   "description": "PixelBeast LiteServer - 轻量级 Web+FTP 服务器",
   "scripts": {
     "dev": "node dev.js dev",
@@ -15,7 +15,13 @@
     "version": "node dev.js version",
     "logs:clear": "node dev.js logs:clear"
   },
-  "keywords": ["ftp", "http", "server", "go", "lightweight"],
+  "keywords": [
+    "ftp",
+    "http",
+    "server",
+    "go",
+    "lightweight"
+  ],
   "author": "PixelBeast",
   "license": "MIT"
 }

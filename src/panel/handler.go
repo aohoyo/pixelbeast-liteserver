@@ -362,6 +362,18 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	}
 	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
 	html = strings.ReplaceAll(html, "{{VERSION}}", h.Version)
+	// 注入 CSRF token（已登录用户）
+	csrfPlaceholder := "{{CSRF_TOKEN}}"
+	if strings.Contains(html, csrfPlaceholder) {
+		session := h.getSession(r)
+		csrfToken := ""
+		if session != nil {
+			if cookie, err := r.Cookie("session_id"); err == nil {
+				csrfToken = h.generateCSRFToken(cookie.Value)
+			}
+		}
+		html = strings.ReplaceAll(html, csrfPlaceholder, csrfToken)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
 }

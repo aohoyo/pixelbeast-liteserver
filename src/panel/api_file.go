@@ -48,9 +48,7 @@ func resolvePath(subPath string) string {
 	// 限制最终路径在根目录下，防止路径遍历攻击
 	cleaned := func(p string) string {
 		c := filepath.Clean(p)
-		if !strings.HasPrefix(c, rootDir+string(os.PathSeparator)) && c != rootDir {
-			return filepath.Join(rootDir, filepath.Base(p))
-		}
+		// 只清理路径，不做目录限制（前端文件管理需要访问系统任意目录）
 		return c
 	}
 

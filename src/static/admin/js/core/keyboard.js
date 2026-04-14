@@ -43,6 +43,8 @@ function eventToKey(e) {
     // 忽略单独的修饰键按下
     const ignorable = new Set(['Control', 'Alt', 'Shift', 'Meta']);
     if (ignorable.has(e.key)) return '';
+    // e.key 可能为 undefined（如部分浏览器合成事件）
+    if (!e.key) return '';
 
     // 键名转小写，统一格式
     let key = e.key.toLowerCase();

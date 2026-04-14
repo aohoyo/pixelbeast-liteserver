@@ -9,6 +9,22 @@ import { escapeHtml } from '../core/utils.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
 
+// CSRF token 缓存
+let _csrfToken = null;
+function getCSRFToken() {
+    if (_csrfToken) return _csrfToken;
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) { _csrfToken = meta.content; return _csrfToken; }
+    // 从 cookie 获取 session 状态，从 /api/status 获取 token
+    return '';
+}
+function fetchWithCSRF(url, options = {}) {
+    if (!options.headers) options.headers = {};
+    const token = getCSRFToken();
+    if (token) options.headers['X-CSRF-Token'] = token;
+    return fetch(url, options);
+}
+
 // SVG 图标
 const ICONS = {
     back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`,
@@ -489,8 +505,11 @@ export class FileManager {
             this.showContextMenu(e);
         });
         
-        // 键盘快捷键
+        // 键盘快捷键（输入框中不拦截，保留原生粘贴/复制等行为）
         this.container.addEventListener('keydown', (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+
             if (e.ctrlKey || e.metaKey) {
                 if (e.key === 'x') { e.preventDefault(); this.cutSelected(); }
                 else if (e.key === 'c') { e.preventDefault(); this.copySelected(); }
@@ -1122,7 +1141,7 @@ export class FileManager {
 
         try {
             // 直接调用后端的 touchFile API
-            const response = await fetch(`${this.options.apiPath}/touch`, {
+            const response = await fetchWithCSRF(`${this.options.apiPath}/touch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1182,14 +1201,14 @@ export class FileManager {
                 let response;
                 if (isFile) {
                     // 创建文件使用 /touch
-                    response = await fetch(`${this.options.apiPath}/touch`, {
+                    response = await fetchWithCSRF(`${this.options.apiPath}/touch`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ path: tab.path, name: newName })
                     });
                 } else {
                     // 创建文件夹使用 /mkdir
-                    response = await fetch(`${this.options.apiPath}/mkdir`, {
+                    response = await fetchWithCSRF(`${this.options.apiPath}/mkdir`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ path: this.joinPath(tab.path, newName) })
@@ -1268,7 +1287,7 @@ export class FileManager {
                 
                 if (isCut) {
                     // 剪切 -> 移动
-                    const response = await fetch(`${this.options.apiPath}/move`, {
+                    const response = await fetchWithCSRF(`${this.options.apiPath}/move`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1285,7 +1304,7 @@ export class FileManager {
                     }
                 } else {
                     // 复制
-                    const response = await fetch(`${this.options.apiPath}/copy`, {
+                    const response = await fetchWithCSRF(`${this.options.apiPath}/copy`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1366,7 +1385,7 @@ export class FileManager {
                     for (let i = 0; i < items.length; i += batchSize) {
                         const batch = items.slice(i, i + batchSize);
                         const results = await Promise.all(batch.map(name => 
-                            fetch(`${this.options.apiPath}/delete`, {
+                            fetchWithCSRF(`${this.options.apiPath}/delete`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ path: tab.path, name: name })
@@ -2364,7 +2383,7 @@ export class FileManager {
         saveBtn.innerHTML = '<span class="editor-loading"></span> 保存中...';
 
         try {
-            const response = await fetch(`${this.options.apiPath}/save`, {
+            const response = await fetchWithCSRF(`${this.options.apiPath}/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2481,7 +2500,7 @@ export class FileManager {
             }
 
             try {
-                const response = await fetch(`${this.options.apiPath}/rename`, {
+                const response = await fetchWithCSRF(`${this.options.apiPath}/rename`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2551,7 +2570,7 @@ export class FileManager {
         if (!targetName) return;
 
         try {
-            const response = await fetch(`${this.options.apiPath}/compress`, {
+            const response = await fetchWithCSRF(`${this.options.apiPath}/compress`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2636,7 +2655,7 @@ export class FileManager {
         if (!confirmed) return;
 
         try {
-            const response = await fetch(`${this.options.apiPath}/extract`, {
+            const response = await fetchWithCSRF(`${this.options.apiPath}/extract`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2822,7 +2841,7 @@ export class FileManager {
             createBtn.textContent = '创建中...';
 
             try {
-                const response = await fetch(`${this.options.apiPath}/share`, {
+                const response = await fetchWithCSRF(`${this.options.apiPath}/share`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
