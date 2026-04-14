@@ -2,7 +2,6 @@ package panel
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +15,9 @@ import (
 
 // ==================== FTP 状态 ====================
 
+const (
+	MaxFTPUploadSize     = 500 << 20 // 500MB FTP 上传限制
+)
 func (h *Handler) getFtpStatus(w http.ResponseWriter, r *http.Request) {
 	ftpRunning := h.ConfigManager.FTP.Enabled
 	ftpPort := h.ConfigManager.FTP.Port
@@ -31,7 +33,7 @@ func (h *Handler) getFtpStatus(w http.ResponseWriter, r *http.Request) {
 // ==================== FTP 服务控制 ====================
 func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 	if h.FTPServer == nil {
-		Error(w, http.StatusOK, "FTP 服务未初始化")
+		Error(w, http.StatusInternalServerError, "FTP 服务未初始化")
 		return
 	}
 	var err error
@@ -42,7 +44,7 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 		err, msg = h.startFTPSvc(), "FTP服务已启动"
 	}
 	if err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -62,11 +64,11 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 // saveConfig: 需要保存配置时传入（如启停操作），否则传 nil
 func (h *Handler) handleFTPServiceAction(w http.ResponseWriter, r *http.Request, action func() error, actionName string, saveConfig func() error) {
 	if h.FTPServer == nil {
-		Error(w, http.StatusOK, "FTP 服务未初始化")
+		Error(w, http.StatusInternalServerError, "FTP 服务未初始化")
 		return
 	}
 	if err := action(); err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if saveConfig != nil {
@@ -100,12 +102,12 @@ func (h *Handler) restartFTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 	if h.SiteManager == nil {
-		Error(w, http.StatusOK, "站点管理器未初始化")
+		Error(w, http.StatusInternalServerError, "站点管理器未初始化")
 		return
 	}
 	// 重载配置文件
 	if err := h.SiteManager.ReloadSites(); err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// 同步管理面板和 FTP 服务器的配置指针
@@ -169,7 +171,7 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 增加上传限制到 500MB
-	maxSize := int64(500 << 20)
+	maxSize := int64(MaxFTPUploadSize)
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		BadRequest(w, err.Error())
@@ -582,7 +584,7 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(absUserPath, absRoot) {
 			if err := os.RemoveAll(absUserPath); err != nil {
 				// 记录错误但继续删除用户
-				fmt.Printf("[FTP] 删除用户目录失败: %v\n", err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 删除用户目录失败: %v", err)
 			}
 		}
 	}

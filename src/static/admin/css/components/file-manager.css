@@ -299,7 +299,7 @@
 
 .fm-view-btn.active {
     background: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .fm-view-btn svg {
@@ -754,7 +754,7 @@
 /* ==================== 搜索高亮 ==================== */
 
 .fm-search-highlight {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(249, 115, 22, 0.2));
+    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.3), rgba(var(--primary-rgb), 0.2));
     color: var(--primary-light);
     padding: 1px 3px;
     border-radius: 2px;
@@ -776,7 +776,7 @@
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); /* 保留：非标准阴影值 */
     padding: var(--space-xs) 0;
     animation: contextMenuFadeIn 0.15s ease;
 }
@@ -855,11 +855,11 @@
 /* 危险操作 */
 .context-menu-item.danger:hover:not(.disabled) {
     background: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .context-menu-item.danger:hover:not(.disabled) .context-menu-icon {
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* ==================== 文件编辑器 ==================== */
@@ -872,7 +872,7 @@
     bottom: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-heavy);
     z-index: 10000 !important;
     animation: fadeIn 0.15s ease;
     box-sizing: border-box;
@@ -897,8 +897,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    animation: slideUp 0.2s ease;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); /* 保留：与 --shadow-lg 透明度不同 */
     border: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -1008,7 +1007,7 @@
 
 .editor-tool-btn.close:hover {
     background: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .editor-divider {
@@ -1062,7 +1061,7 @@
 /* 深色主题下的编辑器 */
 @media (prefers-color-scheme: dark) {
     .editor-textarea {
-        background: #1a1a1a;
+        background: #1a1a1a; /* 保留：编辑器专用深色背景 */
     }
 }
 
@@ -1071,7 +1070,7 @@
 .dialog-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1084,7 +1083,7 @@
     max-width: 420px;
     background: var(--bg-elevated);
     border-radius: var(--radius-lg);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4); /* 保留：非标准阴影值 */
     animation: slideUp 0.2s ease;
 }
 
@@ -1154,7 +1153,7 @@
 
 .dialog-btn-confirm {
     background: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .dialog-btn-confirm:hover {
@@ -1289,7 +1288,7 @@
 }
 
 .editor-dialog.code-editor .editor-body {
-    background: #1e1e1e;
+    background: #1e1e1e; /* 保留：VS Code 主题编辑器背景 */
 }
 
 .editor-container {
@@ -1302,8 +1301,8 @@
 .editor-gutter {
     width: 50px;
     min-width: 50px;
-    background: #252526;
-    border-right: 1px solid #3c3c3c;
+    background: #252526; /* 保留：VS Code 主题行号栏背景 */
+    border-right: 1px solid #3c3c3c; /* 保留：VS Code 主题行号栏边框 */
     overflow: hidden;
     user-select: none;
     flex-shrink: 0;
@@ -1314,7 +1313,7 @@
     line-height: 22px;
     text-align: right;
     padding-right: 12px;
-    color: #858585;
+    color: #858585; /* 保留：VS Code 主题行号颜色 */
     font-family: 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
     font-size: 0.75rem;
 }
@@ -1322,21 +1321,21 @@
 /* 文本编辑区域 */
 .editor-dialog.code-editor .editor-textarea {
     padding: 0 16px;
-    background: #1e1e1e;
-    color: #d4d4d4;
-    caret-color: #aeafad;
+    background: #1e1e1e; /* 保留：VS Code 主题编辑器背景 */
+    color: #d4d4d4; /* 保留：VS Code 主题编辑器文字 */
+    caret-color: #aeafad; /* 保留：VS Code 主题光标色 */
     line-height: 22px;
 }
 
 .editor-textarea::selection {
-    background: rgba(38, 79, 120, 0.6);
+    background: rgba(38, 79, 120, 0.6); /* 保留：VS Code 主题选中色 */
 }
 
 /* 类型徽章 */
 .editor-type-badge {
     font-size: 0.65rem;
     padding: 3px 8px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.1); /* 保留：半透明玻璃效果 */
     color: var(--text-secondary);
     border-radius: var(--radius-sm);
     text-transform: uppercase;
@@ -1358,21 +1357,21 @@
 }
 
 .editor-dialog.code-editor .editor-textarea::-webkit-scrollbar-track {
-    background: #1e1e1e;
+    background: #1e1e1e; /* 保留：VS Code 主题滚动条轨道 */
 }
 
 .editor-dialog.code-editor .editor-textarea::-webkit-scrollbar-thumb {
-    background: #424242;
-    border: 3px solid #1e1e1e;
+    background: #424242; /* 保留：VS Code 主题滚动条滑块 */
+    border: 3px solid #1e1e1e; /* 保留：VS Code 主题滚动条边框 */
     border-radius: 7px;
 }
 
 .editor-dialog.code-editor .editor-textarea::-webkit-scrollbar-thumb:hover {
-    background: #4f4f4f;
+    background: #4f4f4f; /* 保留：VS Code 主题滚动条悬停 */
 }
 
 .editor-dialog.code-editor .editor-textarea::-webkit-scrollbar-corner {
-    background: #1e1e1e;
+    background: #1e1e1e; /* 保留：VS Code 主题滚动条角 */
 }
 
 /* 普通文本编辑器样式 */
@@ -1450,7 +1449,7 @@
 .share-duration-btn.active {
     background: var(--primary);
     border-color: var(--primary);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .share-password-wrap {
@@ -1576,7 +1575,7 @@
     width: 360px;
     background: var(--bg-elevated);
     border-left: 1px solid var(--border);
-    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15); /* 保留：抽屉方向性阴影 */
     z-index: 50;
     display: flex;
     flex-direction: column;
@@ -1625,7 +1624,7 @@
 }
 
 .fm-upload-close-btn:hover {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-alpha);
     color: var(--danger);
 }
 
@@ -1680,19 +1679,19 @@
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     background: var(--primary);
-    color: #fff;
+    color: var(--text-on-accent);
     border-radius: var(--radius-lg);
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     z-index: 40;
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.4);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .fm-upload-badge:hover {
     transform: scale(1.05);
-    box-shadow: 0 6px 16px rgba(249, 115, 22, 0.5);
+    box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.5);
 }
 
 .fm-upload-badge-icon {
@@ -1825,7 +1824,7 @@
 
 .fm-upload-act-btn:hover {
     color: var(--danger);
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-alpha);
 }
 
 .fm-upload-act-btn[data-act="resume"] {
@@ -1833,7 +1832,7 @@
 }
 
 .fm-upload-act-btn[data-act="resume"]:hover {
-    background: rgba(249, 115, 22, 0.15);
+    background: var(--primary-alpha);
 }
 
 /* ==================== 文件管理页面布局 ==================== */
@@ -1932,7 +1931,7 @@
 .fm-share-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,.5);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2100,7 +2099,7 @@
 .preview-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
+    background: var(--overlay-dark);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2117,7 +2116,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--shadow-lg);
     animation: slideUp 0.2s ease;
     border: 1px solid var(--border);
 }
@@ -2177,7 +2176,7 @@
 
 .preview-btn.close:hover {
     background: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .preview-body {
@@ -2192,7 +2191,7 @@
 
 /* 图片预览 */
 .preview-image .preview-body {
-    background: #1a1a1a;
+    background: #1a1a1a; /* 保留：图片预览专用深色背景 */
     cursor: grab;
     min-height: 300px;
     max-height: calc(90vh - 44px);
@@ -2209,7 +2208,7 @@
 
 /* 视频预览 */
 .preview-video .preview-body {
-    background: #000;
+    background: #000; /* 保留：视频预览纯黑背景 */
     min-height: 300px;
 }
 

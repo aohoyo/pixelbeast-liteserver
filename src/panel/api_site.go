@@ -75,6 +75,7 @@ func (h *Handler) handleSiteToggle(w http.ResponseWriter, r *http.Request) {
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
 		if err := h.ConfigManager.Save(); err != nil {
+			logger.LogPanelRuntime(logger.LogLevelError, "[站点] 切换状态保存配置失败: %v", err)
 			InternalServerError(w, "保存配置失败")
 			return
 		}
@@ -117,12 +118,12 @@ func (h *Handler) handleSiteAction(w http.ResponseWriter, r *http.Request, actio
 	}
 
 	if h.SiteManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
+		Error(w, http.StatusInternalServerError, "服务管理器未初始化")
 		return
 	}
 
 	if err := action(req.ID); err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -165,7 +166,7 @@ func (h *Handler) getSitesStatus(w http.ResponseWriter, r *http.Request) {
 // toggleSitesService 切换站点服务
 func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 	if h.SiteManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
+		Error(w, http.StatusInternalServerError, "服务管理器未初始化")
 		return
 	}
 	var err error
@@ -176,7 +177,7 @@ func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 		err, msg = h.SiteManager.StartSitesServer(), "站点服务已启动"
 	}
 	if err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -187,11 +188,11 @@ func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 // handleSitesServiceAction 通用站点服务操作处理器
 func (h *Handler) handleSitesServiceAction(w http.ResponseWriter, r *http.Request, action func() error, actionName string) {
 	if h.SiteManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
+		Error(w, http.StatusInternalServerError, "服务管理器未初始化")
 		return
 	}
 	if err := action(); err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -217,11 +218,11 @@ func (h *Handler) restartSitesService(w http.ResponseWriter, r *http.Request) {
 // reloadSitesConfig 重载站点配置
 func (h *Handler) reloadSitesConfig(w http.ResponseWriter, r *http.Request) {
 	if h.SiteManager == nil {
-		Error(w, http.StatusOK, "服务管理器未初始化")
+		Error(w, http.StatusInternalServerError, "服务管理器未初始化")
 		return
 	}
 	if err := h.SiteManager.ReloadSites(); err != nil {
-		Error(w, http.StatusOK, err.Error())
+		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -371,6 +372,7 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 
 	// 添加站点
 	if err := h.ConfigManager.AddSite(site); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 添加站点失败 %s: %v", site.Name, err)
 		InternalServerError(w, "添加站点失败")
 		return
 	}
@@ -378,6 +380,7 @@ func (h *Handler) createSite(w http.ResponseWriter, r *http.Request) {
 	// 保存配置
 	if h.ConfigManager != nil {
 		if err := h.ConfigManager.Save(); err != nil {
+			logger.LogPanelRuntime(logger.LogLevelError, "[站点] 添加站点后保存配置失败: %v", err)
 			InternalServerError(w, "保存配置失败")
 			return
 		}
@@ -426,12 +429,14 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 
 	// 更新站点
 	if err := h.ConfigManager.UpdateSite(id, site); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 更新站点失败 %s: %v", id, err)
 		InternalServerError(w, "更新站点失败: "+err.Error())
 		return
 	}
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 更新站点后保存配置失败: %v", err)
 		InternalServerError(w, "保存配置失败")
 		return
 	}
@@ -469,12 +474,14 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 
 	// 删除站点
 	if err := h.ConfigManager.DeleteSite(id); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 删除站点失败 %s: %v", id, err)
 		InternalServerError(w, "删除站点失败: "+err.Error())
 		return
 	}
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 删除站点后保存配置失败: %v", err)
 		InternalServerError(w, "保存配置失败")
 		return
 	}

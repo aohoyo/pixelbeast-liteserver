@@ -3,7 +3,6 @@ package site
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -76,7 +75,7 @@ func (m *SiteManager) ReloadSites() error {
 		site := &(m.ConfigManager.Sites.Sites)[i]
 		if site.Enabled {
 			if err := m.SitesRouter.AddHost(site); err != nil {
-				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 添加站点失败: %s, %v", site.Name, err)
 			}
 		}
 	}
@@ -103,7 +102,7 @@ func (m *SiteManager) StartSitesServer() error {
 		if site.Enabled {
 			hasEnabled = true
 			if err := m.SitesRouter.AddHost(site); err != nil {
-				log.Printf("[Sites] 添加站点失败: %s, %v", site.Name, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 添加站点失败: %s, %v", site.Name, err)
 			}
 		}
 	}
@@ -246,7 +245,7 @@ func (m *SiteManager) AddSiteRuntime(site *config.SiteConfig) {
 	}
 
 	if err := m.SitesRouter.AddHost(site); err != nil {
-		log.Printf("[Sites] 添加站点路由失败: %s, %v", site.Name, err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 添加站点路由失败: %s, %v", site.Name, err)
 		return
 	}
 
@@ -268,7 +267,7 @@ func (m *SiteManager) UpdateSiteRuntime(site *config.SiteConfig) {
 	}
 
 	if err := m.SitesRouter.AddHost(site); err != nil {
-		log.Printf("[Sites] 更新站点路由失败: %s, %v", site.Name, err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 更新站点路由失败: %s, %v", site.Name, err)
 		return
 	}
 
@@ -304,7 +303,7 @@ func (m *SiteManager) startSitePort(site *config.SiteConfig) {
 
 	handler, err := m.SitesRouter.createHandler(site)
 	if err != nil {
-		log.Printf("[Sites] 端口 %d 创建处理器失败: %v", site.Port, err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 端口 %d 创建处理器失败: %v", site.Port, err)
 		return
 	}
 
@@ -333,12 +332,12 @@ func (m *SiteManager) startSitePort(site *config.SiteConfig) {
 		if useTLS {
 			logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 站点 %s 启动TLS在端口 %d", name, port)
 			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				log.Printf("[Sites] 端口 %d TLS服务错误: %v", port, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 端口 %d TLS服务错误: %v", port, err)
 			}
 		} else {
 			logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 站点 %s 启动在端口 %d", name, port)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("[Sites] 端口 %d 服务错误: %v", port, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 端口 %d 服务错误: %v", port, err)
 			}
 		}
 	}(site.Port, site.Name, sslEnabled)
@@ -388,7 +387,7 @@ func (m *SiteManager) StartHTTPRedirect() {
 	go func() {
 		logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] HTTP 重定向服务启动在端口 80")
 		if err := m.redirectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[SSL] 端口 80 服务错误: %v", err)
+			logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 端口 80 服务错误: %v", err)
 		}
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -415,7 +414,7 @@ func (m *SiteManager) EnsureHTTPRedirect() {
 	go func() {
 		logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] HTTP 重定向服务启动在端口 80（证书验证模式）")
 		if err := m.redirectServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[SSL] 端口 80 服务错误: %v", err)
+			logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 端口 80 服务错误: %v", err)
 		}
 		m.mu.Lock()
 		defer m.mu.Unlock()

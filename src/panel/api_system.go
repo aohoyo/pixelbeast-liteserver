@@ -254,10 +254,14 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	cpuModel := getCPUModel()
 
 	// 更新 CPU 历史记录
+	cpuMu.Lock()
 	cpuHistory = append(cpuHistory, cpuPercent)
 	if len(cpuHistory) > 5 {
 		cpuHistory = cpuHistory[len(cpuHistory)-5:]
 	}
+	historyCopy := make([]float64, len(cpuHistory))
+	copy(historyCopy, cpuHistory)
+	cpuMu.Unlock()
 
 	// 获取 FTP 服务状态
 
@@ -370,7 +374,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"cpu_cores":    cpuCores,
 		"cpu_threads":  cpuThreads,
 		"cpu_model":    cpuModel,
-		"cpu_history":  cpuHistory,
+		"cpu_history":  historyCopy,
 		"cpu_per_core": cpuPerCore,
 
 		// 内存
@@ -1669,18 +1673,18 @@ func queryNTPServers() {
 		go func(addr string) {
 			t, err := queryNTP(addr)
 			if err != nil {
-				fmt.Printf("[NTP] %s 查询失败: %v\n", addr, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[NTP] %s 查询失败: %v", addr, err)
 				ch <- ntpResult{}
 				return
 			}
 			// 校验 NTP 时间在合理范围（2020-2035），避免解析异常
 			if t.Year() < 2020 || t.Year() > 2035 {
-				fmt.Printf("[NTP] %s 时间异常: %v (year=%d)\n", addr, t, t.Year())
+				logger.LogPanelRuntime(logger.LogLevelWarn, "[NTP] %s 时间异常: %v (year=%d)", addr, t, t.Year())
 				ch <- ntpResult{}
 				return
 			}
 			diff := t.Sub(now)
-			fmt.Printf("[NTP] %s 成功, 偏移: %v\n", addr, diff)
+			logger.LogPanelRuntime(logger.LogLevelInfo, "[NTP] %s 成功, 偏移: %v", addr, diff)
 			ch <- ntpResult{offset: diff.Milliseconds(), ok: true}
 		}(server)
 	}
@@ -1866,6 +1870,8 @@ func (h *Handler) restartServer(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
+		// 刷新日志缓冲区，确保重启前的日志不丢失
+		logger.Close()
 		exec.Command(os.Args[0], os.Args[1:]...).Start()
 		os.Exit(0)
 	}()

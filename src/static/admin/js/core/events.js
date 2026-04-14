@@ -248,6 +248,22 @@ export default class EventBus {
     }
 }
 
+// 核心事件常量
+export const Events = Object.freeze({
+    /** 站点配置变更 */
+    SITE_CHANGED: 'site:changed',
+    /** SSL 证书变更 */
+    SSL_CHANGED: 'ssl:changed',
+    /** FTP 配置变更 */
+    FTP_CHANGED: 'ftp:changed',
+    /** 系统配置变更 */
+    CONFIG_CHANGED: 'config:changed',
+    /** 用户登录 */
+    USER_LOGIN: 'user:login',
+    /** 用户登出 */
+    USER_LOGOUT: 'user:logout',
+});
+
 // 创建全局默认实例
 export const globalEvents = new EventBus();
 

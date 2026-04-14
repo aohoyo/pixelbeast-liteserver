@@ -116,7 +116,6 @@ func InternalServerError(w http.ResponseWriter, message string) {
 
 // parseJSONBody 解析 JSON 请求体
 func parseJSONBody(r *http.Request, v interface{}) error {
-	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v)
 }
 

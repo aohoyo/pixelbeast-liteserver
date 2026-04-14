@@ -2,6 +2,7 @@ package panel
 
 import (
 	"net/http"
+	"sync"
 )
 
 // setupRouter 创建路由表
@@ -11,7 +12,6 @@ func (h *Handler) setupRouter() http.Handler {
 	// ==================== 公开路由 ====================
 
 	// 页面
-	mux.HandleFunc("/", h.indexPage)
 	mux.HandleFunc("/login", h.loginPage)
 	mux.HandleFunc("/favicon.ico", h.serveFavicon)
 
@@ -154,19 +154,23 @@ func (h *Handler) setupRouter() http.Handler {
 	authMux.HandleFunc("/api/service/autostart/enable", h.enableAutoStart)
 	authMux.HandleFunc("/api/service/autostart/disable", h.disableAutoStart)
 
+	authMux.HandleFunc("/", h.indexPage)
 	// 将认证路由组挂载
-	mux.Handle("/", h.RequireAuth(authMux))
+	mux.Handle("/", h.RequireAuth(h.CSRPMiddleware(authMux)))
 
-	return Chain(RecoveryMiddleware)(mux)
+	return Chain(RecoveryMiddleware, LoggingMiddleware)(mux)
 }
 
 // routerCache 缓存的路由实例
-var routerCache http.Handler
+var (
+	routerCache http.Handler
+	routerOnce  sync.Once
+)
 
-// getRouter 获取路由实例（懒初始化）
+// getRouter 获取路由实例（懒初始化，并发安全）
 func (h *Handler) getRouter() http.Handler {
-	if routerCache == nil {
+	routerOnce.Do(func() {
 		routerCache = h.setupRouter()
-	}
+	})
 	return routerCache
 }

@@ -46,14 +46,14 @@
 /* 主按钮 */
 .btn-primary {
     background: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
     border-color: var(--primary);
 }
 
 .btn-primary:hover {
     background: var(--primary-dark);
     border-color: var(--primary-dark);
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 /* 次要按钮 */
@@ -71,37 +71,37 @@
 /* 成功按钮 */
 .btn-success {
     background: var(--success);
-    color: white;
+    color: var(--text-on-accent);
     border-color: var(--success);
 }
 
 .btn-success:hover {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: var(--success-dark);
+    border-color: var(--success-dark);
 }
 
 /* 警告按钮 */
 .btn-warning {
     background: var(--warning);
-    color: white;
+    color: var(--text-on-accent);
     border-color: var(--warning);
 }
 
 .btn-warning:hover {
-    background: #d97706;
-    border-color: #d97706;
+    background: var(--warning-dark);
+    border-color: var(--warning-dark);
 }
 
 /* 危险按钮 */
 .btn-danger {
     background: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
     border-color: var(--danger);
 }
 
 .btn-danger:hover {
-    background: #dc2626;
-    border-color: #dc2626;
+    background: var(--danger-dark);
+    border-color: var(--danger-dark);
 }
 
 /* 幽灵按钮 */

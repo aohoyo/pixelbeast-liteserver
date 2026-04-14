@@ -153,10 +153,10 @@
     font-size: 0.7rem;
     margin: 0 2px;
 }
-.chart-stat.sent .chart-stat-value { color: #3b82f6; }
-.chart-stat.recv .chart-stat-value { color: #22c55e; }
-.chart-stat.write .chart-stat-value { color: #f97316; }
-.chart-stat.read .chart-stat-value { color: #a78bfa; }
+.chart-stat.sent .chart-stat-value { color: var(--info); }
+.chart-stat.recv .chart-stat-value { color: var(--success); }
+.chart-stat.write .chart-stat-value { color: var(--primary); }
+.chart-stat.read .chart-stat-value { color: #a78bfa; } /* 保留：无对应变量 */
 .chart-stat.muted .chart-stat-value { color: var(--text-secondary); }
 .chart-card-body {
     flex: 1;
@@ -235,11 +235,11 @@
 .metric-status {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #22c55e;
+    color: var(--success);
 }
 
-.metric-status.warning { color: #f59e0b; }
-.metric-status.danger { color: #ef4444; }
+.metric-status.warning { color: var(--warning); }
+.metric-status.danger { color: var(--danger); }
 
 .metric-info-text {
     font-size: 1.5rem;
@@ -289,7 +289,7 @@
 
 .ring-bg {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.1);
+    stroke: rgba(var(--primary-rgb), 0.1);
     stroke-width: 8;
 }
 
@@ -302,19 +302,19 @@
     transition: stroke-dashoffset 0.6s ease;
 }
 
-#load-ring-fill { stroke: #10b981; }
-#cpu-ring-fill { stroke: #3b82f6; }
+#load-ring-fill { stroke: #10b981; } /* 保留：专用绿色 */
+#cpu-ring-fill { stroke: var(--info); }
 #memory-ring-fill { stroke: var(--primary); }
-#disk-ring-fill { stroke: #8b5cf6; }
+#disk-ring-fill { stroke: #8b5cf6; } /* 保留：专用紫色 */
 
-#load-ring-fill.warning { stroke: #f59e0b; }
-#load-ring-fill.danger { stroke: #ef4444; }
-#cpu-ring-fill.warning { stroke: #f59e0b; }
-#cpu-ring-fill.danger { stroke: #ef4444; }
-#memory-ring-fill.warning { stroke: #f59e0b; }
-#memory-ring-fill.danger { stroke: #ef4444; }
-#disk-ring-fill.warning { stroke: #f59e0b; }
-#disk-ring-fill.danger { stroke: #ef4444; }
+#load-ring-fill.warning { stroke: var(--warning); }
+#load-ring-fill.danger { stroke: var(--danger); }
+#cpu-ring-fill.warning { stroke: var(--warning); }
+#cpu-ring-fill.danger { stroke: var(--danger); }
+#memory-ring-fill.warning { stroke: var(--warning); }
+#memory-ring-fill.danger { stroke: var(--danger); }
+#disk-ring-fill.warning { stroke: var(--warning); }
+#disk-ring-fill.danger { stroke: var(--danger); }
 
 .ring-value {
     position: absolute;
@@ -398,26 +398,26 @@
     font-weight: 600;
     padding: 4px 12px;
     border-radius: var(--radius);
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: rgba(16, 185, 129, 0.15); /* 保留：专用绿色 */
+    color: #10b981; /* 保留：与 load-ring 一致 */
 }
 
 .tooltip-status.warning {
-    background: rgba(234, 179, 8, 0.15);
-    color: #f59e0b;
+    background: rgba(var(--warning-rgb), 0.15);
+    color: var(--warning);
 }
 
 .tooltip-status.danger {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: var(--danger-alpha);
+    color: var(--danger);
 }
 
 .tooltip-action-btn {
     padding: 6px 14px;
     border: none;
     border-radius: var(--radius);
-    background: rgba(34, 197, 94, 0.9);
-    color: white;
+    background: rgba(var(--success-rgb), 0.9);
+    color: var(--text-on-accent);
     font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
@@ -425,7 +425,7 @@
 }
 
 .tooltip-action-btn:hover {
-    background: rgba(34, 197, 94, 1);
+    background: var(--success);
 }
 
 .tooltip-action-btn:disabled {
@@ -442,7 +442,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-sm) 0;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--overlay);
     border-radius: var(--radius);
     cursor: pointer;
     font-weight: 500;
@@ -450,7 +450,7 @@
 }
 
 .tooltip-section-title:hover {
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--overlay-heavy);
 }
 
 .tooltip-section-title .icon {
@@ -557,7 +557,7 @@
     padding: 1px 4px;
     border-radius: var(--radius-sm);
     background: var(--primary);
-    color: #fff;
+    color: var(--text-on-accent);
     vertical-align: middle;
     margin-left: 4px;
     font-weight: 600;
@@ -616,7 +616,7 @@
 }
 
 .admin-icon {
-    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.08));
+    background: linear-gradient(135deg, rgba(var(--success-rgb), 0.2), rgba(var(--success-rgb), 0.08));
 }
 
 .services-status-section {
@@ -689,11 +689,11 @@
 }
 
 .http-icon {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.08));
+    background: linear-gradient(135deg, rgba(var(--info-rgb), 0.2), rgba(var(--info-rgb), 0.08));
 }
 
 .ftp-icon {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(249, 115, 22, 0.08));
+    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.2), rgba(var(--primary-rgb), 0.08));
 }
 
 .service-status-info {
@@ -919,11 +919,11 @@ code {
 }
 
 pre {
-    background: #1a202c;
+    background: #1a202c; /* 保留：代码块专用深色背景 */
     padding: 15px;
     border-radius: 8px;
     overflow-x: auto;
-    color: #e2e8f0;
+    color: #e2e8f0; /* 保留：代码块专用浅色文字 */
     font-family: var(--font-mono);
     font-size: 0.85rem;
     line-height: 1.6;
@@ -982,13 +982,13 @@ pre {
 .badge-warning {
     background: var(--warning-alpha);
     color: var(--warning);
-    border: 1px solid rgba(234, 179, 8, 0.3);
+    border: 1px solid rgba(var(--warning-rgb), 0.3);
 }
 
 .badge-info {
     background: var(--info-alpha);
     color: var(--info);
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    border: 1px solid rgba(var(--info-rgb), 0.3);
 }
 
 /* ==================== 设置页面样式 ==================== */
@@ -1167,7 +1167,7 @@ pre {
     width: 20px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
+    background-color: var(--text-on-accent);
     transition: var(--transition);
     border-radius: 50%;
 }

@@ -121,33 +121,33 @@
 }
 
 .cert-badge-auto {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
+    background: var(--success-alpha);
+    color: var(--success);
 }
 
 .cert-badge-litessl {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
+    background: var(--info-alpha);
+    color: var(--info-light);
 }
 
 .cert-badge-custom {
-    background: rgba(168, 85, 247, 0.15);
-    color: #a855f7;
+    background: rgba(168, 85, 247, 0.15); /* 保留：紫色无对应变量 */
+    color: #a855f7; /* 保留：紫色无对应变量 */
 }
 
 .cert-badge-expiring {
-    background: rgba(251, 191, 36, 0.15);
-    color: #fbbf24;
+    background: var(--warning-alpha);
+    color: var(--warning);
 }
 
 .cert-badge-expired {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: var(--danger-alpha);
+    color: var(--danger);
 }
 
 .cert-badge-selfsigned {
     background: rgba(120, 113, 108, 0.15);
-    color: #78716c;
+    color: var(--text-muted);
 }
 
 /* 天数颜色 */
@@ -273,9 +273,9 @@
 /* 步骤状态 */
 .cert-step.active .cert-step-num {
     background: var(--primary);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+    box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.2);
 }
 
 .cert-step.active .cert-step-text {
@@ -285,7 +285,7 @@
 
 .cert-step.done .cert-step-num {
     background: var(--success);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--success);
 }
 
@@ -299,7 +299,7 @@
 
 .cert-step.error .cert-step-num {
     background: var(--danger);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--danger);
 }
 
@@ -499,12 +499,12 @@
 }
 
 .dns-test-status.success {
-    background: rgba(34, 197, 94, 0.15);
+    background: var(--success-alpha);
     color: var(--success);
 }
 
 .dns-test-status.fail {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-alpha);
     color: var(--danger);
 }
 
@@ -521,12 +521,12 @@
 
 .cert-upload-zone:hover {
     border-color: var(--primary);
-    background: rgba(249, 115, 22, 0.05);
+    background: rgba(var(--primary-rgb), 0.05);
 }
 
 .cert-upload-zone.dragover {
     border-color: var(--primary);
-    background: rgba(249, 115, 22, 0.1);
+    background: rgba(var(--primary-rgb), 0.1);
 }
 
 .cert-upload-zone input[type="file"] {

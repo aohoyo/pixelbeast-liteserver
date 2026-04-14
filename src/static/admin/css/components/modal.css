@@ -22,7 +22,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.75);
+    background: var(--overlay-dark);
     backdrop-filter: blur(4px);
 }
 
@@ -108,4 +108,17 @@
     gap: 10px;
 }
 
+/* 模态框内容（替代 modal-container 的简化容器） */
 .modal-content {
+    position: relative;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    animation: modalSlideIn 0.3s ease;
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    max-height: 90vh;
+}

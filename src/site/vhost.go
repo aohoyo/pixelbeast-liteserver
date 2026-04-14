@@ -2,13 +2,13 @@ package site
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"pixelbeast/src/config"
+	"pixelbeast/src/logger"
 )
 
 // VirtualHost 虚拟主机
@@ -61,21 +61,21 @@ func (r *VirtualHostRouter) AddHost(cfg *config.SiteConfig) error {
 	// 独立端口路由
 	if cfg.Port > 0 && cfg.Port != r.sharedPort {
 		r.portBased[cfg.Port] = vh
-		log.Printf("[Vhost] 站点 %s 绑定独立端口 %d", cfg.Name, cfg.Port)
+		logger.LogPanelRuntime(logger.LogLevelInfo, "[Vhost] 站点 %s 绑定独立端口 %d", cfg.Name, cfg.Port)
 	}
 
 	// 域名路由
 	for _, domain := range cfg.Domain {
 		if domain != "" {
 			r.hosts[domain] = vh
-			log.Printf("[Vhost] 站点 %s 绑定域名 %s", cfg.Name, domain)
+			logger.LogPanelRuntime(logger.LogLevelInfo, "[Vhost] 站点 %s 绑定域名 %s", cfg.Name, domain)
 		}
 	}
 
 	// 设置为默认主机（第一个启用的站点）
 	if r.defaultHost == nil && cfg.Enabled {
 		r.defaultHost = vh
-		log.Printf("[Vhost] 站点 %s 设为默认站点", cfg.Name)
+		logger.LogPanelRuntime(logger.LogLevelInfo, "[Vhost] 站点 %s 设为默认站点", cfg.Name)
 	}
 
 	return nil
@@ -255,7 +255,7 @@ func (r *VirtualHostRouter) Reload(sites []config.SiteConfig) error {
 	for _, site := range sites {
 		if site.Enabled {
 			if err := r.AddHost(&site); err != nil {
-				log.Printf("[Vhost] 重载站点 %s 失败: %v", site.Name, err)
+				logger.LogPanelRuntime(logger.LogLevelError, "[Vhost] 重载站点 %s 失败: %v", site.Name, err)
 			}
 		}
 	}

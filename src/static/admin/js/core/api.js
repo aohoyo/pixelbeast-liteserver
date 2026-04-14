@@ -281,7 +281,7 @@ class API {
      * @returns {Promise<Response>}
      */
     async request(endpoint, options = {}) {
-        const config = {
+        let config = {
             ...options,
             credentials: 'include',
             headers: {
@@ -309,7 +309,7 @@ class API {
         const url = this.baseURL + endpoint;
 
         try {
-            const response = await fetch(url, config);
+            let response = await fetch(url, config);
 
             // 自动提取 CSRF token
             if (response.ok) {

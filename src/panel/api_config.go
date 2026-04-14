@@ -3,9 +3,6 @@ package panel
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 
 	"pixelbeast/src/config"
 	"pixelbeast/src/logger"
@@ -89,6 +86,7 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[配置] 保存失败: %v", err)
 		InternalServerError(w, err.Error())
 		logger.LogPanelConfigChange(username, "保存配置", false)
 		return
@@ -111,7 +109,10 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 使用 ConfigManager 统一的默认配置方法重置
-	h.ConfigManager.ResetToDefaults()
+	if err := h.ConfigManager.ResetToDefaults(); err != nil {
+		InternalServerError(w, "重置配置失败: "+err.Error())
+		return
+	}
 
 	if err := h.ConfigManager.Save(); err != nil {
 		InternalServerError(w, err.Error())
@@ -125,73 +126,4 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := *h.ConfigManager.Server
 	cfg.Admin.Password = ""
 	Success(w, cfg)
-}
-
-// ==================== 日志 ====================
-
-func (h *Handler) getLogs(w http.ResponseWriter, r *http.Request) {
-	category := r.URL.Query().Get("category")
-	logType := r.URL.Query().Get("type")
-	lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
-	if lines == 0 {
-		lines = 100
-	}
-
-	// 必须提供 category 和 type
-	if category == "" || logType == "" {
-		BadRequest(w, "category and type are required")
-		return
-	}
-
-	// 安全检查：防止路径遍历
-	if strings.Contains(category, "..") || strings.Contains(logType, "..") {
-		BadRequest(w, "Invalid log type")
-		return
-	}
-
-	// 构建日志文件路径
-	logPath := logger.GetLogFilePath(category, logType)
-	if logPath == "" {
-		BadRequest(w, "Invalid log type")
-		return
-	}
-
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		Success(w, map[string]interface{}{"logs": []string{}})
-		return
-	}
-	allLines := strings.Split(string(data), "\n")
-	start := 0
-	if len(allLines) > lines {
-		start = len(allLines) - lines
-	}
-	Success(w, map[string]interface{}{"logs": allLines[start:]})
-}
-
-func (h *Handler) clearLogs(w http.ResponseWriter, r *http.Request) {
-	category := r.URL.Query().Get("category")
-	logType := r.URL.Query().Get("type")
-
-	// 必须提供 category 和 type
-	if category == "" || logType == "" {
-		BadRequest(w, "category and type are required")
-		return
-	}
-
-	// 安全检查：防止路径遍历
-	if strings.Contains(category, "..") || strings.Contains(logType, "..") {
-		BadRequest(w, "Invalid log type")
-		return
-	}
-
-	// 构建日志文件路径
-	logPath := logger.GetLogFilePath(category, logType)
-	if logPath == "" {
-		BadRequest(w, "Invalid log type")
-		return
-	}
-
-	os.WriteFile(logPath, []byte{}, 0644)
-	SuccessMessage(w, "日志已清空")
 }

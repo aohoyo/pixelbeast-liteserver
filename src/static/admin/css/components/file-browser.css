@@ -51,7 +51,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.75);
+    background: var(--overlay-dark);
     backdrop-filter: blur(4px);
 }
 
@@ -67,7 +67,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); /* 保留：与 --shadow-lg 透明度不同 */
     transform: scale(0.95);
     transition: transform var(--transition);
 }
@@ -110,7 +110,7 @@
 
 .file-browser-close:hover {
     background: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* 工具栏 - Windows 风格 */
@@ -336,7 +336,7 @@
 
 .fb-item.new-folder .fb-folder-btn.confirm {
     background: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .fb-item.new-folder .fb-folder-btn.confirm:hover {
@@ -429,7 +429,7 @@
 
 .fb-btn-primary {
     background: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .fb-btn-primary:hover {

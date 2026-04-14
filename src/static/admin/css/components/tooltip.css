@@ -3,15 +3,15 @@
     position: fixed;
     z-index: 9999;
     padding: 10px 16px;
-    background: #303133;
+    background: var(--tooltip-bg);
     border-radius: 4px;
-    color: #fff;
+    color: var(--text-on-accent);
     font-size: 14px;
     line-height: 22px;
     min-width: 10px;
     white-space: nowrap;
     word-wrap: break-word;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0, 0, 0, 0.2); /* 保留：Tooltip 专用阴影 */
     opacity: 0;
     transform: translateZ(0);
     transition: opacity 0.3s ease, transform 0.3s ease;
@@ -30,8 +30,8 @@
     position: absolute;
     width: 10px;
     height: 10px;
-    background: #303133;
-    border: 1px solid #303133;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-bg);
     transform: rotate(45deg);
 }
 
@@ -55,8 +55,8 @@
     left: 1px;
     width: 8px;
     height: 8px;
-    background: #303133;
-    border: 1px solid #303133;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-bg);
     border-top-color: transparent;
     border-left-color: transparent;
 }
@@ -81,8 +81,8 @@
     left: 1px;
     width: 8px;
     height: 8px;
-    background: #303133;
-    border: 1px solid #303133;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-bg);
     border-bottom-color: transparent;
     border-right-color: transparent;
 }
@@ -107,8 +107,8 @@
     top: 1px;
     width: 8px;
     height: 8px;
-    background: #303133;
-    border: 1px solid #303133;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-bg);
     border-left-color: transparent;
     border-bottom-color: transparent;
 }
@@ -133,8 +133,8 @@
     top: 1px;
     width: 8px;
     height: 8px;
-    background: #303133;
-    border: 1px solid #303133;
+    background: var(--tooltip-bg);
+    border: 1px solid var(--tooltip-bg);
     border-right-color: transparent;
     border-top-color: transparent;
 }

@@ -2,7 +2,6 @@ package site
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -37,7 +36,7 @@ func NewProxyHandler(cfg *config.ProxyConfig, siteID string) (*ProxyHandler, err
 
 	// 设置错误处理器
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("[Proxy] 代理错误: %v, 目标: %s, 请求: %s", err, cfg.Target, r.URL.Path)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Proxy] 代理错误: %v, 目标: %s, 请求: %s", err, cfg.Target, r.URL.Path)
 		http.Error(w, "代理请求失败", http.StatusBadGateway)
 	}
 

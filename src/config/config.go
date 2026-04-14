@@ -280,7 +280,11 @@ func (cm *ConfigManager) loadOrCreate(filename string, initDefaults func() error
 func (cm *ConfigManager) loadServer() error {
 	return cm.loadOrCreate("server.json",
 		func() error {
-			cm.Server = cm.defaultServerConfig()
+			cfg, err := cm.defaultServerConfig()
+			if err != nil {
+				return err
+			}
+			cm.Server = cfg
 			return cm.saveServer()
 		},
 		func(data []byte) error {
@@ -435,7 +439,7 @@ func (cm *ConfigManager) saveJSON(filename string, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, bytes, 0644)
+	return os.WriteFile(path, bytes, 0600)
 }
 
 // saveServer 保存服务配置
@@ -487,7 +491,7 @@ func (cm *ConfigManager) loadDNSProviders() error {
 			if marshalErr != nil {
 				return fmt.Errorf("序列化服务器配置失败: %w", marshalErr)
 			}
-			if writeErr := os.WriteFile(serverPath, newData, 0644); writeErr != nil {
+			if writeErr := os.WriteFile(serverPath, newData, 0600); writeErr != nil {
 				return writeErr
 			}
 		}
@@ -508,11 +512,11 @@ func (cm *ConfigManager) saveDNSProviders() error {
 }
 
 // defaultServerConfig 默认服务配置
-func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
+func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
 	// 生成加密的默认密码
 	encryptedPassword, err := crypto.EncryptString("admin123", cm.key)
 	if err != nil {
-		panic(fmt.Sprintf("加密默认密码失败: %v", err))
+		return nil, fmt.Errorf("加密默认密码失败: %w", err)
 	}
 
 	return &ServerConfig{
@@ -545,7 +549,7 @@ func (cm *ConfigManager) defaultServerConfig() *ServerConfig {
 		AutoStart: AutoStartConfig{
 			Enabled: true,
 		},
-	}
+	}, nil
 }
 
 // defaultFTPConfig 默认 FTP 配置
@@ -579,11 +583,16 @@ func (cm *ConfigManager) defaultSitesConfig() *SitesConfig {
 // ========== 配置重置 ==========
 
 // ResetToDefaults 重置服务配置为默认值（保留站点和FTP用户数据）
-func (cm *ConfigManager) ResetToDefaults() {
+func (cm *ConfigManager) ResetToDefaults() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	cm.Server = cm.defaultServerConfig()
+	cfg, err := cm.defaultServerConfig()
+	if err != nil {
+		return err
+	}
+	cm.Server = cfg
+	return nil
 }
 
 // ========== Admin 密码管理 ==========

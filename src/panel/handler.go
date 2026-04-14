@@ -2,6 +2,7 @@
 package panel
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -27,6 +28,8 @@ const (
 	MaxLoginAttempts = 5
 	LockoutDuration  = 15 * time.Minute
 	CSRFTokenTimeout = 2 * time.Hour
+
+	ServiceRestartDelay = 500 * time.Millisecond // 服务重启间隔
 )
 
 // ==================== 类型定义 ====================
@@ -67,6 +70,7 @@ type Handler struct {
 	sessions          map[string]*Session
 	loginAttempts     map[string]*LoginAttempt
 	csrfTokens        map[string]*CSRFToken
+	cancel            context.CancelFunc
 	mu                sync.RWMutex
 }
 
@@ -79,11 +83,14 @@ func New(cm *config.ConfigManager, configPath string) *Handler {
 		adminPath = "/admin"
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	h := &Handler{
 		adminPath:         adminPath,
 		sessions:          make(map[string]*Session),
 		loginAttempts:     make(map[string]*LoginAttempt),
 		csrfTokens:        make(map[string]*CSRFToken),
+		cancel:            cancel,
 		passwordValidator: cm,
 		ConfigManager:     cm,
 	}
@@ -91,7 +98,7 @@ func New(cm *config.ConfigManager, configPath string) *Handler {
 	// 初始化分享服务
 	InitShareService(configPath)
 
-	go h.cleanupSessions()
+	go h.cleanupSessions(ctx)
 	return h
 }
 
@@ -176,13 +183,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func generateSessionID() string {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return ""
+	}
 	return hex.EncodeToString(bytes)
 }
 
 func (h *Handler) generateCSRFToken(sessionID string) string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return ""
+	}
 	token := hex.EncodeToString(bytes)
 	h.mu.Lock()
 	h.csrfTokens[sessionID] = &CSRFToken{Value: token, ExpiresAt: time.Now().Add(CSRFTokenTimeout)}
@@ -190,27 +201,40 @@ func (h *Handler) generateCSRFToken(sessionID string) string {
 	return token
 }
 
-func (h *Handler) cleanupSessions() {
+func (h *Handler) cleanupSessions(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
-	for range ticker.C {
-		h.mu.Lock()
-		now := time.Now()
-		for id, s := range h.sessions {
-			if now.After(s.ExpiresAt) {
-				delete(h.sessions, id)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			h.mu.Lock()
+			now := time.Now()
+			for id, s := range h.sessions {
+				if now.After(s.ExpiresAt) {
+					delete(h.sessions, id)
+				}
 			}
-		}
-		for ip, a := range h.loginAttempts {
-			if now.After(a.LastTime.Add(time.Hour)) {
-				delete(h.loginAttempts, ip)
+			for ip, a := range h.loginAttempts {
+				if now.After(a.LastTime.Add(time.Hour)) {
+					delete(h.loginAttempts, ip)
+				}
 			}
-		}
-		for id, t := range h.csrfTokens {
-			if now.After(t.ExpiresAt) {
-				delete(h.csrfTokens, id)
+			for id, t := range h.csrfTokens {
+				if now.After(t.ExpiresAt) {
+					delete(h.csrfTokens, id)
+				}
 			}
+			h.mu.Unlock()
 		}
-		h.mu.Unlock()
+	}
+}
+
+// Close 停止后台 goroutine，释放资源
+func (h *Handler) Close() {
+	if h.cancel != nil {
+		h.cancel()
 	}
 }
 
@@ -526,7 +550,7 @@ func (h *Handler) restartFTPSvc() error {
 	if err := h.stopFTPSvc(); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(ServiceRestartDelay)
 	return h.startFTPSvc()
 }
 

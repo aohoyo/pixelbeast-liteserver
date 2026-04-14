@@ -106,7 +106,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: var(--space-sm) 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3); /* 保留：非标准阴影值 */
     z-index: 200;
 }
 
@@ -237,13 +237,13 @@
 }
 
 .menu-item:hover {
-    background: linear-gradient(90deg, rgba(249, 115, 22, 0.15), rgba(249, 115, 22, 0.05));
+    background: linear-gradient(90deg, rgba(var(--primary-rgb), 0.15), rgba(var(--primary-rgb), 0.05));
     color: var(--primary);
 }
 
 .menu-item.active {
     background: linear-gradient(90deg, var(--primary), var(--primary-light));
-    color: white;
+    color: var(--text-on-accent);
     box-shadow: var(--shadow-glow);
 }
 

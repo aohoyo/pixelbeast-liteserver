@@ -22,12 +22,12 @@
 }
 
 .service-status.running {
-    background: rgba(34, 197, 94, 0.1);
+    background: rgba(var(--success-rgb), 0.1);
     color: var(--success);
 }
 
 .service-status.stopped {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(var(--danger-rgb), 0.1);
     color: var(--danger);
 }
 
@@ -48,13 +48,13 @@
 .service-toggle.running {
     background: var(--danger);
     border-color: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .service-toggle.stopped {
     background: var(--success);
     border-color: var(--success);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* 主容器 */
@@ -103,13 +103,13 @@
 .status-btn.active {
     background: var(--success);
     border-color: var(--success);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .status-btn:not(.active) {
     background: var(--danger);
     border-color: var(--danger);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .status-btn:hover {

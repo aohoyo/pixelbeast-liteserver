@@ -1,12 +1,12 @@
 package panel
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +18,11 @@ import (
 )
 
 // ==================== 证书申请 API ====================
+
+const (
+	MaxCertUploadSize   = 10 << 20        // 10MB 证书上传限制
+	DNSChallengeTimeout = 5 * time.Minute  // DNS/文件验证超时
+)
 
 // handleCertsList 获取所有证书状态
 func (h *Handler) handleCertsList(w http.ResponseWriter, r *http.Request) {
@@ -33,30 +38,6 @@ func (h *Handler) handleCertsList(w http.ResponseWriter, r *http.Request) {
 
 	certs := h.SSLManager.GetAllCertStatuses()
 	Success(w, certs)
-}
-
-// handleCertDetail 获取单个证书详情
-func (h *Handler) handleCertDetail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		MethodNotAllowed(w, "Method not allowed")
-		return
-	}
-
-	// 从 URL 提取域名: /api/certs/{domain}
-	path := r.URL.Path
-	domain := strings.TrimPrefix(path, "/api/certs/")
-	if domain == "" {
-		BadRequest(w, "域名不能为空")
-		return
-	}
-
-	if h.SiteManager == nil || h.SSLManager == nil {
-		NotFound(w, "证书不存在")
-		return
-	}
-
-	status := h.SSLManager.GetCertStatus(domain)
-	Success(w, status)
 }
 
 // handleCertRequest 申请证书（支持 autocert 和 lego）
@@ -92,6 +73,7 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 
 	// 申请证书
 	if err := h.SSLManager.ObtainCertificate(req.Domain, req.Email, "letsencrypt", req.ChallengeMethod); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书申请失败 %s: %v", req.Domain, err)
 		InternalServerError(w, "证书申请失败: "+err.Error())
 		return
 	}
@@ -104,6 +86,7 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 		Provider:        "letsencrypt",
 		ChallengeMethod: req.ChallengeMethod,
 	}); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 申请后保存配置失败 %s: %v", req.Domain, err)
 		InternalServerError(w, "保存配置失败: "+err.Error())
 		return
 	}
@@ -203,22 +186,33 @@ func (h *Handler) handleCertDNSComplete(w http.ResponseWriter, r *http.Request) 
 	// 异步执行 DNS 验证，避免 HTTP 请求超时
 	// 前端通过轮询 /api/certs/progress 获取结果
 	go func() {
-		if err := h.SSLManager.CompleteDNSChallenge(req.Domain); err != nil {
-			log.Printf("[SSL] DNS 验证失败 %s: %v", req.Domain, err)
-			return
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), DNSChallengeTimeout)
+		defer cancel()
 
-		// 验证成功后更新站点配置
-		if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
-			Enabled:         true,
-			AutoHTTPS:       true,
-			Provider:        "letsencrypt",
-			ChallengeMethod: "dns",
-		}); err != nil {
-			log.Printf("[SSL] DNS 验证成功但保存配置失败 %s: %v", req.Domain, err)
-		}
+		done := make(chan error, 1)
+		go func() {
+			done <- h.SSLManager.CompleteDNSChallenge(req.Domain)
+		}()
 
-		logger.LogPanelOperation(logger.LogLevelInfo, "DNS 验证证书获取成功: %s", req.Domain)
+		select {
+		case err := <-done:
+			if err != nil {
+				logger.LogPanelRuntime(logger.LogLevelError, "[SSL] DNS 验证失败 %s: %v", req.Domain, err)
+				return
+			}
+			// 验证成功后更新站点配置
+			if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
+				Enabled:         true,
+				AutoHTTPS:       true,
+				Provider:        "letsencrypt",
+				ChallengeMethod: "dns",
+			}); err != nil {
+				logger.LogPanelRuntime(logger.LogLevelError, "[SSL] DNS 验证成功但保存配置失败 %s: %v", req.Domain, err)
+			}
+			logger.LogPanelOperation(logger.LogLevelInfo, "DNS 验证证书获取成功: %s", req.Domain)
+		case <-ctx.Done():
+			logger.LogPanelRuntime(logger.LogLevelWarn, "[SSL] DNS 验证超时 %s", req.Domain)
+		}
 	}()
 
 	SuccessMessage(w, "DNS 验证已提交，请通过进度轮询查看结果")
@@ -291,21 +285,32 @@ func (h *Handler) handleCertFileComplete(w http.ResponseWriter, r *http.Request)
 	// 异步执行文件验证，避免 HTTP 请求超时
 	// 前端通过轮询 /api/certs/progress 获取结果
 	go func() {
-		if err := h.SSLManager.CompleteFileChallenge(req.Domain); err != nil {
-			log.Printf("[SSL] 文件验证失败 %s: %v", req.Domain, err)
-			return
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), DNSChallengeTimeout)
+		defer cancel()
 
-		// 验证成功后更新站点配置
-		if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
-			Enabled:         true,
-			AutoHTTPS:       true,
-			ChallengeMethod: "http-file",
-		}); err != nil {
-			log.Printf("[SSL] 文件验证成功但保存配置失败 %s: %v", req.Domain, err)
-		}
+		done := make(chan error, 1)
+		go func() {
+			done <- h.SSLManager.CompleteFileChallenge(req.Domain)
+		}()
 
-		logger.LogPanelOperation(logger.LogLevelInfo, "文件验证证书获取成功: %s", req.Domain)
+		select {
+		case err := <-done:
+			if err != nil {
+				logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 文件验证失败 %s: %v", req.Domain, err)
+				return
+			}
+			// 验证成功后更新站点配置
+			if err := h.UpdateSiteSSLConfig(req.Domain, &config.SSLConfig{
+				Enabled:         true,
+				AutoHTTPS:       true,
+				ChallengeMethod: "http-file",
+			}); err != nil {
+				logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 文件验证成功但保存配置失败 %s: %v", req.Domain, err)
+			}
+			logger.LogPanelOperation(logger.LogLevelInfo, "文件验证证书获取成功: %s", req.Domain)
+		case <-ctx.Done():
+			logger.LogPanelRuntime(logger.LogLevelWarn, "[SSL] 文件验证超时 %s", req.Domain)
+		}
 	}()
 
 	SuccessMessage(w, "文件验证已提交，请通过进度轮询查看结果")
@@ -337,6 +342,7 @@ func (h *Handler) handleCertRenew(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.SSLManager.RenewCertificate(req.Domain); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书续期失败 %s: %v", req.Domain, err)
 		InternalServerError(w, "证书续期失败: "+err.Error())
 		return
 	}
@@ -401,7 +407,7 @@ func (h *Handler) handleCertUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 限制上传大小 10MB
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
+	if err := r.ParseMultipartForm(MaxCertUploadSize); err != nil {
 		BadRequest(w, "文件过大，最大支持 10MB")
 		return
 	}
@@ -458,6 +464,7 @@ func (h *Handler) handleCertUpload(w http.ResponseWriter, r *http.Request) {
 		CertFile:  certPath,
 		KeyFile:   keyPath,
 	}); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 上传后保存配置失败 %s: %v", domain, err)
 		InternalServerError(w, "保存配置失败: "+err.Error())
 		return
 	}
@@ -492,12 +499,14 @@ func (h *Handler) handleCertDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.SSLManager.DeleteCertificate(req.Domain); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书删除失败 %s: %v", req.Domain, err)
 		InternalServerError(w, "证书删除失败: "+err.Error())
 		return
 	}
 
 	// 更新站点配置，禁用 SSL
 	if err := h.UpdateSiteSSLConfig(req.Domain, nil); err != nil {
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 删除后保存配置失败 %s: %v", req.Domain, err)
 		InternalServerError(w, "保存配置失败: "+err.Error())
 		return
 	}
@@ -562,6 +571,7 @@ func (h *Handler) handleCertDeploy(w http.ResponseWriter, r *http.Request) {
 
 	if deployed > 0 {
 		if err := h.ConfigManager.Save(); err != nil {
+			logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书部署保存配置失败: %v", err)
 			InternalServerError(w, "保存配置失败: "+err.Error())
 			return
 		}
@@ -712,7 +722,10 @@ func (h *Handler) handleDNSProviderCreate(w http.ResponseWriter, r *http.Request
 
 	// 生成 ID
 	idBytes := make([]byte, 8)
-	rand.Read(idBytes)
+	if _, err := rand.Read(idBytes); err != nil {
+		InternalServerError(w, "生成 ID 失败")
+		return
+	}
 	id := hex.EncodeToString(idBytes)
 
 	// 加密凭证

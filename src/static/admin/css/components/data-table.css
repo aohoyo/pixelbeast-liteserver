@@ -117,19 +117,19 @@
 }
 
 .dt-table .action-text.edit {
-    color: var(--primary, #6366f1);
+    color: var(--primary);
 }
 
 .dt-table .action-text.edit:hover {
-    background: rgba(99, 102, 241, 0.1);
+    background: var(--primary-alpha);
 }
 
 .dt-table .action-text.delete {
-    color: var(--danger, #ef4444);
+    color: var(--danger);
 }
 
 .dt-table .action-text.delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--danger-alpha);
 }
 
 .dt-table tbody tr {
@@ -339,12 +339,12 @@
 .dt-page-btn.active {
     background: var(--primary);
     border-color: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
     cursor: default;
 }
 
 .dt-page-btn.active:hover {
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* 省略号 */

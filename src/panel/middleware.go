@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -88,11 +87,19 @@ func (h *Handler) CSRPMiddleware(next http.Handler) http.Handler {
 		csrfToken, exists := h.csrfTokens[getSessionID(r)]
 		h.mu.RUnlock()
 
-		if !exists || token == "" || csrfToken.Value != token {
-			if time.Now().After(csrfToken.ExpiresAt) {
-				Forbidden(w, "CSRF Token 已过期，请刷新页面")
-				return
-			}
+		if !exists {
+			Forbidden(w, "请刷新页面获取 CSRF Token")
+			return
+		}
+		if token == "" {
+			Forbidden(w, "缺少 CSRF Token")
+			return
+		}
+		if time.Now().After(csrfToken.ExpiresAt) {
+			Forbidden(w, "CSRF Token 已过期，请刷新页面")
+			return
+		}
+		if csrfToken.Value != token {
 			Forbidden(w, "CSRF 验证失败")
 			return
 		}
@@ -108,37 +115,4 @@ func getSessionID(r *http.Request) string {
 		return ""
 	}
 	return cookie.Value
-}
-
-// respondStatus 记录并响应 HTTP 状态
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
-}
-
-// WrapHandler 将 http.HandlerFunc 转为 http.Handler（便捷方法）
-func WrapHandler(fn http.HandlerFunc) http.Handler {
-	return fn
-}
-
-// MethodGuard 限制请求方法的中间件
-func MethodGuard(methods ...string) Middleware {
-	allowed := make(map[string]bool, len(methods))
-	for _, m := range methods {
-		allowed[m] = true
-	}
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !allowed[r.Method] {
-				MethodNotAllowed(w, fmt.Sprintf("Method %s not allowed", r.Method))
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
 }

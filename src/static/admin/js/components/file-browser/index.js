@@ -6,6 +6,7 @@
  */
 
 import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from '../vscode-fileicons.js';
+import { escapeHtml } from '../../core/utils.js';
 
 // 当前实例
 let currentInstance = null;
@@ -321,7 +322,7 @@ class FileBrowser {
                      data-name="${item.name}"
                      data-is-dir="${item.is_dir}">
                     <span class="fb-item-icon ${iconClass}">${iconHtml}</span>
-                    <span class="fb-item-name">${this.escapeHtml(item.name)}${isThisPC && item.is_dir ? '/' : ''}</span>
+                    <span class="fb-item-name">${escapeHtml(item.name)}${isThisPC && item.is_dir ? '/' : ''}</span>
                     ${!item.is_dir ? `<span class="fb-item-size">${formatFileSize(item.size)}</span>` : ''}
                     ${!isThisPC && item.modified ? `<span class="fb-item-date">${formatDate(item.modified)}</span>` : ''}
                 </div>
@@ -365,7 +366,7 @@ class FileBrowser {
                 current += parts[i];
                 const isActive = current === this.currentPath;
                 html += `<span class="fb-crumb-sep">›</span>`;
-                html += `<span class="fb-crumb ${isActive ? 'active' : ''}" data-path="${current}" title="${this.escapeHtml(parts[i])}">${this.escapeHtml(parts[i])}</span>`;
+                html += `<span class="fb-crumb ${isActive ? 'active' : ''}" data-path="${current}" title="${escapeHtml(parts[i])}">${escapeHtml(parts[i])}</span>`;
                 if (i < parts.length - 1) current += '/';
             }
         } else {
@@ -376,7 +377,7 @@ class FileBrowser {
                 current += '/' + part;
                 const isActive = current === this.currentPath;
                 html += `<span class="fb-crumb-sep">›</span>`;
-                html += `<span class="fb-crumb ${isActive ? 'active' : ''}" data-path="${current}" title="${this.escapeHtml(part)}">${this.escapeHtml(part)}</span>`;
+                html += `<span class="fb-crumb ${isActive ? 'active' : ''}" data-path="${current}" title="${escapeHtml(part)}">${escapeHtml(part)}</span>`;
             });
         }
         
@@ -657,12 +658,6 @@ class FileBrowser {
         }
         
         currentInstance = null;
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 }
 

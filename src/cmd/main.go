@@ -32,7 +32,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("v%s (build: %s)\n", version, buildTime)
+		logger.LogPanelSystem(logger.LogLevelInfo, "v%s (build: %s)", version, buildTime)
 		return
 	}
 
@@ -56,7 +56,7 @@ func main() {
 		CleanupHour:   logCfg.CleanupHour,
 		Level:         logCfg.Level,
 	}); err != nil {
-		log.Printf("警告: 初始化日志失败: %v", err)
+		logger.LogPanelSystem(logger.LogLevelWarn, "警告: 初始化日志失败: %v", err)
 	}
 
 	logger.LogPanelSystem(logger.LogLevelInfo, "🪶 %s v%s 启动中...", serverName, version)
@@ -119,7 +119,7 @@ func main() {
 	go func() {
 		logger.LogPanelSystem(logger.LogLevelInfo, "管理面板启动在端口 %d", adminPort)
 		if err := adminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[Admin] 服务错误: %v", err)
+			logger.LogPanelSystem(logger.LogLevelError, "[Admin] 服务错误: %v", err)
 		}
 	}()
 

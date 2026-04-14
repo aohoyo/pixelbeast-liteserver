@@ -5,6 +5,7 @@
  */
 
 import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './vscode-fileicons.js';
+import { escapeHtml } from '../core/utils.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
 
@@ -1513,7 +1514,7 @@ export class FileManager {
                     return `
                     <div class="fm-upload-file-item ${u.status}">
                         <div class="fm-upload-file-info">
-                            <span class="fm-upload-file-name">${this.escapeHtml(u.fileName)}</span>
+                            <span class="fm-upload-file-name">${escapeHtml(u.fileName)}</span>
                             <span class="fm-upload-file-meta">
                                 ${u.file ? formatFileSize(u.file.size) : ''}
                                 ${u.status === 'uploading' ? ' · ' + u.progress + '%' : ''}
@@ -1961,7 +1962,7 @@ export class FileManager {
                         <circle cx="18" cy="16" r="3"/>
                     </svg>
                 </div>
-                <div class="preview-audio-name">${this.escapeHtml(filename)}</div>
+                <div class="preview-audio-name">${escapeHtml(filename)}</div>
                 <audio class="preview-audio" src="${url}" controls autoplay></audio>
             </div>
         `;
@@ -2071,7 +2072,7 @@ export class FileManager {
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
-                            <span class="editor-filename">${this.escapeHtml(filename)}</span>
+                            <span class="editor-filename">${escapeHtml(filename)}</span>
                             <span class="editor-type-badge">${fileType}</span>
                         </div>
                     </div>
@@ -2410,15 +2411,6 @@ export class FileManager {
      */
     closeEditor(overlay) {
         overlay.remove();
-    }
-
-    /**
-     * HTML 转义
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**

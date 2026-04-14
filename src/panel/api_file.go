@@ -19,6 +19,12 @@ import (
 
 // ==================== HTTP 文件管理 ====================
 
+const (
+	MaxUploadSize     = 500 << 20 // 500MB 上传限制
+	MaxFileEditSize   = 10 * 1024 * 1024 // 10MB 文件编辑大小限制
+	DefaultShareHours = 24        // 默认分享有效时长（小时）
+)
+
 // resolvePath 统一路径解析
 // 支持绝对路径、相对路径和 ".." 导航
 func resolvePath(subPath string) string {
@@ -39,19 +45,26 @@ func resolvePath(subPath string) string {
 	normalizedPath := filepath.FromSlash(subPath)
 
 	// 检查是否是绝对路径(Linux/Unix 以 / 开头)
+	// 限制最终路径在根目录下，防止路径遍历攻击
+	cleaned := func(p string) string {
+		c := filepath.Clean(p)
+		if !strings.HasPrefix(c, rootDir+string(os.PathSeparator)) && c != rootDir {
+			return filepath.Join(rootDir, filepath.Base(p))
+		}
+		return c
+	}
+
 	if filepath.IsAbs(normalizedPath) {
-		// 绝对路径:直接使用,并清理 ".."
-		return filepath.Clean(normalizedPath)
+		return cleaned(normalizedPath)
 	}
 
 	// 检查是否是 Windows 驱动器格式的绝对路径
 	if len(subPath) >= 2 && subPath[1] == ':' {
-		// Windows 驱动器格式 (C:/...)
-		return filepath.Clean(normalizedPath)
+		return cleaned(normalizedPath)
 	}
 
 	// 相对路径:相对于项目目录
-	return filepath.Join(rootDir, normalizedPath)
+	return cleaned(filepath.Join(rootDir, normalizedPath))
 }
 
 func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
@@ -317,7 +330,7 @@ func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	maxSize := int64(500 << 20)
+	maxSize := int64(MaxUploadSize)
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if err := r.ParseMultipartForm(maxSize); err != nil {
 		BadRequest(w, err.Error())
@@ -740,7 +753,7 @@ func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 限制文件大小 (最大 10MB)
-	if info.Size() > 10*1024*1024 {
+	if info.Size() > MaxFileEditSize {
 		Error(w, http.StatusBadRequest, "文件太大,超过 10MB 限制")
 		return
 	}
@@ -1003,14 +1016,14 @@ func (s *ShareService) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			fmt.Printf("[Share] 加载分享数据失败: %v\n", err)
+			logger.LogPanelRuntime(logger.LogLevelError, "[Share] 加载分享数据失败: %v", err)
 		}
 		return
 	}
 
 	var links []*ShareLink
 	if err := json.Unmarshal(data, &links); err != nil {
-		fmt.Printf("[Share] 解析分享数据失败: %v\n", err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Share] 解析分享数据失败: %v", err)
 		return
 	}
 
@@ -1029,7 +1042,7 @@ func (s *ShareService) load() {
 		s.links[link.Token] = link
 	}
 
-	fmt.Printf("[Share] 已加载 %d 个有效分享链接\n", len(s.links))
+	logger.LogPanelRuntime(logger.LogLevelInfo, "[Share] 已加载 %d 个有效分享链接", len(s.links))
 }
 
 // save 保存分享链接到文件
@@ -1043,19 +1056,19 @@ func (s *ShareService) save() {
 
 	data, err := json.MarshalIndent(links, "", "  ")
 	if err != nil {
-		fmt.Printf("[Share] 序列化分享数据失败: %v\n", err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Share] 序列化分享数据失败: %v", err)
 		return
 	}
 
 	// 确保目录存在
 	dir := filepath.Dir(s.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		fmt.Printf("[Share] 创建目录失败: %v\n", err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Share] 创建目录失败: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
-		fmt.Printf("[Share] 保存分享数据失败: %v\n", err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[Share] 保存分享数据失败: %v", err)
 	}
 }
 
@@ -1105,7 +1118,7 @@ func (h *Handler) shareFile(w http.ResponseWriter, r *http.Request) {
 
 	// 默认 24 小时
 	if req.Duration <= 0 {
-		req.Duration = 24
+		req.Duration = DefaultShareHours
 	}
 
 	// 生成 token
@@ -1114,6 +1127,14 @@ func (h *Handler) shareFile(w http.ResponseWriter, r *http.Request) {
 	// 构建文件路径
 	targetDir := resolvePath(req.Path)
 	filePath := filepath.Join(targetDir, req.Name)
+
+	// 二次校验：确保最终路径仍在项目目录下
+	rootDir, _ := os.Getwd()
+	absPath, _ := filepath.Abs(filePath)
+	if !strings.HasPrefix(absPath, rootDir+string(os.PathSeparator)) && absPath != rootDir {
+		BadRequest(w, "Invalid path")
+		return
+	}
 
 	// 检查文件是否存在并获取大小
 	fileInfo, err := os.Stat(filePath)
@@ -1258,6 +1279,14 @@ func (h *Handler) downloadSharedFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 安全校验：确保文件路径在项目目录下（防止存储被篡改）
+	rootDir, _ := os.Getwd()
+	absFilePath, _ := filepath.Abs(link.FilePath)
+	if !strings.HasPrefix(absFilePath, rootDir+string(os.PathSeparator)) && absFilePath != rootDir {
+		Error(w, http.StatusForbidden, "访问被拒绝")
+		return
+	}
+
 	// 增加下载计数
 	shareService.mu.Lock()
 	link.DownloadCount++
@@ -1382,7 +1411,9 @@ func (h *Handler) deleteShareLink(w http.ResponseWriter, r *http.Request) {
 // generateShareToken 生成分享 token
 func generateShareToken() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	return hex.EncodeToString(b)
 }
 

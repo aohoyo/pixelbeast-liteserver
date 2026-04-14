@@ -126,7 +126,7 @@
 .number-input-btn:hover {
     background: var(--primary);
     border-color: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .number-input-btn:active {

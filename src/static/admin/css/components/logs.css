@@ -71,7 +71,7 @@
 .logs-subtab.active {
     background: var(--primary);
     border-color: var(--primary);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* 工具栏 */
@@ -182,7 +182,7 @@
     display: flex;
     gap: var(--space-sm);
     padding: 3px 0;
-    border-bottom: 1px solid rgba(68, 64, 60, 0.3);
+    border-bottom: 1px solid rgba(var(--primary-rgb), 0.1); /* 使用 primary-rgb 近似边框色 */
 }
 
 .log-entry:last-child {
