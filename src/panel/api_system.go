@@ -1697,7 +1697,7 @@ func queryNTPServers() {
 			return
 		}
 	}
-	fmt.Println("[NTP] 所有服务器均查询失败")
+	logger.LogPanelRuntime(logger.LogLevelWarn, "[NTP] 所有服务器均查询失败")
 }
 
 // syncNTP 同步 NTP 时间（使用缓存，过期则重新查询）
