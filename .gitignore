@@ -34,7 +34,7 @@ tmp/
 config/
 
 # SSL 证书和私钥（含 ACME 账户密钥）
-ssl/
+/ssl/
 
 # 运行时目录
 sites/
