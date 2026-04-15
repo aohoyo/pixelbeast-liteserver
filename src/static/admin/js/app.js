@@ -49,16 +49,22 @@ async function init() {
         // 2. 初始化事件监听
         initEventListeners();
 
-        // 3. 检查认证状态
+        // 3. 从 meta 标签初始化 CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        if (csrfMeta && csrfMeta.content) {
+            api.setCSRFToken(csrfMeta.content);
+        }
+
+        // 4. 检查认证状态
         checkAuth();
 
-        // 4. 初始化标签页
+        // 5. 初始化标签页
         initTabs();
 
-        // 5. 初始化各标签页模块
+        // 6. 初始化各标签页模块
         initTabModules();
 
-        // 6. 激活默认标签页（触发数据加载）
+        // 7. 激活默认标签页（触发数据加载）
         const defaultTab = state.get('currentTab') || 'home';
         switchTab(defaultTab);
 
@@ -346,6 +352,11 @@ async function loadInitialData() {
                 updateHeaderOS(data);
 
                 globalEvents.emit('status:loaded', data);
+
+                // 检查是否需要修改密码
+                if (data.require_password_change) {
+                    showPasswordChangeDialog();
+                }
             }
         }
 
@@ -450,6 +461,90 @@ async function restartServer() {
             }, 3000);
         } catch (error) {
             toast.error('重启失败: ' + error.message);
+        }
+    });
+}
+
+/**
+ * 首次登录强制修改密码弹窗
+ */
+function showPasswordChangeDialog() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:var(--bg-primary,#fff);border-radius:12px;padding:32px;width:400px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+    dialog.innerHTML = `
+        <div style="text-align:center;margin-bottom:20px">
+            <div style="font-size:48px">🔐</div>
+            <h3 style="margin:12px 0 8px;color:var(--text-primary,#333)">为了您的账户安全</h3>
+            <p style="color:var(--text-secondary,#666);font-size:14px">检测到您正在使用初始密码，请立即修改。</p>
+        </div>
+        <form id="force-change-pwd-form">
+            <div style="margin-bottom:12px">
+                <input type="password" id="force-old-pwd" placeholder="原密码" required
+                    style="width:100%;padding:10px 12px;border:1px solid var(--border-color,#ddd);border-radius:8px;box-sizing:border-box;font-size:14px">
+            </div>
+            <div style="margin-bottom:12px">
+                <input type="password" id="force-new-pwd" placeholder="新密码（至少8位，含大小写字母和数字）" required minlength="8"
+                    style="width:100%;padding:10px 12px;border:1px solid var(--border-color,#ddd);border-radius:8px;box-sizing:border-box;font-size:14px">
+            </div>
+            <div style="margin-bottom:16px">
+                <input type="password" id="force-confirm-pwd" placeholder="确认新密码" required
+                    style="width:100%;padding:10px 12px;border:1px solid var(--border-color,#ddd);border-radius:8px;box-sizing:border-box;font-size:14px">
+            </div>
+            <div id="force-pwd-error" style="color:#e74c3c;font-size:13px;margin-bottom:8px;display:none"></div>
+            <button type="submit" style="width:100%;padding:12px;background:var(--primary,#4a90d9);color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer">
+                修改密码
+            </button>
+        </form>
+    `;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const errorEl = dialog.querySelector('#force-pwd-error');
+
+    dialog.querySelector('#force-change-pwd-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const oldPwd = dialog.querySelector('#force-old-pwd').value;
+        const newPwd = dialog.querySelector('#force-new-pwd').value;
+        const confirmPwd = dialog.querySelector('#force-confirm-pwd').value;
+
+        errorEl.style.display = 'none';
+
+        if (newPwd !== confirmPwd) {
+            errorEl.textContent = '两次输入的密码不一致';
+            errorEl.style.display = 'block';
+            return;
+        }
+        if (newPwd.length < 8) {
+            errorEl.textContent = '密码长度至少 8 位';
+            errorEl.style.display = 'block';
+            return;
+        }
+        if (!/[a-z]/.test(newPwd) || !/[A-Z]/.test(newPwd) || !/[0-9]/.test(newPwd)) {
+            errorEl.textContent = '密码必须包含大小写字母和数字';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        try {
+            const resp = await api.post('/api/auth/change-password', {
+                old_password: oldPwd,
+                new_password: newPwd
+            });
+            if (resp && resp.ok) {
+                overlay.remove();
+                toast.success('密码修改成功！');
+            } else {
+                const data = await api.parseJSON(resp).catch(() => null);
+                errorEl.textContent = data?.message || '修改失败';
+                errorEl.style.display = 'block';
+            }
+        } catch (err) {
+            errorEl.textContent = err.message || '网络错误';
+            errorEl.style.display = 'block';
         }
     });
 }

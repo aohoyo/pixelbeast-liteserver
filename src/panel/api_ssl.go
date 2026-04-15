@@ -74,7 +74,7 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 	// 申请证书
 	if err := h.SSLManager.ObtainCertificate(req.Domain, req.Email, "letsencrypt", req.ChallengeMethod); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书申请失败 %s: %v", req.Domain, err)
-		InternalServerError(w, "证书申请失败: "+err.Error())
+		InternalServerErrorLog(w, err, "证书申请失败")
 		return
 	}
 
@@ -87,7 +87,7 @@ func (h *Handler) handleCertRequest(w http.ResponseWriter, r *http.Request) {
 		ChallengeMethod: req.ChallengeMethod,
 	}); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 申请后保存配置失败 %s: %v", req.Domain, err)
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		InternalServerErrorLog(w, err, "保存配置失败")
 		return
 	}
 
@@ -150,7 +150,7 @@ func (h *Handler) handleCertDNSPrepare(w http.ResponseWriter, r *http.Request) {
 
 	dnsInfo, err := h.SSLManager.PrepareDNSChallenge(req.Domain, req.Email, "letsencrypt", req.DNSProvider, req.DNSCredentials)
 	if err != nil {
-		InternalServerError(w, "DNS 验证准备失败: "+err.Error())
+		InternalServerErrorLog(w, err, "DNS 验证准备失败")
 		return
 	}
 
@@ -246,7 +246,7 @@ func (h *Handler) handleCertFilePrepare(w http.ResponseWriter, r *http.Request) 
 
 	fileInfo, err := h.SSLManager.PrepareFileChallenge(req.Domain, req.Email, "letsencrypt")
 	if err != nil {
-		InternalServerError(w, "文件验证准备失败: "+err.Error())
+		InternalServerErrorLog(w, err, "文件验证准备失败")
 		return
 	}
 
@@ -343,7 +343,7 @@ func (h *Handler) handleCertRenew(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.SSLManager.RenewCertificate(req.Domain); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书续期失败 %s: %v", req.Domain, err)
-		InternalServerError(w, "证书续期失败: "+err.Error())
+		InternalServerErrorLog(w, err, "证书续期失败")
 		return
 	}
 
@@ -388,7 +388,8 @@ func (h *Handler) handleCertPaste(w http.ResponseWriter, r *http.Request) {
 	if err := h.SSLManager.SaveCustomCertificate(
 		req.Domain, []byte(req.CertPEM), []byte(req.KeyPEM),
 	); err != nil {
-		BadRequest(w, "证书保存失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书保存失败: %v", err)
+		BadRequest(w, "证书保存失败")
 		return
 	}
 
@@ -451,7 +452,8 @@ func (h *Handler) handleCertUpload(w http.ResponseWriter, r *http.Request) {
 
 	// 保存证书
 	if err := h.SSLManager.SaveCustomCertificate(domain, certPEM, keyPEM); err != nil {
-		BadRequest(w, "证书保存失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书保存失败: %v", err)
+		BadRequest(w, "证书保存失败")
 		return
 	}
 
@@ -465,7 +467,7 @@ func (h *Handler) handleCertUpload(w http.ResponseWriter, r *http.Request) {
 		KeyFile:   keyPath,
 	}); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 上传后保存配置失败 %s: %v", domain, err)
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		InternalServerErrorLog(w, err, "保存配置失败")
 		return
 	}
 
@@ -500,14 +502,14 @@ func (h *Handler) handleCertDelete(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.SSLManager.DeleteCertificate(req.Domain); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书删除失败 %s: %v", req.Domain, err)
-		InternalServerError(w, "证书删除失败: "+err.Error())
+		InternalServerErrorLog(w, err, "证书删除失败")
 		return
 	}
 
 	// 更新站点配置，禁用 SSL
 	if err := h.UpdateSiteSSLConfig(req.Domain, nil); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 删除后保存配置失败 %s: %v", req.Domain, err)
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		InternalServerErrorLog(w, err, "保存配置失败")
 		return
 	}
 
@@ -572,7 +574,7 @@ func (h *Handler) handleCertDeploy(w http.ResponseWriter, r *http.Request) {
 	if deployed > 0 {
 		if err := h.ConfigManager.Save(); err != nil {
 			logger.LogPanelRuntime(logger.LogLevelError, "[SSL] 证书部署保存配置失败: %v", err)
-			InternalServerError(w, "保存配置失败: "+err.Error())
+			InternalServerErrorLog(w, err, "保存配置失败")
 			return
 		}
 
@@ -731,7 +733,7 @@ func (h *Handler) handleDNSProviderCreate(w http.ResponseWriter, r *http.Request
 	// 加密凭证
 	encrypted, err := h.ConfigManager.EncryptDNSCredentials(req.Credentials)
 	if err != nil {
-		InternalServerError(w, "凭证加密失败: "+err.Error())
+		InternalServerErrorLog(w, err, "凭证加密失败")
 		return
 	}
 
@@ -746,7 +748,7 @@ func (h *Handler) handleDNSProviderCreate(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.ConfigManager.AddDNSProvider(provider); err != nil {
-		InternalServerError(w, "保存失败: "+err.Error())
+		InternalServerErrorLog(w, err, "保存失败")
 		return
 	}
 
@@ -799,7 +801,7 @@ func (h *Handler) handleDNSProviderUpdate(w http.ResponseWriter, r *http.Request
 	if hasNewCreds {
 		encrypted, err := h.ConfigManager.EncryptDNSCredentials(req.Credentials)
 		if err != nil {
-			InternalServerError(w, "凭证加密失败: "+err.Error())
+			InternalServerErrorLog(w, err, "凭证加密失败")
 			return
 		}
 		existing.Credentials = encrypted
@@ -814,7 +816,7 @@ func (h *Handler) handleDNSProviderUpdate(w http.ResponseWriter, r *http.Request
 	existing.UpdatedAt = time.Now().Format(time.RFC3339)
 
 	if err := h.ConfigManager.UpdateDNSProvider(id, *existing); err != nil {
-		InternalServerError(w, "更新失败: "+err.Error())
+		InternalServerErrorLog(w, err, "更新失败")
 		return
 	}
 
@@ -840,7 +842,7 @@ func (h *Handler) handleDNSProviderDelete(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.ConfigManager.DeleteDNSProvider(id); err != nil {
-		InternalServerError(w, "删除失败: "+err.Error())
+		InternalServerErrorLog(w, err, "删除失败")
 		return
 	}
 
@@ -1075,7 +1077,7 @@ func (h *Handler) handleDNSProviderGetCreds(w http.ResponseWriter, r *http.Reque
 
 	creds, err := h.ConfigManager.DecryptDNSCredentials(provider.Credentials)
 	if err != nil {
-		InternalServerError(w, "凭证解密失败: "+err.Error())
+		InternalServerErrorLog(w, err, "凭证解密失败")
 		return
 	}
 

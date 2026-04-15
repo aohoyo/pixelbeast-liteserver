@@ -30,7 +30,7 @@ func (h *Handler) setupRouter() http.Handler {
 	authMux := http.NewServeMux()
 
 	// 状态
-	authMux.HandleFunc("/api/status", h.getStatus)
+	authMux.HandleFunc("/api/auth/change-password", h.handleChangePassword)
 
 	// 系统监控
 	authMux.HandleFunc("/api/system/status", h.getSystemStatus)
@@ -158,7 +158,7 @@ func (h *Handler) setupRouter() http.Handler {
 	// 将认证路由组挂载
 	mux.Handle("/", h.RequireAuth(h.CSRPMiddleware(authMux)))
 
-	return Chain(RecoveryMiddleware, LoggingMiddleware)(mux)
+	return Chain(RecoveryMiddleware, LoggingMiddleware, SecurityHeadersMiddleware)(mux)
 }
 
 // routerCache 缓存的路由实例

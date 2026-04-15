@@ -123,7 +123,8 @@ func (h *Handler) handleSiteAction(w http.ResponseWriter, r *http.Request, actio
 	}
 
 	if err := action(req.ID); err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[站点] %s失败: %v", actionName, err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 
@@ -177,7 +178,8 @@ func (h *Handler) toggleSitesService(w http.ResponseWriter, r *http.Request) {
 		err, msg = h.SiteManager.StartSitesServer(), "站点服务已启动"
 	}
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[服务] 切换站点服务失败: %v", err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -192,7 +194,8 @@ func (h *Handler) handleSitesServiceAction(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := action(); err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[服务] %s站点服务失败: %v", actionName, err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -222,7 +225,8 @@ func (h *Handler) reloadSitesConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.SiteManager.ReloadSites(); err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[服务] 重载站点配置失败: %v", err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -430,7 +434,7 @@ func (h *Handler) updateSite(w http.ResponseWriter, r *http.Request, id string) 
 	// 更新站点
 	if err := h.ConfigManager.UpdateSite(id, site); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 更新站点失败 %s: %v", id, err)
-		InternalServerError(w, "更新站点失败: "+err.Error())
+		InternalServerError(w, "更新站点失败，请查看日志")
 		return
 	}
 
@@ -475,7 +479,7 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 	// 删除站点
 	if err := h.ConfigManager.DeleteSite(id); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[站点] 删除站点失败 %s: %v", id, err)
-		InternalServerError(w, "删除站点失败: "+err.Error())
+		InternalServerError(w, "删除站点失败，请查看日志")
 		return
 	}
 

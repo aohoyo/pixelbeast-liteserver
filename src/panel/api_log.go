@@ -237,7 +237,7 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 
 	logPath, err := resolveLogPath(logDir, category, logType)
 	if err != nil {
-		Error(w, 400, err.Error())
+		Error(w, 400, "无效的日志分类")
 		return
 	}
 
@@ -256,7 +256,8 @@ func (h *Handler) handleLogsRead(w http.ResponseWriter, r *http.Request) {
 			Success(w, map[string]interface{}{"entries": []LogEntry{}, "total": 0, "file": filepath.Base(logPath)})
 			return
 		}
-		Error(w, 500, "读取日志失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[日志] 读取失败: %v", err)
+		Error(w, 500, "读取日志失败，请查看日志")
 		return
 	}
 
@@ -286,7 +287,7 @@ func (h *Handler) handleLogsStats(w http.ResponseWriter, r *http.Request) {
 
 	logPath, err := resolveLogPath(logDir, category, logType)
 	if err != nil {
-		Error(w, 400, err.Error())
+		Error(w, 400, "无效的日志分类")
 		return
 	}
 
@@ -341,7 +342,7 @@ func (h *Handler) handleLogsDownload(w http.ResponseWriter, r *http.Request) {
 
 	logPath, err := resolveLogPath(logDir, category, logType)
 	if err != nil {
-		Error(w, 400, err.Error())
+		Error(w, 400, "无效的日志分类")
 		return
 	}
 
@@ -385,7 +386,7 @@ func (h *Handler) handleLogsClear(w http.ResponseWriter, r *http.Request) {
 
 	logPath, err := resolveLogPath(logDir, category, logType)
 	if err != nil {
-		Error(w, 400, err.Error())
+		Error(w, 400, "无效的日志分类")
 		return
 	}
 
@@ -394,7 +395,8 @@ func (h *Handler) handleLogsClear(w http.ResponseWriter, r *http.Request) {
 			Success(w, map[string]interface{}{"cleared": 0, "message": "日志文件不存在"})
 			return
 		}
-		Error(w, 500, "清空失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[日志] 清空失败: %v", err)
+		Error(w, 500, "清空失败，请查看日志")
 		return
 	}
 
@@ -421,7 +423,7 @@ func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := parseJSONBody(r, &cfg); err != nil {
-		BadRequest(w, "参数错误: "+err.Error())
+		BadRequest(w, "参数格式错误")
 		return
 	}
 
@@ -439,7 +441,8 @@ func (h *Handler) handleLogsConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.ConfigManager.Save(); err != nil {
-		Error(w, 500, "保存配置失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[日志] 保存配置失败: %v", err)
+		Error(w, 500, "保存配置失败，请查看日志")
 		return
 	}
 
@@ -460,7 +463,7 @@ func (h *Handler) handleLogsBulkClear(w http.ResponseWriter, r *http.Request) {
 		Compressed bool   `json:"compressed"` // 是否同时清理压缩文件
 	}
 	if err := parseJSONBody(r, &req); err != nil {
-		BadRequest(w, "参数错误: "+err.Error())
+		BadRequest(w, "参数格式错误")
 		return
 	}
 

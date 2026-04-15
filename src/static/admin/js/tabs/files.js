@@ -8,6 +8,7 @@
 
 import { BaseTab } from './BaseTab.js';
 import { FileManager } from '../components/file-manager.js';
+import { escapeHtml } from '../core/utils.js';
 
 // 图标 SVG
 const ICONS = {
@@ -86,7 +87,7 @@ class FilesTab extends BaseTab {
         for (const item of dirs) {
             if (item.section) {
                 html += `<div class="fm-quick-divider"></div>`;
-                html += `<div class="fm-quick-section-title">${item.section}</div>`;
+                html += `<div class="fm-quick-section-title">${escapeHtml(item.section)}</div>`;
             } else {
                 const icon = ICONS[item.icon] || ICONS.folder;
                 let titlePath = item.path;
@@ -95,9 +96,9 @@ class FilesTab extends BaseTab {
                 }
 
                 html += `
-                    <a class="fm-quick-item" data-path="${item.path}" title="${titlePath}">
+                    <a class="fm-quick-item" data-path="${escapeHtml(item.path)}" title="${escapeHtml(titlePath)}">
                         ${icon}
-                        <span class="fm-quick-name">${item.name}</span>
+                        <span class="fm-quick-name">${escapeHtml(item.name)}</span>
                     </a>
                 `;
             }
@@ -252,10 +253,10 @@ class FilesTab extends BaseTab {
         const host = location.host;
 
         listEl.innerHTML = links.map(link => `
-            <div class="fm-share-item" data-token="${link.token}">
+            <div class="fm-share-item" data-token="${escapeHtml(link.token)}">
                 <div class="fm-share-item-icon">📄</div>
                 <div class="fm-share-item-info">
-                    <div class="fm-share-item-name" title="${link.fileName}">${link.fileName}</div>
+                    <div class="fm-share-item-name" title="${escapeHtml(link.fileName)}">${escapeHtml(link.fileName)}</div>
                     <div class="fm-share-item-meta">
                         <span>${this.formatSize(link.fileSize)}</span>
                         <span>剩余 ${this.formatExpires(link.expiresAt)}</span>
@@ -263,10 +264,10 @@ class FilesTab extends BaseTab {
                     </div>
                 </div>
                 <div class="fm-share-item-actions">
-                    <button class="fm-share-action copy" data-url="${scheme}://${host}/s/${link.token}" title="复制链接">
+                    <button class="fm-share-action copy" data-url="${scheme}://${host}/s/${escapeHtml(link.token)}" title="复制链接">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
-                    <button class="fm-share-action delete" data-token="${link.token}" title="删除">
+                    <button class="fm-share-action delete" data-token="${escapeHtml(link.token)}" title="删除">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                 </div>

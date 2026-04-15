@@ -89,7 +89,7 @@ func (h *Handler) listFiles(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -230,7 +230,7 @@ func (h *Handler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	chunkIndex := r.FormValue("chunkIndex")
 	file, _, err := r.FormFile("chunk")
 	if err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "请上传文件分片")
 		return
 	}
 	defer file.Close()
@@ -241,13 +241,13 @@ func (h *Handler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	dst := filepath.Join(chunkDir, fmt.Sprintf("chunk_%s", chunkIndex))
 	f, err := os.Create(dst)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	defer f.Close()
 
 	if _, err = f.ReadFrom(file); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	Success(w, map[string]interface{}{"chunkIndex": chunkIndex})
@@ -275,7 +275,7 @@ func (h *Handler) mergeChunks(w http.ResponseWriter, r *http.Request) {
 	os.MkdirAll(filepath.Dir(destFile), 0755)
 	f, err := os.Create(destFile)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	defer f.Close()
@@ -331,13 +331,13 @@ func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
 	maxSize := int64(MaxUploadSize)
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if err := r.ParseMultipartForm(maxSize); err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "文件上传失败")
 		return
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "请选择要上传的文件")
 		return
 	}
 	defer file.Close()
@@ -358,13 +358,13 @@ func (h *Handler) uploadFileWithPath(w http.ResponseWriter, r *http.Request) {
 	dst := filepath.Join(targetDir, handler.Filename)
 	f, err := os.Create(dst)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	defer f.Close()
 
 	if _, err = f.ReadFrom(file); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -395,7 +395,7 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	absPath := filepath.Join(targetDir, req.Name)
 
 	if err := os.RemoveAll(absPath); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -425,7 +425,7 @@ func (h *Handler) mkdir(w http.ResponseWriter, r *http.Request) {
 	newDir := resolvePath(req.Path)
 
 	if err := os.MkdirAll(newDir, 0755); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -464,7 +464,7 @@ func (h *Handler) renameFile(w http.ResponseWriter, r *http.Request) {
 
 	// 重命名
 	if err := os.Rename(oldPath, newPath); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	username := h.getSessionUsername(r)
@@ -491,7 +491,7 @@ func (h *Handler) downloadFile(w http.ResponseWriter, r *http.Request) {
 			Error(w, http.StatusNotFound, "文件不存在")
 			return
 		}
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 }
@@ -542,13 +542,13 @@ func (h *Handler) copyFile(w http.ResponseWriter, r *http.Request) {
 	if srcInfo.IsDir() {
 		// 目录:递归复制
 		if err := fileop.CopyDirectory(srcPath, dstPath); err != nil {
-			InternalServerError(w, err.Error())
+			InternalServerErrorLog(w, err)
 			return
 		}
 	} else {
 		// 文件:复制
 		if err := fileop.CopySingleFile(srcPath, dstPath); err != nil {
-			InternalServerError(w, err.Error())
+			InternalServerErrorLog(w, err)
 			return
 		}
 	}
@@ -584,7 +584,7 @@ func (h *Handler) touchFile(w http.ResponseWriter, r *http.Request) {
 	// 创建空文件
 	file, err := os.Create(filePath)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	defer file.Close()
@@ -624,7 +624,7 @@ func (h *Handler) moveFile(w http.ResponseWriter, r *http.Request) {
 
 	// 移动(重命名)
 	if err := os.Rename(srcPath, dstPath); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -673,7 +673,7 @@ func (h *Handler) chmodFile(w http.ResponseWriter, r *http.Request) {
 
 	// 修改权限
 	if err := os.Chmod(filePath, os.FileMode(mode)); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -708,7 +708,7 @@ func (h *Handler) getFilePermissions(w http.ResponseWriter, r *http.Request) {
 	// 获取文件信息
 	info, err := os.Stat(filePath)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -759,7 +759,7 @@ func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
 	// 读取文件内容
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -831,7 +831,7 @@ func (h *Handler) saveFileContent(w http.ResponseWriter, r *http.Request) {
 
 	// 写入文件
 	if err := os.WriteFile(filePath, []byte(req.Content), 0644); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -855,7 +855,7 @@ func (h *Handler) compressFiles(w http.ResponseWriter, r *http.Request) {
 		Format string   `json:"format"` // zip 或 tar.gz
 	}
 	if err := parseJSONBody(r, &req); err != nil {
-		BadRequest(w, "Invalid JSON: "+err.Error())
+		BadRequest(w, "请求格式错误")
 		return
 	}
 
@@ -906,7 +906,7 @@ func (h *Handler) compressFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		InternalServerError(w, "压缩失败: "+err.Error())
+		InternalServerErrorLog(w, err, "压缩失败")
 		return
 	}
 
@@ -930,7 +930,7 @@ func (h *Handler) extractFile(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"` // 压缩包文件名
 	}
 	if err := parseJSONBody(r, &req); err != nil {
-		BadRequest(w, "Invalid JSON: "+err.Error())
+		BadRequest(w, "请求格式错误")
 		return
 	}
 
@@ -967,7 +967,7 @@ func (h *Handler) extractFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		InternalServerError(w, "解压失败: "+err.Error())
+		InternalServerErrorLog(w, err, "解压失败")
 		return
 	}
 
@@ -1104,7 +1104,7 @@ func (h *Handler) shareFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := parseJSONBody(r, &req); err != nil {
-		BadRequest(w, "Invalid JSON: "+err.Error())
+		BadRequest(w, "请求格式错误")
 		return
 	}
 

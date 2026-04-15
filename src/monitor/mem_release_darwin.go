@@ -8,11 +8,24 @@ import (
 )
 
 // FreeSystemMemory 释放系统级内存（macOS）
-// 使用 purge 命令清除不活跃内存
+// 1. purge 命令清除不活跃内存
+// 2. memory_pressure 通知系统释放内存
 func FreeSystemMemory() error {
-	path, err := exec.LookPath("purge")
-	if err != nil {
-		return fmt.Errorf("purge 命令不可用（需安装 Xcode Command Line Tools）")
+	var lastErr error
+
+	// 1. purge 命令
+	if path, err := exec.LookPath("purge"); err == nil {
+		if err := exec.Command(path).Run(); err != nil {
+			lastErr = err
+		}
+	} else {
+		lastErr = fmt.Errorf("purge 命令不可用（需安装 Xcode Command Line Tools）")
 	}
-	return exec.Command(path).Run()
+
+	// 2. memory_pressure（macOS 10.12+）
+	if path, err := exec.LookPath("memory_pressure"); err == nil {
+		_ = exec.Command(path).Run()
+	}
+
+	return lastErr
 }

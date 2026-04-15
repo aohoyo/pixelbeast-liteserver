@@ -18,7 +18,7 @@ func (h *Handler) listBackups(w http.ResponseWriter, r *http.Request) {
 
 	backups, err := backup.ListBackups(backupDir)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 	if backups == nil {
@@ -49,7 +49,7 @@ func (h *Handler) createBackup(w http.ResponseWriter, r *http.Request) {
 
 	backupName, err := backup.CreateBackup(backupDir, items, dirs)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -82,7 +82,7 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 	backupDir := resolvePath(h.ConfigManager.GetBackupDir())
 	if err := backup.DeleteBackup(backupDir, name); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *Handler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if err := backup.ValidateBackupName(name); err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "无效的备份文件名")
 		return
 	}
 
@@ -126,7 +126,7 @@ func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := backup.ValidateBackupName(req.Name); err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "无效的备份文件名")
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	configDir := h.ConfigManager.ConfigDir()
 
 	if err := backup.RestoreBackup(backupDir, req.Name, configDir); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		return
 	}
 

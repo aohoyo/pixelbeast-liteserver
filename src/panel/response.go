@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"pixelbeast/src/logger"
 )
 
 // ==================== 统一响应结构 ====================
@@ -110,6 +112,16 @@ func TooManyRequests(w http.ResponseWriter, message string) {
 // InternalServerError 500 内部错误
 func InternalServerError(w http.ResponseWriter, message string) {
 	Error(w, http.StatusInternalServerError, message)
+}
+
+// InternalServerErrorLog 内部错误（脱敏版本：记录日志，返回通用消息）
+func InternalServerErrorLog(w http.ResponseWriter, err error, userMsg ...string) {
+	msg := "操作失败，请查看日志"
+	if len(userMsg) > 0 {
+		msg = userMsg[0]
+	}
+	logger.LogPanelRuntime(logger.LogLevelError, "[API] %v", err)
+	Error(w, http.StatusInternalServerError, msg)
 }
 
 // ==================== 辅助函数 ====================

@@ -44,7 +44,8 @@ func (h *Handler) toggleFTP(w http.ResponseWriter, r *http.Request) {
 		err, msg = h.startFTPSvc(), "FTP服务已启动"
 	}
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 切换服务失败: %v", err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 
@@ -68,7 +69,8 @@ func (h *Handler) handleFTPServiceAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err := action(); err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] %s失败: %v", actionName, err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 	if saveConfig != nil {
@@ -107,7 +109,8 @@ func (h *Handler) reloadFTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// 重载配置文件
 	if err := h.SiteManager.ReloadSites(); err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 重载配置失败: %v", err)
+		Error(w, http.StatusInternalServerError, "操作失败，请查看日志")
 		return
 	}
 	// 同步管理面板和 FTP 服务器的配置指针
@@ -159,7 +162,8 @@ func (h *Handler) listFtpFiles(w http.ResponseWriter, r *http.Request) {
 
 	fileEntries, err := fileop.ListDirEntries(absPath, dirsOnly)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 列出文件失败: %v", err)
+		InternalServerError(w, "获取文件列表失败")
 		return
 	}
 	Success(w, map[string]interface{}{"path": subPath, "files": fileEntries})
@@ -174,13 +178,13 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 	maxSize := int64(MaxFTPUploadSize)
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 	if err := r.ParseMultipartForm(maxSize); err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "文件上传失败")
 		return
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		BadRequest(w, err.Error())
+		BadRequest(w, "请选择要上传的文件")
 		return
 	}
 	defer file.Close()
@@ -197,13 +201,15 @@ func (h *Handler) uploadFtpFile(w http.ResponseWriter, r *http.Request) {
 	dst := filepath.Join(targetDir, handler.Filename)
 	f, err := os.Create(dst)
 	if err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 创建文件失败: %v", err)
+		InternalServerError(w, "文件上传失败")
 		return
 	}
 	defer f.Close()
 
 	if _, err = f.ReadFrom(file); err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 写入文件失败: %v", err)
+		InternalServerError(w, "文件上传失败")
 		return
 	}
 	SuccessWithData(w, map[string]interface{}{"filename": handler.Filename}, "上传成功")
@@ -237,7 +243,8 @@ func (h *Handler) deleteFtpFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.RemoveAll(absPath); err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 删除文件失败: %v", err)
+		InternalServerError(w, "删除文件失败")
 		return
 	}
 	SuccessMessage(w, "删除成功")
@@ -263,7 +270,8 @@ func (h *Handler) mkdirFtp(w http.ResponseWriter, r *http.Request) {
 
 	newDir := filepath.Join(h.ConfigManager.GetFTPRoot(), strings.TrimPrefix(req.Path, "/"), req.Name)
 	if err := os.MkdirAll(newDir, 0755); err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 创建目录失败: %v", err)
+		InternalServerError(w, "创建目录失败")
 		return
 	}
 	SuccessMessage(w, "目录创建成功")
@@ -293,7 +301,8 @@ func (h *Handler) downloadFtpFile(w http.ResponseWriter, r *http.Request) {
 			Error(w, http.StatusNotFound, "文件不存在")
 			return
 		}
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 下载文件失败: %v", err)
+		InternalServerError(w, "文件下载失败")
 		return
 	}
 }
@@ -337,7 +346,8 @@ func (h *Handler) renameFtpFile(w http.ResponseWriter, r *http.Request) {
 
 	// 重命名
 	if err := os.Rename(absOld, absNew); err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 重命名失败: %v", err)
+		InternalServerError(w, "重命名失败")
 		return
 	}
 	SuccessMessage(w, "重命名成功")
@@ -382,7 +392,8 @@ func (h *Handler) copyFtpFile(w http.ResponseWriter, r *http.Request) {
 
 	// 复制文件
 	if err := fileop.CopySingleFile(absSrc, absDst); err != nil {
-		InternalServerError(w, err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 复制文件失败: %v", err)
+		InternalServerError(w, "复制文件失败")
 		return
 	}
 
@@ -487,14 +498,16 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 
 	// 自动创建用户目录
 	if err := os.MkdirAll(req.RootPath, 0755); err != nil {
-		InternalServerError(w, "创建用户目录失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 创建用户目录失败: %v", err)
+		InternalServerError(w, "创建用户目录失败")
 		return
 	}
 
 	// 加密密码
 	encryptedPassword, err := h.ConfigManager.EncryptPassword(req.Password)
 	if err != nil {
-		InternalServerError(w, "密码加密失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 密码加密失败: %v", err)
+		InternalServerError(w, "密码加密失败")
 		return
 	}
 
@@ -523,7 +536,8 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 保存配置失败: %v", err)
+		InternalServerError(w, "保存配置失败")
 		return
 	}
 
@@ -591,7 +605,8 @@ func (h *Handler) deleteFtpUser(w http.ResponseWriter, r *http.Request) {
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 保存配置失败: %v", err)
+		InternalServerError(w, "保存配置失败")
 		return
 	}
 
@@ -636,7 +651,8 @@ func (h *Handler) toggleFtpUserStatus(w http.ResponseWriter, r *http.Request) {
 
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 保存配置失败: %v", err)
+		InternalServerError(w, "保存配置失败")
 		return
 	}
 
@@ -704,7 +720,8 @@ func (h *Handler) batchFtpUsers(w http.ResponseWriter, r *http.Request) {
 	// 使用 ConfigManager 保存
 	if h.ConfigManager != nil {
 		if err := h.ConfigManager.Save(); err != nil {
-			InternalServerError(w, "保存配置失败: "+err.Error())
+			logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 保存配置失败: %v", err)
+			InternalServerError(w, "保存配置失败")
 			return
 		}
 	}
@@ -780,7 +797,8 @@ func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username
 	// 更新密码（单独处理，因为 UpdateFTPUser 会保留原密码）
 	if req.Password != "" {
 		if err := h.ConfigManager.SetFTPUserPassword(username, req.Password); err != nil {
-			InternalServerError(w, "密码更新失败: "+err.Error())
+			logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 密码更新失败: %v", err)
+			InternalServerError(w, "密码更新失败")
 			return
 		}
 	}
@@ -799,7 +817,8 @@ func (h *Handler) updateFtpUser(w http.ResponseWriter, r *http.Request, username
 	}
 
 	if err := h.ConfigManager.UpdateFTPUser(username, updated); err != nil {
-		InternalServerError(w, "更新用户失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 更新用户失败: %v", err)
+		InternalServerError(w, "更新用户失败")
 		return
 	}
 
@@ -836,7 +855,8 @@ func (h *Handler) updateFtpUserConfig(w http.ResponseWriter, r *http.Request, us
 	updated.MaxFileSize = req.MaxFileSize
 
 	if err := h.ConfigManager.UpdateFTPUser(username, updated); err != nil {
-		InternalServerError(w, "保存配置失败: "+err.Error())
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 保存配置失败: %v", err)
+		InternalServerError(w, "保存配置失败")
 		return
 	}
 

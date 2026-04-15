@@ -44,6 +44,16 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// SecurityHeadersMiddleware 安全响应头中间件
+func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireAuth 认证中间件
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +71,7 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 }
 
 // CSRPMiddleware CSRF 防护中间件（对状态修改请求检查 CSRF Token）
+// 支持同一会话持有多个有效 CSRF Token（解决多标签页/刷新页面导致 token 失效的问题）
 func (h *Handler) CSRPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 只检查状态修改方法
@@ -83,23 +94,29 @@ func (h *Handler) CSRPMiddleware(next http.Handler) http.Handler {
 		}
 
 		token := r.Header.Get("X-CSRF-Token")
+		if token == "" {
+			Forbidden(w, "缺少 CSRF Token")
+			return
+		}
+
+		// 按 token 值查找（支持同一会话多个 token）
 		h.mu.RLock()
-		csrfToken, exists := h.csrfTokens[getSessionID(r)]
+		csrfToken, exists := h.csrfTokens[token]
 		h.mu.RUnlock()
 
 		if !exists {
 			Forbidden(w, "请刷新页面获取 CSRF Token")
 			return
 		}
-		if token == "" {
-			Forbidden(w, "缺少 CSRF Token")
-			return
-		}
 		if time.Now().After(csrfToken.ExpiresAt) {
+			// 删除过期 token
+			h.mu.Lock()
+			delete(h.csrfTokens, token)
+			h.mu.Unlock()
 			Forbidden(w, "CSRF Token 已过期，请刷新页面")
 			return
 		}
-		if csrfToken.Value != token {
+		if csrfToken.SessionID != getSessionID(r) {
 			Forbidden(w, "CSRF 验证失败")
 			return
 		}

@@ -371,6 +371,9 @@ class HomeTab extends BaseTab {
                 await this.animateRingTo('memory', newPercent, 800);
 
                 this.toast.success(`已释放 ${(data?.freed_mb || 0).toFixed(1)} MB 内存`);
+            } else {
+                const data = await this.api.parseJSON(response).catch(() => null);
+                this.toast.error(data?.message || '释放内存失败');
             }
         } catch (error) {
             // 释放失败，恢复环圈
@@ -596,10 +599,13 @@ class HomeTab extends BaseTab {
                 const newPercent = this.currentData?.disk_percent || 0;
                 await this.animateRingTo('disk', newPercent, 800);
                 this.toast.success(`成功清理 ${(data?.cleaned_mb || 0).toFixed(1)} MB`);
+            } else {
+                await this.animateRingTo('disk', currentPercent, 400);
+                this.toast.error('清理失败');
             }
         } catch (error) {
             await this.animateRingTo('disk', currentPercent, 400);
-            this.toast.error('清理失败');
+            this.toast.error(error?.message || '清理失败');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = '立即清理'; }
         }

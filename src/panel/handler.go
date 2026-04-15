@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -42,6 +43,7 @@ type (
 	}
 	CSRFToken struct {
 		Value     string
+		SessionID string
 		ExpiresAt time.Time
 	}
 	Session struct {
@@ -196,7 +198,7 @@ func (h *Handler) generateCSRFToken(sessionID string) string {
 	}
 	token := hex.EncodeToString(bytes)
 	h.mu.Lock()
-	h.csrfTokens[sessionID] = &CSRFToken{Value: token, ExpiresAt: time.Now().Add(CSRFTokenTimeout)}
+	h.csrfTokens[token] = &CSRFToken{Value: token, SessionID: sessionID, ExpiresAt: time.Now().Add(CSRFTokenTimeout)}
 	h.mu.Unlock()
 	return token
 }
@@ -374,7 +376,17 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 		}
 		html = strings.ReplaceAll(html, csrfPlaceholder, csrfToken)
 	}
+
+	// 用版本号为静态资源添加缓存破坏查询参数
+	v := h.Version
+	if v == "" {
+		v = "dev"
+	}
+	html = strings.ReplaceAll(html, ".css", ".css?v="+v)
+	html = strings.ReplaceAll(html, ".js", ".js?v="+v)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Write([]byte(html))
 }
 
@@ -503,6 +515,15 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordLoginAttempt(clientIP, true)
 	h.setSession(w, r, username)
+
+	// 首次登录删除初始密码文件
+	if h.ConfigManager.Server.Admin.RequirePasswordChange {
+		passwordFile := filepath.Join(h.ConfigManager.ConfigDir(), "initial_password.txt")
+		os.Remove(passwordFile)
+		h.ConfigManager.Server.Admin.RequirePasswordChange = false
+		h.ConfigManager.Save()
+	}
+
 	logger.LogPanelAuth("登录", username, clientIP, true, "登录成功")
 	SuccessMessage(w, "登录成功")
 }

@@ -1,9 +1,11 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -53,12 +55,13 @@ type DNSProviderConfig struct {
 
 // AdminConfig 管理面板配置
 type AdminConfig struct {
-	Port       int    `json:"port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"` // 加密后的密码
-	Path       string `json:"path"`     // 安全入口路径
-	Domain     string `json:"domain"`   // 绑定域名，为空则允许所有域名访问
-	SSLEnabled bool   `json:"ssl_enabled"`
+	Port                  int    `json:"port"`
+	Username              string `json:"username"`
+	Password              string `json:"password"`                // 加密后的密码
+	Path                  string `json:"path"`                    // 安全入口路径
+	Domain                string `json:"domain"`                  // 绑定域名，为空则允许所有域名访问
+	SSLEnabled            bool   `json:"ssl_enabled"`
+	RequirePasswordChange bool   `json:"require_password_change"` // 首次登录强制改密
 }
 
 // SitesConfig 站点配置列表
@@ -513,20 +516,31 @@ func (cm *ConfigManager) saveDNSProviders() error {
 
 // defaultServerConfig 默认服务配置
 func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
-	// 生成加密的默认密码
-	encryptedPassword, err := crypto.EncryptString("admin123", cm.key)
+	// 生成随机密码
+	randomPassword, err := generateRandomPassword()
+	if err != nil {
+		return nil, fmt.Errorf("生成随机密码失败: %w", err)
+	}
+
+	encryptedPassword, err := crypto.EncryptString(randomPassword, cm.key)
 	if err != nil {
 		return nil, fmt.Errorf("加密默认密码失败: %w", err)
+	}
+
+	// 保存初始密码到文件
+	if err := cm.saveInitialPassword(randomPassword); err != nil {
+		return nil, fmt.Errorf("保存初始密码失败: %w", err)
 	}
 
 	return &ServerConfig{
 		Name:     "PixelBeast Server",
 		Timezone: "Asia/Shanghai",
 		Admin: AdminConfig{
-			Port:     9527,
-			Username: "admin",
-			Password: encryptedPassword,
-			Path:     "/admin",
+			Port:                  9527,
+			Username:              "admin",
+			Password:              encryptedPassword,
+			Path:                  "/admin",
+			RequirePasswordChange: true,
 		},
 		Directories: DirectoriesConfig{
 			Sites:  "./sites",
@@ -973,4 +987,47 @@ func (cm *ConfigManager) DecryptDNSCredentials(encrypted string) (map[string]str
 		return nil, fmt.Errorf("解析凭证失败: %w", err)
 	}
 	return creds, nil
+}
+
+// generateRandomPassword 生成随机密码（16位，包含大小写字母和数字）
+func generateRandomPassword() (string, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const length = 16
+
+	password := make([]byte, length)
+	for i := range password {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		password[i] = charset[num.Int64()]
+	}
+	return string(password), nil
+}
+
+// saveInitialPassword 保存初始密码到临时文件（仅首次启动）
+func (cm *ConfigManager) saveInitialPassword(password string) error {
+	passwordFile := filepath.Join(cm.configDir, "initial_password.txt")
+
+	content := fmt.Sprintf(`PixelBeast 初始密码
+====================
+账号：admin
+密码：%s
+
+⚠  重要提示:
+1. 请在首次登录后立即修改密码
+2. 此文件将在登录后自动删除
+3. 如已修改密码，请手动删除此文件
+
+生成时间：%s
+`,
+		password,
+		time.Now().Format("2006-01-02 15:04:05"),
+	)
+
+	if err := os.WriteFile(passwordFile, []byte(content), 0600); err != nil {
+		return err
+	}
+
+	return nil
 }

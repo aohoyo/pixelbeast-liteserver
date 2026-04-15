@@ -28,7 +28,7 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 	// 使用 map 接收前端数据
 	var data map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		BadRequest(w, "Invalid JSON: "+err.Error())
+		BadRequest(w, "请求格式错误")
 		logger.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
@@ -39,14 +39,14 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 	// JSON 反序列化：直接将前端数据映射到 ServerConfig
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
-		BadRequest(w, "JSON 解析失败: "+err.Error())
+		BadRequest(w, "JSON 解析失败")
 		logger.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
 
 	var newCfg config.ServerConfig
 	if err := json.Unmarshal(jsonBytes, &newCfg); err != nil {
-		BadRequest(w, "配置格式错误: "+err.Error())
+		BadRequest(w, "配置格式错误")
 		logger.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
@@ -87,7 +87,7 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 	// 保存配置
 	if err := h.ConfigManager.Save(); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[配置] 保存失败: %v", err)
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		logger.LogPanelConfigChange(username, "保存配置", false)
 		return
 	}
@@ -110,12 +110,12 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 使用 ConfigManager 统一的默认配置方法重置
 	if err := h.ConfigManager.ResetToDefaults(); err != nil {
-		InternalServerError(w, "重置配置失败: "+err.Error())
+		InternalServerErrorLog(w, err, "重置配置失败")
 		return
 	}
 
 	if err := h.ConfigManager.Save(); err != nil {
-		InternalServerError(w, err.Error())
+		InternalServerErrorLog(w, err)
 		logger.LogPanelConfigChange(username, "重置配置", false)
 		return
 	}

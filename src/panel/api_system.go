@@ -166,32 +166,10 @@ func init() {
 
 // ==================== 状态 ====================
 
-func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
-	processMem := monitor.GetProcessMemory()
+// ==================== 系统监控 API ====================
 
-	// 获取服务器状态
-	adminRunning := false
-	sitesRunning := false
-	adminPort := h.ConfigManager.Server.Admin.Port
-
-	if h.SiteManager != nil {
-		adminRunning = true
-		sitesRunning = h.SiteManager.IsSitesRunning()
-	}
-
-	// 构建站点列表
-	sites := make([]map[string]interface{}, 0)
-	for _, site := range h.ConfigManager.Sites.Sites {
-		sites = append(sites, map[string]interface{}{
-			"id":      site.ID,
-			"name":    site.Name,
-			"enabled": site.Enabled,
-			"type":    site.Type,
-			"port":    site.Port,
-			"domains": site.Domain,
-		})
-	}
-
+func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
+	// CSRF token（用于前端初始化）
 	session := h.getSession(r)
 	var csrfToken string
 	if session != nil {
@@ -200,46 +178,10 @@ func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 构建状态数据
-	serverUptime := time.Since(startTime)
-	statusData := map[string]interface{}{
-		"memory_mb":        processMem / 1024 / 1024,
-		"goroutines":       runtime.NumGoroutine(),
-		"go_version":       runtime.Version(),
-		"os":               runtime.GOOS,
-		"arch":             runtime.GOARCH,
-		"os_name":          getOSName(),
-		"os_name_short":    getOSShortName(),
-		"kernel":           getKernelVersion(),
-		"hostname":         getHostname(),
-		"server_uptime":    formatUptime(serverUptime),
-		"server_uptime_ms": serverUptime.Milliseconds(),
-		"system_uptime":    formatUptime(getSystemUptime()),
-		"system_uptime_ms": getSystemUptime().Milliseconds(),
-		"admin_running":    adminRunning,
-		"admin_port":       adminPort,
-		"sites_running":    sitesRunning,
-		"sites_enabled":    countEnabledSites(h.ConfigManager.Sites.Sites),
-		"sites_count":      len(h.ConfigManager.Sites.Sites),
-		"sites":            sites,
-	}
+	// 进程内存
+	memoryMB := float64(monitor.GetProcessMemory()) / 1024 / 1024
 
-	// 如果有 CSRF token，添加到响应中
-	if csrfToken != "" {
-		statusData["csrf_token"] = csrfToken
-	}
-
-	Success(w, statusData)
-}
-
-// ==================== 系统监控 API ====================
-
-func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
-	// 获取进程内存
-	processMem := monitor.GetProcessMemory()
-	memoryMB := float64(processMem) / 1024 / 1024
-
-	// 获取真实的 CPU 信息（从后台采样读取，不阻塞）
+	// CPU 信息（从后台采样读取，不阻塞）
 	cpuMu.RLock()
 	cpuPercent := lastCPUPercent
 	cpuMu.RUnlock()
@@ -251,7 +193,6 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	if cpuThreads == 0 {
 		cpuThreads = cpuCores
 	}
-	cpuModel := getCPUModel()
 
 	// 更新 CPU 历史记录
 	cpuMu.Lock()
@@ -263,9 +204,13 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 	copy(historyCopy, cpuHistory)
 	cpuMu.Unlock()
 
-	// 获取 FTP 服务状态
+	// 读取每核 CPU 使用率
+	cpuMu.RLock()
+	cpuPerCore := make([]float64, len(lastCPUPerCore))
+	copy(cpuPerCore, lastCPUPerCore)
+	cpuMu.RUnlock()
 
-	// 获取真实的内存信息
+	// 内存
 	memInfo, _ := mem.VirtualMemory()
 	memPercent := 0.0
 	memUsedGB := 0.0
@@ -284,7 +229,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		memBuffCacheMB = float64(memInfo.Buffers+memInfo.Cached) / 1024 / 1024
 	}
 
-	// Swap 内存
+	// Swap
 	swapInfo, _ := mem.SwapMemory()
 	var swapPercent, swapUsedGB, swapTotalGB float64
 	if swapInfo != nil && swapInfo.Total > 0 {
@@ -293,7 +238,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		swapTotalGB = float64(swapInfo.Total) / 1024 / 1024 / 1024
 	}
 
-	// 获取所有磁盘分区信息
+	// 磁盘分区
 	programDir, _ := os.Getwd()
 	partitions, _ := disk.Partitions(false)
 	type diskEntry struct {
@@ -306,7 +251,9 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		Percent float64 `json:"percent"`
 	}
 	var disks []diskEntry
-	var primaryDisk *diskEntry
+	var diskTotalGB, diskUsedGB, diskFreeGB float64
+	var primaryMount string
+	bestLen := 0
 
 	for _, p := range partitions {
 		usage, err := disk.Usage(p.Mountpoint)
@@ -322,20 +269,23 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 			FreeGB:  float64(usage.Free) / 1024 / 1024 / 1024,
 			Percent: usage.UsedPercent,
 		})
-	}
-	// 找到程序所在磁盘（最长匹配挂载点）
-	bestLen := 0
-	for i := range disks {
-		if strings.HasPrefix(programDir, disks[i].Mount) && len(disks[i].Mount) > bestLen {
-			primaryDisk = &disks[i]
-			bestLen = len(disks[i].Mount)
+		diskTotalGB += float64(usage.Total) / 1024 / 1024 / 1024
+		diskUsedGB += float64(usage.Used) / 1024 / 1024 / 1024
+		diskFreeGB += float64(usage.Free) / 1024 / 1024 / 1024
+		if strings.HasPrefix(programDir, p.Mountpoint) && len(p.Mountpoint) > bestLen {
+			primaryMount = p.Mountpoint
+			bestLen = len(p.Mountpoint)
 		}
 	}
-	if primaryDisk == nil && len(disks) > 0 {
-		primaryDisk = &disks[0]
+	if primaryMount == "" && len(disks) > 0 {
+		primaryMount = disks[0].Mount
+	}
+	var diskPercent float64
+	if diskTotalGB > 0 {
+		diskPercent = diskUsedGB / diskTotalGB * 100
 	}
 
-	// 获取真实的负载信息
+	// 负载
 	loadAvg, _ := load.Avg()
 	load1m, load5m, load15m := 0.0, 0.0, 0.0
 	if loadAvg != nil {
@@ -344,7 +294,7 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		load15m = loadAvg.Load15
 	}
 
-	// 获取进程数量（活跃/总数）
+	// 进程数量
 	var processActive int
 	allPids, _ := process.Pids()
 	for _, pid := range allPids {
@@ -360,20 +310,14 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	processTotal := len(allPids)
 
-	// 读取每核 CPU 使用率
-	cpuMu.RLock()
-	cpuPerCore := make([]float64, len(lastCPUPerCore))
-	copy(cpuPerCore, lastCPUPerCore)
-	cpuMu.RUnlock()
-	// 构建状态数据
-	statusData := map[string]interface{}{
+	// 构建响应（只返回前端实际使用的字段）
+	Success(w, map[string]interface{}{
 		// CPU
 		"cpu_percent":  cpuPercent,
 		"cpu_cores":    cpuCores,
 		"cpu_threads":  cpuThreads,
-		"cpu_model":    cpuModel,
+		"cpu_model":    getCPUModel(),
 		"cpu_history":  historyCopy,
 		"cpu_per_core": cpuPerCore,
 
@@ -391,63 +335,21 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"swap_used_gb":  swapUsedGB,
 		"swap_total_gb": swapTotalGB,
 
-		// 磁盘（所有磁盘合计）
-		"disk_percent": func() float64 {
-			var total, used float64
-			for _, d := range disks {
-				total += d.TotalGB
-				used += d.UsedGB
-			}
-			if total > 0 {
-				return used / total * 100
-			}
-			return 0
-		}(),
-		"disk_used_gb": func() float64 {
-			var sum float64
-			for _, d := range disks {
-				sum += d.UsedGB
-			}
-			return sum
-		}(),
-		"disk_total_gb": func() float64 {
-			var sum float64
-			for _, d := range disks {
-				sum += d.TotalGB
-			}
-			return sum
-		}(),
-		"disk_free_gb": func() float64 {
-			var sum float64
-			for _, d := range disks {
-				sum += d.FreeGB
-			}
-			return sum
-		}(),
-		"disk_mount": func() string {
-			if primaryDisk != nil {
-				return primaryDisk.Mount
-			}
-			return "/"
-		}(),
-		"disk_filesystem": func() string {
-			if primaryDisk != nil {
-				return primaryDisk.Fstype
-			}
-			return ""
-		}(),
-		"disk_type": getDiskType(),
-		"disks":     disks,
+		// 磁盘汇总
+		"disk_percent":     diskPercent,
+		"disk_used_gb":     diskUsedGB,
+		"disk_total_gb":    diskTotalGB,
+		"disk_mount":       primaryMount,
+		"disk_type":        getDiskType(),
+		"disks":            disks,
 
-		// 负载
+		// 负载 & 进程
 		"load_avg":       []float64{load1m, load5m, load15m},
 		"process_active": processActive,
-		"process_total":  processTotal,
+		"process_total":  len(allPids),
 
 		// 运行时间
-		"uptime_str":       formatUptime(time.Since(startTime)),
 		"server_uptime_ms": time.Since(startTime).Milliseconds(),
-		"system_uptime":    formatUptime(getSystemUptime()),
 		"system_uptime_ms": getSystemUptime().Milliseconds(),
 
 		// 网络
@@ -459,8 +361,6 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		// 磁盘IO
 		"diskio_speed_write_kb": diskIOSpeedWriteKB,
 		"diskio_speed_read_kb":  diskIOSpeedReadKB,
-		"diskio_total_write_gb": diskIOTotalWriteGB,
-		"diskio_total_read_gb":  diskIOTotalReadGB,
 		"diskio_iops":           diskIOIOPS,
 		"diskio_latency_ms":     diskIOLatencyMs,
 
@@ -471,40 +371,23 @@ func (h *Handler) getSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"sites_enabled": countEnabledSites(h.ConfigManager.Sites.Sites),
 		"sites_count":   len(h.ConfigManager.Sites.Sites),
 		"ftp_running":   h.FTPServer != nil && h.ftpRunning,
-		"ftp_port":      h.ConfigManager.FTP.Port,
 		"ftp_users":     len(h.ConfigManager.FTP.Users),
 
-		// 保留原有字段
-		"memory_mb":     memoryMB,
-		"goroutines":    runtime.NumGoroutine(),
+		// 进程信息（/api/status 不含这些动态字段）
+		"memory_mb":  memoryMB,
+		"goroutines": runtime.NumGoroutine(),
+
+		// OS 信息
 		"os":            runtime.GOOS,
 		"arch":          runtime.GOARCH,
 		"os_name":       getOSName(),
 		"os_name_short": getOSShortName(),
 		"kernel":        getKernelVersion(),
 		"hostname":      getHostname(),
-	}
 
-	Success(w, statusData)
-}
-
-// formatUptime 格式化运行时长
-func formatUptime(d time.Duration) string {
-	totalSeconds := int(d.Seconds())
-	days := totalSeconds / 86400
-	hours := (totalSeconds % 86400) / 3600
-	minutes := (totalSeconds % 3600) / 60
-	seconds := totalSeconds % 60
-	if days > 0 {
-		return fmt.Sprintf("%d天 %d时 %d分 %d秒", days, hours, minutes, seconds)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%d时 %d分 %d秒", hours, minutes, seconds)
-	}
-	if minutes > 0 {
-		return fmt.Sprintf("%d分 %d秒", minutes, seconds)
-	}
-	return fmt.Sprintf("%d秒", seconds)
+		// CSRF token
+		"csrf_token": csrfToken,
+	})
 }
 
 // getSystemUptime 获取系统运行时长
@@ -757,9 +640,10 @@ func (h *Handler) freeMemory(w http.ResponseWriter, r *http.Request) {
 	// 1. 记录释放前的内存
 	beforeProcess := monitor.GetProcessMemory()
 	memInfoBefore, _ := mem.VirtualMemory()
-	var beforeSystemUsed float64
+	var beforeSystemUsed, beforeAvailable float64
 	if memInfoBefore != nil {
 		beforeSystemUsed = float64(memInfoBefore.Used)
+		beforeAvailable = float64(memInfoBefore.Available)
 	}
 
 	// 2. Go 运行时释放：GC + 归还 OS
@@ -773,9 +657,10 @@ func (h *Handler) freeMemory(w http.ResponseWriter, r *http.Request) {
 	// 4. 记录释放后的内存
 	afterProcess := monitor.GetProcessMemory()
 	memInfoAfter, _ := mem.VirtualMemory()
-	var afterSystemUsed float64
+	var afterSystemUsed, afterAvailable float64
 	if memInfoAfter != nil {
 		afterSystemUsed = float64(memInfoAfter.Used)
+		afterAvailable = float64(memInfoAfter.Available)
 	}
 
 	// 5. 计算释放量
@@ -798,6 +683,8 @@ func (h *Handler) freeMemory(w http.ResponseWriter, r *http.Request) {
 		"system_freed_mb":  systemFreedMB,
 		"before_mb":        float64(beforeProcess) / 1024 / 1024,
 		"after_mb":         float64(afterProcess) / 1024 / 1024,
+		"available_before_mb": beforeAvailable / 1024 / 1024,
+		"available_after_mb":  afterAvailable / 1024 / 1024,
 		"os_cache_cleared": osCacheCleared,
 		"message":          fmt.Sprintf("已释放 %.1f MB 内存（进程 %.1f MB + 系统 %.1f MB）", totalFreedMB, processFreedMB, systemFreedMB),
 	})
@@ -835,7 +722,7 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 		Items []string `json:"items"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		BadRequest(w, "Invalid JSON: "+err.Error())
+		BadRequest(w, "请求格式错误")
 		return
 	}
 
@@ -981,6 +868,72 @@ func (h *Handler) scanLinuxJunk() []junkItem {
 			items = append(items, junkItem{
 				Name: "pip_cache", Desc: "pip 缓存",
 				SizeMB: sizeMB, Count: count, Path: pipCache, Cleanable: true,
+			})
+		}
+	}
+
+	// Go 模块缓存
+	if home := getHomeDir(); home != "" {
+		goCache := filepath.Join(home, "go", "pkg", "mod", "cache")
+		if sizeMB, count := calcDirSize(goCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "go_cache", Desc: "Go 模块缓存",
+				SizeMB: sizeMB, Count: count, Path: goCache, Cleanable: true,
+			})
+		}
+	}
+
+	// systemd journal 日志
+	if sizeMB, count := calcDirSize("/var/log/journal"); count > 0 {
+		items = append(items, junkItem{
+			Name: "journal_logs", Desc: "Systemd Journal 日志",
+			SizeMB: sizeMB, Count: count, Path: "/var/log/journal", Cleanable: true,
+		})
+	}
+
+	// 旧日志文件（>7天）
+	if sizeMB, count := scanDirOlderThan("/var/log", 7*24*time.Hour); count > 0 {
+		items = append(items, junkItem{
+			Name: "old_logs", Desc: "旧日志文件（>7天）",
+			SizeMB: sizeMB, Count: count, Path: "/var/log", Cleanable: true,
+		})
+	}
+
+	// 用户缓存目录 (~/.cache)
+	if home := getHomeDir(); home != "" {
+		userCache := filepath.Join(home, ".cache")
+		if sizeMB, count := calcDirSize(userCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "user_cache", Desc: "用户缓存 (~/.cache)",
+				SizeMB: sizeMB, Count: count, Path: userCache, Cleanable: true,
+			})
+		}
+	}
+
+	// 浏览器缓存
+	if home := getHomeDir(); home != "" {
+		// Chrome
+		chromeCache := filepath.Join(home, ".config", "google-chrome", "Default", "Cache")
+		if sizeMB, count := calcDirSize(chromeCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "chrome_cache", Desc: "Chrome 浏览器缓存",
+				SizeMB: sizeMB, Count: count, Path: chromeCache, Cleanable: true,
+			})
+		}
+		// Firefox
+		ffDir := filepath.Join(home, ".cache", "mozilla", "firefox")
+		if sizeMB, count := calcDirSize(ffDir); count > 0 {
+			items = append(items, junkItem{
+				Name: "firefox_cache", Desc: "Firefox 浏览器缓存",
+				SizeMB: sizeMB, Count: count, Path: ffDir, Cleanable: true,
+			})
+		}
+		// Chromium
+		chromiumCache := filepath.Join(home, ".config", "chromium", "Default", "Cache")
+		if sizeMB, count := calcDirSize(chromiumCache); count > 0 {
+			items = append(items, junkItem{
+				Name: "chromium_cache", Desc: "Chromium 浏览器缓存",
+				SizeMB: sizeMB, Count: count, Path: chromiumCache, Cleanable: true,
 			})
 		}
 	}
@@ -1221,6 +1174,41 @@ func (h *Handler) cleanLinuxJunk(selected map[string]bool) float64 {
 		if home := getHomeDir(); home != "" {
 			pipCache := filepath.Join(home, ".cache", "pip")
 			cleaned += sudoCleanDirContents(pipCache)
+		}
+	}
+
+	if selected["go_cache"] {
+		if home := getHomeDir(); home != "" {
+			goCache := filepath.Join(home, "go", "pkg", "mod", "cache")
+			cleaned += sudoCleanDirContents(goCache)
+		}
+	}
+
+	if selected["journal_logs"] {
+		// vacuum journal 日志到最近 2 天
+		exec.Command("sudo", "journalctl", "--vacuum-time=2d").Run()
+	}
+
+	if selected["old_logs"] {
+		cleaned += sudoCleanDirOlderThan("/var/log", 7*24*time.Hour)
+	}
+
+	if selected["user_cache"] {
+		if home := getHomeDir(); home != "" {
+			cleaned += sudoCleanDirContents(filepath.Join(home, ".cache"))
+		}
+	}
+
+	// 浏览器缓存
+	if home := getHomeDir(); home != "" {
+		if selected["chrome_cache"] {
+			cleaned += sudoCleanDirContents(filepath.Join(home, ".config", "google-chrome", "Default", "Cache"))
+		}
+		if selected["firefox_cache"] {
+			cleaned += sudoCleanDirContents(filepath.Join(home, ".cache", "mozilla", "firefox"))
+		}
+		if selected["chromium_cache"] {
+			cleaned += sudoCleanDirContents(filepath.Join(home, ".config", "chromium", "Default", "Cache"))
 		}
 	}
 
@@ -1804,7 +1792,8 @@ func (h *Handler) syncSystemTime(w http.ResponseWriter, r *http.Request) {
 	ntpTime := time.Now().Add(time.Duration(offset) * time.Millisecond)
 	err := setSystemTime(ntpTime)
 	if err != nil {
-		result["message"] = fmt.Sprintf("NTP 时间获取成功（偏差 %dms），但修改系统时间失败: %v", offset, err)
+		logger.LogPanelRuntime(logger.LogLevelError, "[NTP] 修改系统时间失败: %v", err)
+		result["message"] = fmt.Sprintf("NTP 时间获取成功（偏差 %dms），但修改系统时间失败", offset)
 		Success(w, result)
 		return
 	}
@@ -1927,5 +1916,55 @@ func (h *Handler) checkUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 			return "已是最新版本"
 		}(),
+	})
+}
+
+// handleChangePassword 处理密码修改
+func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w, "Method not allowed")
+		return
+	}
+
+	session := h.getSession(r)
+	if session == nil {
+		Unauthorized(w, "未登录")
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "请求格式错误")
+		return
+	}
+
+	// 验证原密码
+	if !h.ConfigManager.ValidateAdmin(session.Username, req.OldPassword) {
+		Forbidden(w, "原密码错误")
+		return
+	}
+
+	// 密码强度检查
+	if len(req.NewPassword) < 8 {
+		BadRequest(w, "密码长度至少 8 位")
+		return
+	}
+
+	if err := h.ConfigManager.SetAdminPassword(req.NewPassword); err != nil {
+		InternalServerError(w, "更新密码失败")
+		return
+	}
+
+	// 清除强制改密标记
+	h.ConfigManager.Server.Admin.RequirePasswordChange = false
+	h.ConfigManager.Save()
+
+	Success(w, map[string]interface{}{
+		"success": true,
+		"message": "密码修改成功",
 	})
 }

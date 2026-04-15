@@ -69,7 +69,7 @@ func (h *Handler) enableAutoStart(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logger.LogPanelConfigChange(username, "开启开机自启", false)
-		InternalServerError(w, "开启开机自启失败: "+err.Error())
+		InternalServerErrorLog(w, err, "开启开机自启失败")
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *Handler) disableAutoStart(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logger.LogPanelConfigChange(username, "关闭开机自启", false)
-		InternalServerError(w, "关闭开机自启失败: "+err.Error())
+		InternalServerErrorLog(w, err, "关闭开机自启失败")
 		return
 	}
 
