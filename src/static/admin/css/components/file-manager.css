@@ -1064,30 +1064,22 @@
     line-height: 22px;
 }
 
-/* 编辑器拖拽调整大小手柄 */
-.editor-resize-handle {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    z-index: 10;
+/* 编辑器四边拖拽调整大小 */
+.editor-dialog {
+    /* 上 */
+    border-top: 3px solid transparent;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-bottom: 3px solid transparent;
 }
-.editor-resize-handle::before {
-    content: '';
-    position: absolute;
-    right: 3px;
-    bottom: 3px;
-    width: 8px;
-    height: 8px;
-    border-right: 2px solid var(--text-muted);
-    border-bottom: 2px solid var(--text-muted);
-    opacity: 0.5;
-}
-.editor-resize-handle:hover::before {
-    opacity: 1;
-}
+.editor-dialog[data-resize="n"] { border-top-color: transparent; cursor: n-resize; }
+.editor-dialog[data-resize="s"] { border-bottom-color: transparent; cursor: s-resize; }
+.editor-dialog[data-resize="w"] { border-left-color: transparent; cursor: w-resize; }
+.editor-dialog[data-resize="e"] { border-right-color: transparent; cursor: e-resize; }
+.editor-dialog[data-resize="nw"] { cursor: nw-resize; }
+.editor-dialog[data-resize="ne"] { cursor: ne-resize; }
+.editor-dialog[data-resize="sw"] { cursor: sw-resize; }
+.editor-dialog[data-resize="se"] { cursor: se-resize; }
 
 .editor-divider {
     width: 1px;

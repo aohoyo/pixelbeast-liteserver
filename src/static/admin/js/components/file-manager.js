@@ -2169,7 +2169,7 @@ export class FileManager {
                     <span class="editor-info">行数: ${lines.length}</span>
                     <span class="editor-info cursor-pos" id="editor-cursor">行 1, 列 1</span>
                 </div>
-                <div class="editor-resize-handle"></div>
+                </div>
             </div>
         `;
 
@@ -2255,13 +2255,13 @@ export class FileManager {
 
         // 最大化按钮
         let isMaximized = false;
-        const resizeHandle = overlay.querySelector('.editor-resize-handle');
+        this.makeResizable(overlay, dialog);
         maximizeBtn.addEventListener('click', () => {
             isMaximized = !isMaximized;
             if (isMaximized) {
                 dialog.dataset.prevStyle = dialog.style.cssText;
                 dialog.classList.add('maximized');
-                resizeHandle.style.display = 'none';
+
                 maximizeBtn.innerHTML = `
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <polyline points="4 14 10 14 10 20"/>
@@ -2272,7 +2272,7 @@ export class FileManager {
                 `;
             } else {
                 dialog.classList.remove('maximized');
-                resizeHandle.style.display = '';
+
                 if (dialog.dataset.prevStyle) {
                     dialog.style.cssText = dialog.dataset.prevStyle;
                     delete dialog.dataset.prevStyle;
@@ -2338,7 +2338,7 @@ export class FileManager {
         this.makeDraggable(overlay, dialog, overlay.querySelector('.editor-drag-area'));
 
         // 拖拽调整大小
-        this.makeResizable(overlay, dialog, overlay.querySelector('.editor-resize-handle'));
+        this.makeResizable(overlay, dialog);
 
         // 拦截浏览器快捷键，让 CodeMirror 处理
         overlay.addEventListener('keydown', (e) => {
@@ -2418,29 +2418,59 @@ export class FileManager {
     }
 
     /**
-     * 拖拽调整编辑器大小
+     * 编辑器四边拖拽调整大小
      */
-    makeResizable(overlay, dialog, handle) {
-        if (!handle) return;
-        let isResizing = false, startX, startY, startW, startH;
+    makeResizable(overlay, dialog) {
+        const EDGE = 6; // 触发区域像素
+        let isResizing = false, dir = '', startX, startY, startL, startT, startW, startH;
 
-        handle.addEventListener('mousedown', (e) => {
+        function getDir(e) {
+            const r = dialog.getBoundingClientRect();
+            const l = e.clientX - r.left, t = e.clientY - r.top;
+            const w = r.width, h = r.height;
+            const n = t < EDGE, s = h - t < EDGE, ew = l < EDGE, er = w - l < EDGE;
+            if (n && ew) return 'nw'; if (n && er) return 'ne';
+            if (s && ew) return 'sw'; if (s && er) return 'se';
+            if (n) return 'n'; if (s) return 's';
+            if (ew) return 'w'; if (er) return 'e';
+            return '';
+        }
+
+        dialog.addEventListener('mousemove', (e) => {
+            if (isResizing) return;
+            const d = getDir(e);
+            dialog.dataset.resize = d;
+        });
+        dialog.addEventListener('mouseleave', () => {
+            if (!isResizing) dialog.dataset.resize = '';
+        });
+
+        dialog.addEventListener('mousedown', (e) => {
+            dir = getDir(e);
+            if (!dir) return;
             isResizing = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            startW = dialog.offsetWidth;
-            startH = dialog.offsetHeight;
+            startX = e.clientX; startY = e.clientY;
+            startW = dialog.offsetWidth; startH = dialog.offsetHeight;
+            startL = dialog.offsetLeft; startT = dialog.offsetTop;
             e.preventDefault();
-            document.body.style.cursor = 'nwse-resize';
             document.body.style.userSelect = 'none';
         });
 
         document.addEventListener('mousemove', (e) => {
             if (!isResizing) return;
-            const newW = Math.max(400, startW + (e.clientX - startX));
-            const newH = Math.max(300, startH + (e.clientY - startY));
-            dialog.style.width = newW + 'px';
-            dialog.style.height = newH + 'px';
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            if (dir.includes('e')) dialog.style.width = Math.max(400, startW + dx) + 'px';
+            if (dir.includes('s')) dialog.style.height = Math.max(300, startH + dy) + 'px';
+            if (dir.includes('w')) {
+                const nw = Math.max(400, startW - dx);
+                dialog.style.width = nw + 'px';
+                dialog.style.left = (startL + startW - nw) + 'px';
+            }
+            if (dir.includes('n')) {
+                const nh = Math.max(300, startH - dy);
+                dialog.style.height = nh + 'px';
+                dialog.style.top = (startT + startH - nh) + 'px';
+            }
             dialog.style.maxWidth = 'none';
             dialog.style.maxHeight = 'none';
         });
@@ -2448,7 +2478,8 @@ export class FileManager {
         document.addEventListener('mouseup', () => {
             if (isResizing) {
                 isResizing = false;
-                document.body.style.cursor = '';
+                dir = '';
+                dialog.dataset.resize = '';
                 document.body.style.userSelect = '';
             }
         });

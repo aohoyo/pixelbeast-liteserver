@@ -27,8 +27,9 @@ tmp/
 .DS_Store
 .prettierrc
 
-# Claude Code 工作目录
-.claude/
+# Claude Code
+.claude/settings.local.json
+.claude/settings.json
 
 # 配置目录（含加密密钥、站点配置等敏感信息）
 config/
