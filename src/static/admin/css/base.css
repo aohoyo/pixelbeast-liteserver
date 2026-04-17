@@ -91,6 +91,8 @@
     --transition-fast: 150ms ease;
     --transition: 250ms ease;
     --transition-slow: 350ms ease;
+    /* 动画开关：0 = 关闭所有动画，1 = 开启（默认） */
+    --enable-animations: 1;
     
     /* 字体 */
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -146,4 +148,23 @@ body {
     text-align: center;
     padding: 40px;
     color: var(--text-light);
+}
+
+/* 1. 系统级：尊重用户系统设置 */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* 2. 应用级：通过 html.no-animations class 关闭所有动画（设置面板控制） */
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
 }

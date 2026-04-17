@@ -1,16 +1,14 @@
-# PixelBeast LiteServer - Air 热重载配置（自动生成）
-
 root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -buildvcs=false -o ./tmp/pixelbeast ./src/cmd"
+  cmd = "go build -o ./tmp/pixelbeast ./src/cmd"
   bin = "./tmp/pixelbeast"
-  args = ["-config", "config"]
+  args = []
   include_ext = ["go", "html", "css", "js"]
   exclude_ext = ["_test.go"]
   include_dir = ["src"]
-  exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs", "node_modules", "config", "ssl", "backups"]
+  exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs", "config", "ssl", "backups"]
   delay = 1000
   stop_on_root = true
   send_interrupt = true
@@ -18,17 +16,9 @@ tmp_dir = "tmp"
 
 [log]
   time = true
-  main_only = false
-
-[color]
-  main = "magenta"
-  watcher = "cyan"
-  build = "yellow"
-  runner = "green"
 
 [misc]
   clean_on_exit = true
 
 [screen]
   clear_on_rebuild = false
-  keep_scroll = true

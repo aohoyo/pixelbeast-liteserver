@@ -15,16 +15,70 @@
 
 ## 快速开始
 
+### 环境要求
+
+- [Go](https://go.dev/dl/) 1.21+
+
+> 国内用户建议设置代理加速（只需一次）：
+> ```bash
+> go env -w GOPROXY=https://goproxy.cn,direct
+> ```
+
+### 开发运行
+
 ```bash
-# 编译
-cd src/cmd && GOPROXY=https://goproxy.cn,direct go build -o ../../pixelbeast .
+# 直接运行（无需编译，适合开发调试）
+go run ./src/cmd
+```
+
+### 编译
+
+```bash
+# 普通编译
+go build -o pixelbeast ./src/cmd
+
+# 压缩编译（去掉调试信息，体积减小约 30%）
+go build -ldflags "-s -w" -o pixelbeast ./src/cmd
 
 # 运行
 ./pixelbeast
+```
 
-# 访问管理面板
-# http://localhost:9527/admin
-# 默认账号: admin / admin123（首次登录后请修改）
+### 热重载开发（Air）
+
+修改代码后自动重新编译运行，不用手动重启。
+
+```bash
+# 1. 安装 air（只需一次）
+go install github.com/air-verse/air@latest
+
+# 2. 在项目根目录运行
+air
+```
+
+首次运行会自动生成 `.air.toml` 配置文件。之后每次修改 `.go` 文件保存后会自动重新编译。
+
+### 交叉编译
+
+```bash
+# Windows
+cd src/cmd && GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast.exe .
+
+# Linux ARM（如树莓派、NAS）
+cd src/cmd && GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
+
+# macOS Intel
+cd src/cmd && GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast .
+
+# macOS Apple Silicon
+cd src/cmd && GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
+```
+
+### 访问管理面板
+
+```
+http://localhost:9527/admin
+默认账号: admin / admin123（首次登录后请修改）
 ```
 
 ## 目录结构

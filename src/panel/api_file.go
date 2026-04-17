@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"pixelbeast/src/config"
 	fileop "pixelbeast/src/file"
 	"pixelbeast/src/logger"
 	"runtime"
@@ -139,7 +140,7 @@ func (h *Handler) listDrives(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getQuickDirs 返回系统快捷目录
+// getQuickDirs 返回系统快捷目录（含用户固定目录）
 func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 	type quickDir struct {
 		Path      string `json:"path,omitempty"`
@@ -147,6 +148,8 @@ func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 		Icon      string `json:"icon,omitempty"`
 		Section   string `json:"section,omitempty"`
 		IsDefault bool   `json:"isDefault,omitempty"`
+		Pinned    bool   `json:"pinned,omitempty"`
+		Editable  bool   `json:"editable,omitempty"`
 	}
 
 	dirs := make([]quickDir, 0)
@@ -157,15 +160,36 @@ func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 		Path: ".", Name: "项目目录", Icon: "folder", IsDefault: true,
 	})
 
+	// 用户固定目录
+	quickCfg := h.ConfigManager.GetQuickDirs()
+	if len(quickCfg.Pinned) > 0 {
+		dirs = append(dirs, quickDir{Section: "固定目录"})
+		for _, item := range quickCfg.Pinned {
+			dirs = append(dirs, quickDir{
+				Path:     item.Path,
+				Name:     item.Name,
+				Icon:     item.Icon,
+				Pinned:   true,
+				
+			})
+		}
+	}
+
+	// 构建隐藏集合
+	hiddenSet := make(map[string]bool)
+	for _, p := range quickCfg.Hidden {
+		hiddenSet[p] = true
+	}
+
+	// 系统目录（过滤隐藏项）
 	if runtime.GOOS == "windows" {
 		// 此电脑
 		dirs = append(dirs, quickDir{Section: "系统目录"})
-		dirs = append(dirs, quickDir{Path: "此电脑", Name: "此电脑", Icon: "computer"})
+		dirs = append(dirs, quickDir{Path: "此电脑", Name: "此电脑", Icon: "computer", Editable: true})
 
 		// 用户目录
 		homeDir := getHomeDir()
 		if homeDir != "" {
-			dirs = append(dirs, quickDir{Section: "用户目录"})
 			userDirs := []struct{ sub, name, icon string }{
 				{"Desktop", "桌面", "desktop"},
 				{"Documents", "文档", "file-text"},
@@ -174,10 +198,19 @@ func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 				{"Music", "音乐", "music"},
 				{"Videos", "视频", "video"},
 			}
+			addedSection := false
 			for _, ud := range userDirs {
 				fullPath := filepath.Join(homeDir, ud.sub)
+				slashPath := filepath.ToSlash(fullPath)
+				if hiddenSet[slashPath] {
+					continue
+				}
 				if _, err := os.Stat(fullPath); err == nil {
-					dirs = append(dirs, quickDir{Path: filepath.ToSlash(fullPath), Name: ud.name, Icon: ud.icon})
+					if !addedSection {
+						dirs = append(dirs, quickDir{Section: "用户目录"})
+						addedSection = true
+					}
+					dirs = append(dirs, quickDir{Path: slashPath, Name: ud.name, Icon: ud.icon, Editable: true})
 				}
 			}
 		}
@@ -193,32 +226,173 @@ func (h *Handler) getQuickDirs(w http.ResponseWriter, r *http.Request) {
 		if len(drives) > 0 {
 			dirs = append(dirs, quickDir{Section: "磁盘"})
 			for _, d := range drives {
+				if hiddenSet[d] {
+					continue
+				}
 				name := strings.ToUpper(string(d[0])) + " 盘"
-				dirs = append(dirs, quickDir{Path: d, Name: name, Icon: "hard-drive"})
+				dirs = append(dirs, quickDir{Path: d, Name: name, Icon: "hard-drive", Editable: true})
 			}
 		}
 	} else if runtime.GOOS == "darwin" {
+		macDirs := []quickDir{
+			{Path: "/", Name: "根目录", Icon: "server"},
+			{Path: "/Users", Name: "Users", Icon: "users"},
+			{Path: "/Applications", Name: "Applications", Icon: "package"},
+			{Path: "/Library", Name: "Library", Icon: "folder"},
+			{Path: "/tmp", Name: "tmp", Icon: "trash"},
+		}
 		dirs = append(dirs, quickDir{Section: "系统目录"})
-		dirs = append(dirs, quickDir{Path: "/", Name: "根目录", Icon: "server"})
-		dirs = append(dirs, quickDir{Path: "/Users", Name: "Users", Icon: "users"})
-		dirs = append(dirs, quickDir{Path: "/Applications", Name: "Applications", Icon: "package"})
-		dirs = append(dirs, quickDir{Path: "/Library", Name: "Library", Icon: "folder"})
-		dirs = append(dirs, quickDir{Path: "/tmp", Name: "tmp", Icon: "trash"})
+		for _, d := range macDirs {
+			if !hiddenSet[d.Path] {
+				d.Editable = true
+				dirs = append(dirs, d)
+			}
+		}
 	} else {
 		// Linux
+		linuxDirs := []quickDir{
+			{Path: "/", Name: "根目录", Icon: "server"},
+			{Path: "/home", Name: "home", Icon: "home"},
+			{Path: "/var", Name: "var", Icon: "database"},
+			{Path: "/etc", Name: "etc", Icon: "settings"},
+			{Path: "/tmp", Name: "tmp", Icon: "trash"},
+			{Path: "/usr", Name: "usr", Icon: "package"},
+		}
 		dirs = append(dirs, quickDir{Section: "系统目录"})
-		dirs = append(dirs, quickDir{Path: "/", Name: "根目录", Icon: "server"})
-		dirs = append(dirs, quickDir{Path: "/home", Name: "home", Icon: "home"})
-		dirs = append(dirs, quickDir{Path: "/var", Name: "var", Icon: "database"})
-		dirs = append(dirs, quickDir{Path: "/etc", Name: "etc", Icon: "settings"})
-		dirs = append(dirs, quickDir{Path: "/tmp", Name: "tmp", Icon: "trash"})
-		dirs = append(dirs, quickDir{Path: "/usr", Name: "usr", Icon: "package"})
+		for _, d := range linuxDirs {
+			if !hiddenSet[d.Path] {
+				d.Editable = true
+				dirs = append(dirs, d)
+			}
+		}
 	}
 
 	Success(w, map[string]interface{}{
 		"dirs":        dirs,
 		"program_dir": filepath.Clean(filepath.ToSlash(programDir)),
 	})
+}
+
+// addQuickDir 添加固定目录
+func (h *Handler) addQuickDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+		Icon string `json:"icon"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if req.Path == "" {
+		BadRequest(w, "路径不能为空")
+		return
+	}
+	if req.Name == "" {
+		// 默认用目录名
+		req.Name = filepath.Base(req.Path)
+	}
+	if req.Icon == "" {
+		req.Icon = "folder"
+	}
+	// 验证路径存在
+	absPath := resolvePath(req.Path)
+	if _, err := os.Stat(absPath); err != nil {
+		BadRequest(w, "路径不存在")
+		return
+	}
+
+	// 检查重复
+	if h.ConfigManager.IsQuickDirPinned(req.Path) {
+		BadRequest(w, "该目录已固定")
+		return
+	}
+
+	if err := h.ConfigManager.AddQuickDir(config.QuickDirItem{
+		Path: req.Path,
+		Name: req.Name,
+		Icon: req.Icon,
+	}); err != nil {
+		InternalServerErrorLog(w, err)
+		return
+	}
+
+	SuccessMessage(w, "已固定到快速访问")
+}
+
+// removeQuickDir 删除快捷目录（固定目录或隐藏系统目录）
+func (h *Handler) removeQuickDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req struct {
+		Path   string `json:"path"`
+		Pinned bool   `json:"pinned"` // true=固定目录，false=系统目录
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if req.Path == "" {
+		BadRequest(w, "路径不能为空")
+		return
+	}
+
+	if req.Pinned {
+		// 从固定列表中删除
+		if !h.ConfigManager.RemoveQuickDir(req.Path) {
+			BadRequest(w, "固定目录不存在")
+			return
+		}
+	} else {
+		// 添加到隐藏列表
+		if err := h.ConfigManager.HideSystemDir(req.Path); err != nil {
+			InternalServerErrorLog(w, err)
+			return
+		}
+	}
+
+	SuccessMessage(w, "已移除")
+}
+
+// updateQuickDir 编辑快捷目录（改名/改图标）
+func (h *Handler) updateQuickDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req struct {
+		Path    string `json:"path"`
+		Name    string `json:"name"`
+		Icon    string `json:"icon"`
+		Pinned  bool   `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "Invalid JSON")
+		return
+	}
+	if req.Path == "" {
+		BadRequest(w, "路径不能为空")
+		return
+	}
+
+	if req.Pinned {
+		// 更新固定目录
+		if !h.ConfigManager.UpdateQuickDir(req.Path, req.Name, req.Icon) {
+			BadRequest(w, "固定目录不存在")
+			return
+		}
+	} else {
+		BadRequest(w, "系统目录不支持编辑")
+		return
+	}
+
+	SuccessMessage(w, "已更新")
 }
 
 func (h *Handler) uploadChunk(w http.ResponseWriter, r *http.Request) {
@@ -394,13 +568,15 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	targetDir := resolvePath(req.Path)
 	absPath := filepath.Join(targetDir, req.Name)
 
-	if err := os.RemoveAll(absPath); err != nil {
+	// 移入回收站而非永久删除
+	trashID, err := moveToTrash(absPath)
+	if err != nil {
 		InternalServerErrorLog(w, err)
 		return
 	}
 	username := h.getSessionUsername(r)
-	logger.LogPanelFileOp(username, "删除", absPath, true)
-	SuccessMessage(w, "删除成功")
+	logger.LogPanelFileOp(username, "删除(回收站)", absPath, true)
+	SuccessWithData(w, map[string]interface{}{"trash_id": trashID}, "已移入回收站")
 }
 
 func (h *Handler) mkdir(w http.ResponseWriter, r *http.Request) {

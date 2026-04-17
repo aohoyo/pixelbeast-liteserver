@@ -268,9 +268,9 @@ func (l *Logger) write(category LogCategory, logType string, level LogLevel, for
 	case LogLevelDebug:
 		levelStr = "[DEBUG] "
 	case LogLevelWarn:
-		levelStr = "[WARN] "
+		levelStr = "\033[33m[WARN]\033[0m "
 	case LogLevelError:
-		levelStr = "[ERROR] "
+		levelStr = "\033[31m[ERROR]\033[0m "
 	case LogLevelAuth:
 		levelStr = "[AUTH] "
 	}

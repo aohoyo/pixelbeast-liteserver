@@ -22,9 +22,10 @@ import (
 )
 
 var (
-	version   = "3.1.15"
+	version   = "0.1.0-dev"
 	buildTime = "unknown"
 )
+
 
 func main() {
 	configDir := flag.String("config", "config", "配置目录路径")
@@ -32,7 +33,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		logger.LogPanelSystem(logger.LogLevelInfo, "v%s (build: %s)", version, buildTime)
+			logger.LogPanelSystem(logger.LogLevelInfo, "v%s (build: %s)", version, buildTime)
 		return
 	}
 
@@ -59,7 +60,7 @@ func main() {
 		logger.LogPanelSystem(logger.LogLevelWarn, "警告: 初始化日志失败: %v", err)
 	}
 
-	logger.LogPanelSystem(logger.LogLevelInfo, "🪶 %s v%s 启动中...", serverName, version)
+	logger.LogPanelSystem(logger.LogLevelInfo, "🦖 %s v%s 启动中...", serverName, version)
 
 	// SSL 管理器（独立）
 	sslMgr := ssl.NewSSLManager("./ssl")
@@ -117,7 +118,6 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 	}
 	go func() {
-		logger.LogPanelSystem(logger.LogLevelInfo, "管理面板启动在端口 %d", adminPort)
 		if err := adminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.LogPanelSystem(logger.LogLevelError, "[Admin] 服务错误: %v", err)
 		}
@@ -139,6 +139,7 @@ func main() {
 	}
 
 	logger.LogPanelSystem(logger.LogLevelInfo, "%s 启动完成", serverName)
+	fmt.Printf("\n  \033[32;1m  🦖 管理面板: http://localhost:%d/admin\033[0m\n\n", adminPort)
 
 	// 等待退出信号
 	sigChan := make(chan os.Signal, 1)

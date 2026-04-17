@@ -219,7 +219,7 @@ export class BaseTab {
 
                 if (toggleBtn) {
                     toggleBtn.classList.toggle('running', running);
-                    toggleBtn.classList.toggle('stopped', running);
+                    toggleBtn.classList.toggle('stopped', !running);
                     const textSpan = toggleBtn.querySelector('.btn-text');
                     if (textSpan) {
                         textSpan.textContent = running ? '停止' : '启动';

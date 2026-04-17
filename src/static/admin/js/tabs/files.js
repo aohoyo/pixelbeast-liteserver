@@ -29,6 +29,10 @@ const ICONS = {
     music: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
     video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
     share: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 22"/><path d="M17 7l-5-5-5 5"/><circle cx="12" cy="12" r="3"/></svg>`,
+    edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    'close-x': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    'restore': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
 };
 
 class FilesTab extends BaseTab {
@@ -36,6 +40,7 @@ class FilesTab extends BaseTab {
         super(deps, 'files');
         this.fileManager = null;
         this.programDir = null;
+        this._trashOverlay = null;
     }
 
     onInit() {
@@ -54,6 +59,9 @@ class FilesTab extends BaseTab {
 
         // 绑定分享管理按钮
         this.bindShareButton();
+
+        // 绑定回收站按钮
+        this.bindTrashButton();
     }
 
     /**
@@ -77,7 +85,7 @@ class FilesTab extends BaseTab {
     }
 
     /**
-     * 渲染快捷目录
+     * 渲染快捷目录（支持固定/编辑/删除）
      */
     renderQuickNav(dirs) {
         const container = this.$('#fm-quick-nav');
@@ -86,17 +94,13 @@ class FilesTab extends BaseTab {
         let html = '';
         for (const item of dirs) {
             if (item.section) {
-                html += `<div class="fm-quick-divider"></div>`;
-                html += `<div class="fm-quick-section-title">${escapeHtml(item.section)}</div>`;
+                if (html) html += `<div class="fm-quick-divider"></div>`;
             } else {
                 const icon = ICONS[item.icon] || ICONS.folder;
-                let titlePath = item.path;
-                if (item.isDefault) {
-                    titlePath = this.programDir || item.path;
-                }
+                const pinned = item.pinned ? ' data-pinned="1"' : '';
 
                 html += `
-                    <a class="fm-quick-item" data-path="${escapeHtml(item.path)}" title="${escapeHtml(titlePath)}">
+                    <a class="fm-quick-item" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" data-icon="${escapeHtml(item.icon || 'folder')}"${pinned}>
                         ${icon}
                         <span class="fm-quick-name">${escapeHtml(item.name)}</span>
                     </a>
@@ -110,7 +114,11 @@ class FilesTab extends BaseTab {
 
     bindQuickNavEvents() {
         this.$$('.fm-quick-item').forEach(item => {
-            item.addEventListener('click', () => {
+            // 点击导航
+            item.addEventListener('click', (e) => {
+                // 如果点击的是操作按钮，不导航
+                if (e.target.closest('.fm-quick-action-btn')) return;
+
                 this.$$('.fm-quick-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
 
@@ -119,12 +127,112 @@ class FilesTab extends BaseTab {
                     this.fileManager.navigate(path);
                 }
             });
+
+            // 右键菜单（编辑/移除通过右键操作）
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.showQuickDirMenu(item, e);
+            });
         });
+    }
+
+    /**
+     * 快捷目录右键菜单
+     */
+    showQuickDirMenu(item, e) {
+        const path = item.dataset.path;
+        const name = item.dataset.name;
+        const isPinned = item.dataset.pinned === '1';
+        const isDefault = path === '.' || path === './';
+
+        document.querySelectorAll('.fm-context-menu').forEach(m => m.remove());
+
+        const menu = document.createElement('div');
+        menu.className = 'fm-context-menu';
+        menu.style.left = e.clientX + 'px';
+        menu.style.top = e.clientY + 'px';
+
+        let items = '';
+        if (isDefault) {
+            items = '<div class="fm-menu-item disabled">项目目录（始终显示）</div>';
+        } else if (isPinned) {
+            items = '<div class="fm-menu-item" data-action="unpin">取消固定</div>';
+        } else {
+            items = '<div class="fm-menu-item" data-action="hide">隐藏此目录</div>';
+        }
+        menu.innerHTML = items;
+        document.body.appendChild(menu);
+
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) menu.style.left = (e.clientX - rect.width) + 'px';
+        if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + 'px';
+
+        menu.addEventListener('click', async (ev) => {
+            const action = ev.target.dataset.action;
+            menu.remove();
+            if (!action || ev.target.classList.contains('disabled')) return;
+            await this.removeQuickDir(item);
+        });
+
+        const closeMenu = () => { menu.remove(); document.removeEventListener('click', closeMenu); };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    }
+
+    /**
+     * 移除快捷目录（取消固定或隐藏）
+     */
+    async removeQuickDir(item) {
+        const path = item.dataset.path;
+        const name = item.dataset.name;
+        const isPinned = item.dataset.pinned === '1';
+
+        const msg = isPinned
+            ? `确定要取消固定"${name}"吗？`
+            : `确定要隐藏"${name}"吗？可在设置中恢复。`;
+
+        const confirmed = await this.fileManager.showConfirmDialog(
+            isPinned ? '取消固定' : '隐藏目录',
+            msg
+        );
+        if (!confirmed) return;
+
+        try {
+            await this.api.post('/api/files/quick-dirs/remove', {
+                path,
+                pinned: isPinned
+            });
+            this.toast?.success?.(isPinned ? '已取消固定' : '已隐藏');
+            await this.loadQuickDirs();
+        } catch {
+            this.toast?.error?.('操作失败');
+        }
+    }
+
+        /**
+     * 固定目录到快速访问（由 file-manager 右键菜单调用）
+     */
+    async pinToQuickAccess(path) {
+        const name = path.split('/').pop() || path;
+        try {
+            await this.api.post('/api/files/quick-dirs/add', {
+                path,
+                name,
+                icon: 'folder'
+            });
+            this.toast?.success?.('已固定到快速访问');
+            await this.loadQuickDirs();
+        } catch (e) {
+            const msg = e?.message || '固定失败';
+            this.toast?.error?.(msg);
+        }
     }
 
     initFileManager() {
         const container = this.$('#file-manager-container');
         if (!container) return;
+
+        // 保存引用供右键菜单回调
+        const filesTab = this;
 
         this.fileManager = new FileManager({
             container: container,
@@ -140,6 +248,9 @@ class FilesTab extends BaseTab {
                 if (programDir && !this.programDir) {
                     this.programDir = programDir;
                 }
+            },
+            onPinFolder: (path) => {
+                filesTab.pinToQuickAccess(path);
             }
         });
 
@@ -162,6 +273,215 @@ class FilesTab extends BaseTab {
         this.$$('.fm-quick-item').forEach(item => {
             const itemPath = item.dataset.path;
             item.classList.toggle('active', itemPath === path);
+        });
+    }
+
+    // ==================== 回收站 ====================
+
+    bindTrashButton() {
+        const btn = this.$('#fm-trash-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => this.openTrashDialog());
+    }
+
+    /**
+     * 打开回收站弹窗
+     */
+    async openTrashDialog() {
+        if (this._trashOverlay) {
+            this._trashOverlay.remove();
+            this._trashOverlay = null;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'fm-share-overlay';
+        overlay.innerHTML = `
+            <div class="fm-trash-dialog">
+                <div class="fm-share-dialog-header">
+                    <div class="fm-share-dialog-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:var(--primary)">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                        回收站
+                    </div>
+                    <button class="fm-share-dialog-close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="fm-trash-toolbar">
+                    <button class="fm-trash-restore-all">
+                        ${ICONS.restore}
+                        <span>全部恢复</span>
+                    </button>
+                    <button class="fm-trash-clear fm-btn-danger-text">
+                        ${ICONS.trash}
+                        <span>清空回收站</span>
+                    </button>
+                </div>
+                <div class="fm-trash-body">
+                    <table class="fm-trash-table">
+                        <colgroup>
+                            <col class="col-name">
+                            <col class="col-path">
+                            <col class="col-size">
+                            <col class="col-date">
+                            <col class="col-actions">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>文件名</th>
+                                <th>原路径</th>
+                                <th>大小</th>
+                                <th>删除时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fm-trash-list">
+                            <tr><td colspan="5" class="fm-trash-empty">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        this._trashOverlay = overlay;
+
+        const close = () => { overlay.remove(); this._trashOverlay = null; };
+        overlay.querySelector('.fm-share-dialog-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        // 全部恢复
+        overlay.querySelector('.fm-trash-restore-all').addEventListener('click', async () => {
+            const tbody = overlay.querySelector('#fm-trash-list');
+            const rows = tbody.querySelectorAll('.fm-trash-row');
+            if (rows.length === 0) return;
+            const confirmed = await this.fileManager.showConfirmDialog('全部恢复', '确定要恢复全部文件吗？');
+            if (!confirmed) return;
+
+            let success = 0;
+            for (const row of rows) {
+                const id = row.dataset.id;
+                if (!id) continue;
+                try {
+                    await this.api.post('/api/files/trash/restore', { id });
+                    success++;
+                } catch { /* ignore */ }
+            }
+            this.toast?.success?.(`已恢复 ${success} 个项目`);
+            this.loadTrashList(overlay);
+            this.fileManager?.loadFilesForTab();
+        });
+
+        // 清空回收站
+        overlay.querySelector('.fm-trash-clear').addEventListener('click', async () => {
+            const confirmed = await this.fileManager.showConfirmDialog('清空回收站', '确定要永久清空回收站吗？此操作不可恢复。');
+            if (!confirmed) return;
+            try {
+                await this.api.post('/api/files/trash/clear', {});
+                this.toast?.success?.('回收站已清空');
+                this.loadTrashList(overlay);
+            } catch {
+                this.toast?.error?.('清空失败');
+            }
+        });
+
+        // 加载数据
+        this.loadTrashList(overlay);
+    }
+
+    async loadTrashList(overlay) {
+        const tbody = overlay.querySelector('#fm-trash-list');
+        if (!tbody) return;
+
+        try {
+            const result = await this.api.getJSON('/api/files/trash/list');
+            this.renderTrashList(result?.items || [], overlay);
+        } catch {
+            tbody.innerHTML = `<tr><td colspan="5" class="fm-trash-empty">加载失败</td></tr>`;
+        }
+    }
+
+    formatSize(bytes) {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
+    formatDate(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    renderTrashList(items, overlay) {
+        const tbody = overlay.querySelector('#fm-trash-list');
+        if (!tbody) return;
+
+        const toolbar = overlay.querySelector('.fm-trash-toolbar');
+
+        if (!items.length) {
+            tbody.innerHTML = `<tr><td colspan="5" class="fm-trash-empty">回收站为空</td></tr>`;
+            if (toolbar) toolbar.style.display = 'none';
+            return;
+        }
+
+        if (toolbar) toolbar.style.display = '';
+
+        tbody.innerHTML = items.map(item => `
+            <tr class="fm-trash-row" data-id="${escapeHtml(item.id)}">
+                <td>
+                    <div class="fm-trash-name-wrap">
+                        <span class="fm-trash-file-icon">${item.is_dir ? '📁' : '📄'}</span>
+                        <span class="fm-trash-file-name">${escapeHtml(item.original_name)}</span>
+                    </div>
+                </td>
+                <td class="fm-trash-col-path" title="${escapeHtml(item.original_path)}">${escapeHtml(item.original_path)}</td>
+                <td class="fm-trash-col-size">${this.formatSize(item.size)}</td>
+                <td class="fm-trash-col-date">${this.formatDate(item.deleted_at)}</td>
+                <td>
+                    <div class="fm-trash-actions-wrap">
+                        <button class="fm-trash-action restore" title="恢复">${ICONS.restore}</button>
+                        <button class="fm-trash-action delete" title="永久删除">${ICONS.trash}</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // 恢复
+        tbody.querySelectorAll('.fm-trash-action.restore').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.closest('.fm-trash-row')?.dataset.id;
+                if (!id) return;
+                try {
+                    await this.api.post('/api/files/trash/restore', { id });
+                    this.toast?.success?.('已恢复');
+                    this.loadTrashList(overlay);
+                    this.fileManager?.loadFilesForTab();
+                } catch {
+                    this.toast?.error?.('恢复失败');
+                }
+            });
+        });
+
+        // 永久删除
+        tbody.querySelectorAll('.fm-trash-action.delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.closest('.fm-trash-row')?.dataset.id;
+                if (!id) return;
+                const confirmed = await this.fileManager.showConfirmDialog('永久删除', '此操作不可恢复，确定要永久删除吗？');
+                if (!confirmed) return;
+                try {
+                    await this.api.post('/api/files/trash/delete', { id });
+                    this.toast?.success?.('已永久删除');
+                    this.loadTrashList(overlay);
+                } catch {
+                    this.toast?.error?.('删除失败');
+                }
+            });
         });
     }
 
@@ -219,14 +539,6 @@ class FilesTab extends BaseTab {
             const listEl = overlay.querySelector('#fm-share-list-dialog');
             if (listEl) listEl.innerHTML = `<div class="fm-share-empty">加载失败</div>`;
         }
-    }
-
-    formatSize(bytes) {
-        if (!bytes) return '0 B';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
     }
 
     formatExpires(expiresAt) {

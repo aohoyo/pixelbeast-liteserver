@@ -77,6 +77,17 @@ func (h *Handler) setupRouter() http.Handler {
 	authMux.HandleFunc("/api/files/share/list", h.listShareLinks)
 	authMux.HandleFunc("/api/files/share/delete", h.deleteShareLink)
 
+	// 回收站
+	authMux.HandleFunc("/api/files/trash/list", h.listTrash)
+	authMux.HandleFunc("/api/files/trash/restore", h.restoreTrash)
+	authMux.HandleFunc("/api/files/trash/delete", h.permanentDeleteTrash)
+	authMux.HandleFunc("/api/files/trash/clear", h.clearTrash)
+
+	// 快速访问管理
+	authMux.HandleFunc("/api/files/quick-dirs/add", h.addQuickDir)
+	authMux.HandleFunc("/api/files/quick-dirs/remove", h.removeQuickDir)
+	authMux.HandleFunc("/api/files/quick-dirs/update", h.updateQuickDir)
+
 	// 日志管理
 	authMux.HandleFunc("/api/logs", h.handleLogsList)
 	authMux.HandleFunc("/api/logs/read", h.handleLogsRead)

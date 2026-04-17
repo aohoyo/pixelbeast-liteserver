@@ -8,6 +8,7 @@ import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './vs
 import { escapeHtml } from '../core/utils.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
+import { createEditor, getContent, setContent, destroyEditor, focusEditor, openSearch } from './cm-editor.js';
 
 // CSRF token 缓存
 let _csrfToken = null;
@@ -56,6 +57,7 @@ const ICONS = {
     compress: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>`,
     extract: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><polyline points="8 12 12 16 16 12"/></svg>`,
     chmod: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1V2H8v5h1v3.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>`,
     copyPath: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
     info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
     upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
@@ -1368,7 +1370,7 @@ export class FileManager {
         const items = Array.from(tab.selectedItems);
         
         // 使用自定义确认对话框
-        this.showConfirmDialog('删除确认', `确定要删除选中的 ${count} 个项目吗？此操作不可恢复。`)
+        this.showConfirmDialog('删除确认', `确定要删除选中的 ${count} 个项目吗？文件将移入回收站，可在回收站中恢复。`)
             .then(async (confirmed) => {
                 if (!confirmed) return;
                 
@@ -1713,6 +1715,19 @@ export class FileManager {
                 action: 'share',
                 onClick: () => this.shareFile(selectedItems[0])
             });
+
+            // 固定到快速访问（仅文件夹）
+            if (isSingleFile && isDir && this.options.onPinFolder) {
+                menuItems.push({
+                    label: '固定到快速访问',
+                    icon: ICONS.pin || ICONS.folder,
+                    action: 'pin',
+                    onClick: () => {
+                        const fullPath = this.joinPath(tab.path, selectedItems[0]);
+                        this.options.onPinFolder(fullPath);
+                    }
+                });
+            }
 
             menuItems.push({ divider: true });
 
@@ -2096,43 +2111,57 @@ export class FileManager {
                         </div>
                     </div>
                     <div class="editor-toolbar">
-                        <button class="editor-tool-btn" id="editor-format" title="格式化 (Ctrl+Shift+F)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                <line x1="21" y1="10" x2="3" y2="10"/>
-                                <line x1="21" y1="6" x2="3" y2="6"/>
-                                <line x1="21" y1="14" x2="3" y2="14"/>
-                                <line x1="21" y1="18" x2="3" y2="18"/>
-                            </svg>
-                        </button>
-                        <button class="editor-tool-btn primary" id="editor-save" title="保存 (Ctrl+S)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                                <polyline points="17 21 17 13 7 13 7 21"/>
-                                <polyline points="7 3 7 8 15 8"/>
-                            </svg>
-                        </button>
+                        <div class="editor-toolbar-group">
+                            <button class="editor-tool-btn" id="editor-search" title="搜索替换">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <circle cx="11" cy="11" r="8"/>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                            </button>
+                            <button class="editor-tool-btn" id="editor-format" title="格式化文档 (Shift+Alt+F)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <line x1="21" y1="10" x2="3" y2="10"/>
+                                    <line x1="21" y1="6" x2="3" y2="6"/>
+                                    <line x1="21" y1="14" x2="3" y2="14"/>
+                                    <line x1="21" y1="18" x2="3" y2="18"/>
+                                </svg>
+                            </button>
+                            <button class="editor-tool-btn" id="editor-help" title="快捷键帮助">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="editor-divider"></div>
-                        <button class="editor-tool-btn" id="editor-maximize" title="最大化">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                <polyline points="15 3 21 3 21 9"/>
-                                <polyline points="9 21 3 21 3 15"/>
-                                <line x1="21" y1="3" x2="14" y2="10"/>
-                                <line x1="3" y1="21" x2="10" y2="14"/>
-                            </svg>
-                        </button>
-                        <button class="editor-tool-btn close" id="editor-close" title="关闭">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                            </svg>
-                        </button>
+                        <div class="editor-toolbar-group">
+                            <button class="editor-tool-btn primary" id="editor-save" title="保存 (Ctrl+S)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                    <polyline points="17 21 17 13 7 13 7 21"/>
+                                    <polyline points="7 3 7 8 15 8"/>
+                                </svg>
+                            </button>
+                            <button class="editor-tool-btn" id="editor-maximize" title="最大化">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <polyline points="15 3 21 3 21 9"/>
+                                    <polyline points="9 21 3 21 3 15"/>
+                                    <line x1="21" y1="3" x2="14" y2="10"/>
+                                    <line x1="3" y1="21" x2="10" y2="14"/>
+                                </svg>
+                            </button>
+                            <button class="editor-tool-btn close" id="editor-close" title="关闭 (Esc)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <line x1="18" y1="6" x2="6" y2="18"/>
+                                    <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="editor-body">
-                    <div class="editor-container">
-                        <div class="editor-gutter" id="editor-gutter"></div>
-                        <textarea class="editor-textarea" id="editor-content" spellcheck="false" wrap="off"></textarea>
-                    </div>
+                    <div class="editor-container" id="editor-cm-container"></div>
                 </div>
                 <div class="editor-footer">
                     <span class="editor-info">大小: ${this.formatSize(fileSize)}</span>
@@ -2140,6 +2169,7 @@ export class FileManager {
                     <span class="editor-info">行数: ${lines.length}</span>
                     <span class="editor-info cursor-pos" id="editor-cursor">行 1, 列 1</span>
                 </div>
+                <div class="editor-resize-handle"></div>
             </div>
         `;
 
@@ -2147,98 +2177,91 @@ export class FileManager {
 
         // 缓存元素
         const dialog = overlay.querySelector('.editor-dialog');
-        const textarea = overlay.querySelector('#editor-content');
-        const gutter = overlay.querySelector('#editor-gutter');
+        const cmContainer = overlay.querySelector('#editor-cm-container');
         const cursorPos = overlay.querySelector('#editor-cursor');
         const saveBtn = overlay.querySelector('#editor-save');
         const closeBtn = overlay.querySelector('#editor-close');
         const maximizeBtn = overlay.querySelector('#editor-maximize');
+        const searchBtn = overlay.querySelector('#editor-search');
+        const helpBtn = overlay.querySelector('#editor-help');
         const formatBtn = overlay.querySelector('#editor-format');
 
-        // 使用 value 设置内容
-        textarea.value = content;
+        // 创建 CodeMirror 编辑器
+        let editorView = null;
+        let currentContent = content;
+        let hasChanges = false;
 
-        // 更新行号
-        const updateLineNumbers = () => {
-            const lineCount = textarea.value.split('\n').length;
-            let html = '';
-            for (let i = 1; i <= lineCount; i++) {
-                html += `<div class="editor-line-num">${i}</div>`;
-            }
-            gutter.innerHTML = html;
-        };
-        
-        // 同步滚动
-        const syncScroll = () => {
-            gutter.scrollTop = textarea.scrollTop;
-        };
-        
-        // 更新光标位置
-        const updateCursorPosition = () => {
-            const value = textarea.value;
-            const selectionStart = textarea.selectionStart;
-            const lines = value.substring(0, selectionStart).split('\n');
-            const line = lines.length;
-            const col = lines[lines.length - 1].length + 1;
-            cursorPos.textContent = `行 ${line}, 列 ${col}`;
+        const initEditor = async () => {
+            editorView = createEditor(cmContainer, {
+                content: content,
+                filename: filename,
+                dark: true,
+                onChange: (newContent) => {
+                    currentContent = newContent;
+                    hasChanges = true;
+                    // 更新行数
+                    const lineCount = newContent.split('\n').length;
+                    const size = new Blob([newContent]).size;
+                    cursorPos.textContent = `行 ${lineCount} | ${formatFileSize(size)}`;
+                },
+                onSave: () => {
+                    this.saveEditorContent(filename, currentContent, overlay, tab);
+                },
+            });
+            focusEditor(editorView);
         };
 
-        // 初始化行号
-        updateLineNumbers();
-        
-        // 事件绑定
-        textarea.addEventListener('input', updateLineNumbers);
-        textarea.addEventListener('scroll', syncScroll);
-        textarea.addEventListener('click', updateCursorPosition);
-        textarea.addEventListener('keyup', updateCursorPosition);
-        
-        // Tab 键支持
-        textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab') {
-                e.preventDefault();
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                textarea.value = textarea.value.substring(0, start) + '    ' + textarea.value.substring(end);
-                textarea.selectionStart = textarea.selectionEnd = start + 4;
-                updateLineNumbers();
-            }
-        });
+        // 初始化编辑器
+        initEditor();
 
-        // 保存快捷键
-        const handleKeydown = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                this.saveEditorContent(filename, textarea.value, overlay, tab);
-            }
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-                e.preventDefault();
-                this.formatContent(textarea, fileType);
-            }
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                this.confirmCloseEditor(overlay, textarea, content);
+        // 格式化内容（兼容 CodeMirror）
+        const doFormat = async () => {
+            if (!editorView) return;
+            const text = getContent(editorView);
+            try {
+                const { htmlBeautify, cssBeautify, jsBeautify } = await import('../vendor/js-beautify.js');
+                let formatted = text;
+                const opts = { indent_size: 4, wrap_line_length: 120 };
+                if (fileType === 'json') {
+                    formatted = JSON.stringify(JSON.parse(text), null, 2);
+                } else if (fileType === 'html' || fileType === 'xml' || fileType === 'svg' || fileType === 'htm') {
+                    formatted = htmlBeautify(text, opts);
+                } else if (fileType === 'css' || fileType === 'scss' || fileType === 'less') {
+                    formatted = cssBeautify(text, opts);
+                } else if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(fileType)) {
+                    formatted = jsBeautify(text, opts);
+                }
+                if (formatted !== text) {
+                    setContent(editorView, formatted);
+                    this.options.toast?.success?.('格式化完成');
+                }
+            } catch (error) {
+                this.options.toast?.error?.('格式化失败: ' + error.message);
             }
         };
-        
-        textarea.addEventListener('keydown', handleKeydown);
-        overlay.addEventListener('keydown', handleKeydown);
 
         // 保存按钮
         saveBtn.addEventListener('click', () => {
-            this.saveEditorContent(filename, textarea.value, overlay, tab);
+            this.saveEditorContent(filename, currentContent, overlay, tab);
         });
 
         // 关闭按钮
         closeBtn.addEventListener('click', () => {
-            this.confirmCloseEditor(overlay, textarea, content);
+            this.confirmCloseEditor(overlay, content, currentContent, () => {
+                if (editorView) destroyEditor(editorView);
+                overlay.remove();
+            });
         });
 
         // 最大化按钮
         let isMaximized = false;
+        const resizeHandle = overlay.querySelector('.editor-resize-handle');
         maximizeBtn.addEventListener('click', () => {
             isMaximized = !isMaximized;
             if (isMaximized) {
+                dialog.dataset.prevStyle = dialog.style.cssText;
                 dialog.classList.add('maximized');
+                resizeHandle.style.display = 'none';
                 maximizeBtn.innerHTML = `
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <polyline points="4 14 10 14 10 20"/>
@@ -2249,6 +2272,11 @@ export class FileManager {
                 `;
             } else {
                 dialog.classList.remove('maximized');
+                resizeHandle.style.display = '';
+                if (dialog.dataset.prevStyle) {
+                    dialog.style.cssText = dialog.dataset.prevStyle;
+                    delete dialog.dataset.prevStyle;
+                }
                 maximizeBtn.innerHTML = `
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <polyline points="15 3 21 3 21 9"/>
@@ -2260,43 +2288,79 @@ export class FileManager {
             }
         });
 
-        // 格式化按钮
-        formatBtn.addEventListener('click', () => {
-            this.formatContent(textarea, fileType);
-            updateLineNumbers();
+        // 搜索按钮
+        searchBtn.addEventListener('click', () => {
+            if (editorView) openSearch(editorView);
         });
+
+        // 快捷键帮助
+        helpBtn.addEventListener('click', () => {
+            const existing = overlay.querySelector('.editor-help-panel');
+            if (existing) { existing.remove(); return; }
+            const panel = document.createElement('div');
+            panel.className = 'editor-help-panel';
+            panel.innerHTML = `
+                <div class="help-grid">
+                    <span class="help-key">Ctrl+S</span><span>保存文件</span>
+                    <span class="help-key">Shift+Alt+F</span><span>格式化文档</span>
+                    <span class="help-key">Ctrl+/</span><span>切换行注释</span>
+                    <span class="help-key">Ctrl+F</span><span>查找</span>
+                    <span class="help-key">Ctrl+H</span><span>替换</span>
+                    <span class="help-key">Enter</span><span>查找下一个</span>
+                    <span class="help-key">Shift+Enter</span><span>查找上一个</span>
+                    <span class="help-key">Ctrl+G</span><span>跳转到行</span>
+                    <span class="help-key">Esc</span><span>关闭搜索面板</span>
+                    <span class="help-key">Ctrl+Z</span><span>撤销</span>
+                    <span class="help-key">Ctrl+Shift+Z</span><span>重做</span>
+                    <span class="help-key">Tab</span><span>缩进</span>
+                    <span class="help-key">Shift+Tab</span><span>取消缩进</span>
+                    <span class="help-key">Ctrl+D</span><span>添加下一个匹配项</span>
+                    <span class="help-key">Alt+↑ / ↓</span><span>向上/向下移动行</span>
+                    <span class="help-key">Ctrl+Shift+K</span><span>删除当前行</span>
+                    <span class="help-key">Ctrl+Shift+[/ ]</span><span>折叠/展开代码块</span>
+                </div>
+            `;
+            const header = overlay.querySelector('.editor-header');
+            header.appendChild(panel);
+            const closePanel = (e) => {
+                if (!panel.contains(e.target) && e.target !== helpBtn) {
+                    panel.remove();
+                    document.removeEventListener('click', closePanel, true);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closePanel, true), 0);
+        });
+
+        // 格式化按钮
+        formatBtn.addEventListener('click', doFormat);
 
         // 拖动功能（居中显示）
         this.makeDraggable(overlay, dialog, overlay.querySelector('.editor-drag-area'));
 
-        // 聚焦到编辑器
-        textarea.focus();
-        
-        // 初始化光标位置
-        updateCursorPosition();
-    }
+        // 拖拽调整大小
+        this.makeResizable(overlay, dialog, overlay.querySelector('.editor-resize-handle'));
 
-    /**
-     * 格式化内容
-     */
-    formatContent(textarea, fileType) {
-        const content = textarea.value;
-        let formatted = content;
-        
-        try {
-            if (fileType === 'json') {
-                formatted = JSON.stringify(JSON.parse(content), null, 2);
-            } else if (fileType === 'html' || fileType === 'xml') {
-                // 简单的 HTML/XML 格式化
-                formatted = content
-                    .replace(/></g, '>\n<')
-                    .replace(/^\s+|\s+$/gm, '');
+        // 拦截浏览器快捷键，让 CodeMirror 处理
+        overlay.addEventListener('keydown', (e) => {
+            // Shift+Alt+F → 格式化文档（VS Code 风格）
+            if (e.shiftKey && e.altKey && e.key === 'F') {
+                e.preventDefault();
+                doFormat();
+                return;
             }
-            textarea.value = formatted;
-            this.options.toast?.success?.('格式化完成');
-        } catch (error) {
-            this.options.toast?.error?.('格式化失败: ' + error.message);
-        }
+            if (e.ctrlKey || e.metaKey) {
+                // Ctrl+F → CM 搜索
+                if (e.key === 'f') {
+                    e.preventDefault();
+                    if (editorView) openSearch(editorView);
+                }
+                // Ctrl+H → CM 替换（打开搜索面板后自动切换）
+                if (e.key === 'h') {
+                    e.preventDefault();
+                    if (editorView) openSearch(editorView);
+                }
+            }
+        });
     }
 
     /**
@@ -2354,24 +2418,55 @@ export class FileManager {
     }
 
     /**
+     * 拖拽调整编辑器大小
+     */
+    makeResizable(overlay, dialog, handle) {
+        if (!handle) return;
+        let isResizing = false, startX, startY, startW, startH;
+
+        handle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startW = dialog.offsetWidth;
+            startH = dialog.offsetHeight;
+            e.preventDefault();
+            document.body.style.cursor = 'nwse-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const newW = Math.max(400, startW + (e.clientX - startX));
+            const newH = Math.max(300, startH + (e.clientY - startY));
+            dialog.style.width = newW + 'px';
+            dialog.style.height = newH + 'px';
+            dialog.style.maxWidth = 'none';
+            dialog.style.maxHeight = 'none';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+
+    /**
      * 确认关闭编辑器（检查未保存更改）
      */
-    async confirmCloseEditor(overlay, textarea, originalContent) {
-        // 如果已保存，直接关闭
+    async confirmCloseEditor(overlay, originalContent, currentContent, onClose) {
         if (overlay.dataset.saved === 'true') {
-            this.closeEditor(overlay);
+            onClose();
             return;
         }
-        
-        const currentContent = textarea.value;
-        
-        // 检查是否有未保存的更改
         if (currentContent !== originalContent) {
             const confirmed = await this.showConfirmDialog('关闭编辑器', '有未保存的更改，确定要关闭吗？');
             if (!confirmed) return;
         }
-        
-        this.closeEditor(overlay);
+        onClose();
     }
 
     /**
@@ -2396,12 +2491,10 @@ export class FileManager {
             const result = await response.json();
             if (result?.code === 200) {
                 this.options.toast?.success?.('保存成功');
-                // 标记已保存
                 overlay.dataset.saved = 'true';
-                // 更新页脚信息
-                const footer = overlay.querySelector('.editor-footer');
                 const lines = content.split('\n').length;
                 const size = new Blob([content]).size;
+                const footer = overlay.querySelector('.editor-footer');
                 footer.innerHTML = `
                     <span class="editor-info">大小: ${this.formatSize(size)}</span>
                     <span class="editor-info">已保存</span>

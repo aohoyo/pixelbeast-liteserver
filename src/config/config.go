@@ -14,6 +14,19 @@ import (
 	"pixelbeast/src/crypto"
 )
 
+// QuickDirItem 快速访问目录项
+type QuickDirItem struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+// QuickDirsConfig 快速访问配置
+type QuickDirsConfig struct {
+	Pinned []QuickDirItem `json:"pinned"` // 用户固定的目录
+	Hidden []string       `json:"hidden"` // 用户隐藏的系统目录路径
+}
+
 // ConfigManager 配置管理器
 type ConfigManager struct {
 	mu sync.RWMutex
@@ -25,6 +38,7 @@ type ConfigManager struct {
 	Sites        *SitesConfig
 	FTP          *FTPConfig
 	DNSProviders []DNSProviderConfig
+	QuickDirs    *QuickDirsConfig
 }
 
 // ServerConfig 服务配置
@@ -249,6 +263,11 @@ func (cm *ConfigManager) load() error {
 		return err
 	}
 
+	// 加载 quick_dirs.json
+	if err := cm.loadQuickDirs(); err != nil {
+		return err
+	}
+
 	// 确保默认站点目录存在
 	cm.ensureDefaultDirectories()
 
@@ -458,6 +477,121 @@ func (cm *ConfigManager) saveSites() error {
 // saveFTP 保存 FTP 配置
 func (cm *ConfigManager) saveFTP() error {
 	return cm.saveJSON("ftp.json", cm.FTP)
+}
+
+// loadQuickDirs 加载快速访问配置
+func (cm *ConfigManager) loadQuickDirs() error {
+	return cm.loadOrCreate("quick_dirs.json",
+		func() error {
+			cm.QuickDirs = &QuickDirsConfig{
+				Pinned: []QuickDirItem{},
+				Hidden: []string{},
+			}
+			return cm.saveQuickDirs()
+		},
+		func(data []byte) error {
+			var cfg QuickDirsConfig
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return err
+			}
+			if cfg.Pinned == nil {
+				cfg.Pinned = []QuickDirItem{}
+			}
+			if cfg.Hidden == nil {
+				cfg.Hidden = []string{}
+			}
+			cm.QuickDirs = &cfg
+			return nil
+		},
+	)
+}
+
+// saveQuickDirs 保存快速访问配置
+func (cm *ConfigManager) saveQuickDirs() error {
+	return cm.saveJSON("quick_dirs.json", cm.QuickDirs)
+}
+
+// GetQuickDirs 获取快速访问配置（线程安全副本）
+func (cm *ConfigManager) GetQuickDirs() *QuickDirsConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	cfg := *cm.QuickDirs
+	cfg.Pinned = append([]QuickDirItem{}, cm.QuickDirs.Pinned...)
+	cfg.Hidden = append([]string{}, cm.QuickDirs.Hidden...)
+	return &cfg
+}
+
+// AddQuickDir 添加固定目录（线程安全）
+func (cm *ConfigManager) AddQuickDir(item QuickDirItem) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.QuickDirs.Pinned = append(cm.QuickDirs.Pinned, item)
+	return cm.saveQuickDirs()
+}
+
+// RemoveQuickDir 删除固定目录，返回是否找到（线程安全）
+func (cm *ConfigManager) RemoveQuickDir(path string) bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	for i, item := range cm.QuickDirs.Pinned {
+		if item.Path == path {
+			cm.QuickDirs.Pinned = append(cm.QuickDirs.Pinned[:i], cm.QuickDirs.Pinned[i+1:]...)
+			cm.saveQuickDirs()
+			return true
+		}
+	}
+	return false
+}
+
+// HideSystemDir 隐藏系统目录（线程安全）
+func (cm *ConfigManager) HideSystemDir(path string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.QuickDirs.Hidden = append(cm.QuickDirs.Hidden, path)
+	return cm.saveQuickDirs()
+}
+
+// UpdateQuickDir 更新固定目录名称/图标，返回是否找到（线程安全）
+func (cm *ConfigManager) UpdateQuickDir(path, name, icon string) bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	for i, item := range cm.QuickDirs.Pinned {
+		if item.Path == path {
+			if name != "" {
+				cm.QuickDirs.Pinned[i].Name = name
+			}
+			if icon != "" {
+				cm.QuickDirs.Pinned[i].Icon = icon
+			}
+			cm.saveQuickDirs()
+			return true
+		}
+	}
+	return false
+}
+
+// IsQuickDirPinned 检查路径是否已固定（线程安全）
+func (cm *ConfigManager) IsQuickDirPinned(path string) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	for _, item := range cm.QuickDirs.Pinned {
+		if item.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSystemDirHidden 检查系统目录是否已隐藏（线程安全）
+func (cm *ConfigManager) IsSystemDirHidden(path string) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	for _, p := range cm.QuickDirs.Hidden {
+		if p == path {
+			return true
+		}
+	}
+	return false
 }
 
 // loadDNSProviders 加载 DNS 服务商配置
