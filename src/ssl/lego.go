@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	"time"
 
 	"pixelbeast/src/config"
+	"pixelbeast/src/logger"
 
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge"
@@ -387,7 +387,7 @@ func (m *SSLManager) ObtainCertificateLego(domain, email, provider string) error
 	m.updateCertInfoFromCert(domain, cfg, &cert)
 	m.mu.Unlock()
 
-	log.Printf("[SSL] lego 证书申请成功: %s (provider: %s)", domain, provider)
+	logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] lego 证书申请成功: %s (provider: %s)", domain, provider)
 	m.setCertStep(domain, 5, "完成", "success")
 	m.addCertLog(domain, "success", fmt.Sprintf("证书申请完成！提供商: %s", provider))
 	return nil
@@ -577,7 +577,7 @@ func (m *SSLManager) CompleteFileChallenge(domain string) error {
 	delete(m.pendingChallenges, domain)
 	m.mu.Unlock()
 
-	log.Printf("[SSL] 文件验证证书获取成功: %s", domain)
+	logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] 文件验证证书获取成功: %s", domain)
 	m.setCertStep(domain, 5, "完成", "success")
 	m.addCertLog(domain, "success", "文件验证证书获取成功")
 	return nil
@@ -751,7 +751,7 @@ func (m *SSLManager) PrepareDNSChallenge(domain, email, provider, dnsProviderNam
 				m.onCertObtained(domain, provider, "dns", email)
 			}
 
-			log.Printf("[SSL] DNS 自动验证证书获取成功: %s", domain)
+			logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] DNS 自动验证证书获取成功: %s", domain)
 			m.setCertStep(domain, 5, "完成", "success")
 			m.addCertLog(domain, "success", "DNS 验证证书获取成功！")
 		}()
@@ -881,7 +881,7 @@ func (m *SSLManager) CompleteDNSChallenge(domain string) error {
 	delete(m.pendingChallenges, domain)
 	m.mu.Unlock()
 
-	log.Printf("[SSL] DNS 验证证书获取成功: %s", domain)
+	logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] DNS 验证证书获取成功: %s", domain)
 	m.setCertStep(domain, 5, "完成", "success")
 	m.addCertLog(domain, "success", "DNS 验证证书获取成功")
 	return nil
@@ -999,7 +999,7 @@ func (m *SSLManager) RenewCertificateLego(domain string) error {
 	m.updateCertInfoFromCert(domain, cfg, &cert)
 	m.mu.Unlock()
 
-	log.Printf("[SSL] lego 证书续期成功: %s", domain)
+	logger.LogPanelRuntime(logger.LogLevelInfo, "[SSL] lego 证书续期成功: %s", domain)
 	return nil
 }
 
