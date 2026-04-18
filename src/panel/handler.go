@@ -384,33 +384,28 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	}
 	html = strings.ReplaceAll(html, ".css", ".css?v="+v)
 	html = strings.ReplaceAll(html, ".js", ".js?v="+v)
+	// 注入版本号 meta 标签供前端动态 import 使用
+	html = strings.ReplaceAll(html, "</head>", `<meta name="app-version" content="`+v+`">`+"\n</head>")
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	w.Write([]byte(html))
 }
 
 func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(staticFS, "favicon.ico")
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "image/x-icon")
-	w.Write(data)
+	fileCache.HandleCached(w, r, "favicon.ico", "image/x-icon")
 }
 
-// serveStaticFile 通用静态文件服务
+// serveStaticFile 通用静态文件服务（带缓存）
 func (h *Handler) serveStaticFile(w http.ResponseWriter, r *http.Request, subdir, contentType string) {
 	file := strings.TrimPrefix(r.URL.Path, "/"+subdir+"/")
-	data, err := fs.ReadFile(staticFS, subdir+"/"+file)
-	if err != nil {
+	// 去除版本查询参数（?v=xxx），不影响文件路径
+	file = strings.SplitN(file, "?", 2)[0]
+	if file == "" {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Write(data)
+	fileCache.HandleCached(w, r, subdir+"/"+file, contentType)
 }
 
 func (h *Handler) serveCSS(w http.ResponseWriter, r *http.Request) {
@@ -427,39 +422,22 @@ func (h *Handler) serveComponents(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serveImages(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimPrefix(r.URL.Path, "/images/")
-	data, err := fs.ReadFile(staticFS, "images/"+file)
-	if err != nil {
+	file = strings.SplitN(file, "?", 2)[0]
+	if file == "" {
 		http.NotFound(w, r)
 		return
 	}
-	// 根据文件扩展名设置 Content-Type
-	ext := strings.ToLower(file[strings.LastIndex(file, ".")+1:])
-	switch ext {
-	case "svg":
-		w.Header().Set("Content-Type", "image/svg+xml")
-	case "png":
-		w.Header().Set("Content-Type", "image/png")
-	case "jpg", "jpeg":
-		w.Header().Set("Content-Type", "image/jpeg")
-	case "gif":
-		w.Header().Set("Content-Type", "image/gif")
-	case "ico":
-		w.Header().Set("Content-Type", "image/x-icon")
-	default:
-		w.Header().Set("Content-Type", "application/octet-stream")
-	}
-	w.Write(data)
+	fileCache.HandleCached(w, r, "images/"+file, "")
 }
 
 func (h *Handler) serveIcons(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimPrefix(r.URL.Path, "/icons/")
-	data, err := fs.ReadFile(staticFS, "icons/"+file)
-	if err != nil {
+	file = strings.SplitN(file, "?", 2)[0]
+	if file == "" {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "image/svg+xml")
-	w.Write(data)
+	fileCache.HandleCached(w, r, "icons/"+file, "image/svg+xml")
 }
 
 func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {

@@ -70,6 +70,11 @@ func (h *Handler) setupRouter() http.Handler {
 	authMux.HandleFunc("/api/files/chmod", h.chmodFile)
 	authMux.HandleFunc("/api/files/permissions", h.getFilePermissions)
 	authMux.HandleFunc("/api/files/read", h.readFileContent)
+	authMux.HandleFunc("/api/files/run", h.handleRunScript)
+	authMux.HandleFunc("/api/files/processes", h.handleListProcesses)
+	authMux.HandleFunc("/api/files/processes/output", h.handleProcessOutput)
+	authMux.HandleFunc("/api/files/processes/stop", h.handleStopProcess)
+	authMux.HandleFunc("/api/files/processes/delete", h.handleDeleteProcess)
 	authMux.HandleFunc("/api/files/save", h.saveFileContent)
 	authMux.HandleFunc("/api/files/compress", h.compressFiles)
 	authMux.HandleFunc("/api/files/extract", h.extractFile)
@@ -159,6 +164,9 @@ func (h *Handler) setupRouter() http.Handler {
 	authMux.HandleFunc("/api/certs/dns-providers/{id}/credentials", h.handleDNSProviderGetCreds)
 	authMux.HandleFunc("/api/certs/dns-providers-test", h.handleDNSProviderTestCreds)
 	authMux.HandleFunc("/api/certs/progress/{id}", h.handleCertProgress)
+
+	// Web 终端
+	authMux.HandleFunc("/api/terminal/ws", h.handleTerminalWS)
 
 	// 开机自启
 	authMux.HandleFunc("/api/service/autostart/status", h.getAutoStartStatus)

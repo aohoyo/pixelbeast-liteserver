@@ -15,14 +15,44 @@ import tooltip from './components/tooltip.js';
 import { loadContentSections, loadModal } from './core/loader.js';
 import { escapeHtml } from './core/utils.js';
 
-// 导入标签页模块
-import { initHomeTab } from './tabs/home.js';
-import { initSitesTab } from './tabs/sites.js';
-import { initFtpTab } from './tabs/ftp.js';
-import { initFilesTab } from './tabs/files.js';
-import { initSettingsTab } from './tabs/settings.js';
-import { initLogsTab } from './tabs/logs.js';
-import { initCertTab } from './tabs/cert.js';
+// 标签页模块动态加载注册表
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || 'dev';
+const vSuffix = APP_VERSION !== 'dev' ? `?v=${APP_VERSION}` : '';
+
+const TAB_MODULES = {
+    home:     () => import(`./tabs/home.js${vSuffix}`),
+    sites:    () => import(`./tabs/sites.js${vSuffix}`),
+    ftp:      () => import(`./tabs/ftp.js${vSuffix}`),
+    files:    () => import(\`./tabs/files.js\${vSuffix}\`),
+    terminal: () => import(\`./tabs/terminal.js\${vSuffix}\`),
+    settings: () => import(`./tabs/settings.js${vSuffix}`),
+    logs:     () => import(`./tabs/logs.js${vSuffix}`),
+    cert:     () => import(`./tabs/cert.js${vSuffix}`),
+};
+
+// 已加载的标签页模块缓存
+const loadedTabs = new Map();
+
+async function loadTabModule(tabName) {
+    if (loadedTabs.has(tabName)) return loadedTabs.get(tabName);
+    const loader = TAB_MODULES[tabName];
+    if (!loader) return null;
+    const mod = await loader();
+    loadedTabs.set(tabName, mod);
+    return mod;
+}
+
+// 标签页初始化函数名映射
+const TAB_INIT_FNS = {
+    home:     'initHomeTab',
+    sites:    'initSitesTab',
+    ftp:      'initFtpTab',
+    files:    'initFilesTab',
+    terminal: 'initTerminalTab',
+    settings: 'initSettingsTab',
+    logs:     'initLogsTab',
+    cert:     'initCertTab',
+};
 
 // 应用状态
 const state = new StateManager();
@@ -178,19 +208,14 @@ function initTabs() {
 }
 
 /**
- * 初始化标签页模块
+ * 初始化标签页模块（仅加载首页）
  */
-function initTabModules() {
+async function initTabModules() {
     const dependencies = { state, api, toast, message, dialog, events: globalEvents };
 
-    // 初始化各标签页
-    initHomeTab(dependencies);
-    initSitesTab(dependencies);
-    initFtpTab(dependencies);
-    initFilesTab(dependencies);
-    initSettingsTab(dependencies);
-    initLogsTab(dependencies);
-    initCertTab(dependencies);
+    // 只初始化首页标签（默认激活页），其余标签首次切换时加载
+    const homeMod = await loadTabModule('home');
+    if (homeMod) homeMod.initHomeTab(dependencies);
 }
 
 // 标签页标题映射
@@ -199,6 +224,7 @@ const tabTitles = {
     'sites': '网站管理',
     'ftp': 'FTP 服务',
     'files': '文件管理',
+    'terminal': '终端',
     'logs': '系统日志',
     'cert': 'SSL 证书',
     'settings': '系统设置'
@@ -208,7 +234,7 @@ const tabTitles = {
  * 切换标签页
  * @param {string} tabName - 标签页名称
  */
-function switchTab(tabName) {
+async function switchTab(tabName) {
     // 关闭批量操作条
     const batchBar = document.getElementById('dt-batch-bar');
     const batchContainer = document.getElementById('dt-batch-bar-container');
@@ -242,6 +268,16 @@ function switchTab(tabName) {
 
     // 更新状态
     state.set('currentTab', tabName);
+
+    // 按需加载标签页模块
+    const mod = await loadTabModule(tabName);
+    if (mod) {
+        const initFn = TAB_INIT_FNS[tabName];
+        if (initFn && mod[initFn]) {
+            const dependencies = { state, api, toast, message, dialog, events: globalEvents };
+            mod[initFn](dependencies);
+        }
+    }
 
     // 触发标签页切换事件
     globalEvents.emit(`tab:switch:${tabName}`, { tabName });

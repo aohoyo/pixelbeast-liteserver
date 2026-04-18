@@ -37,6 +37,8 @@ import { rust } from '../vendor/codemirror.js';
 import { php } from '../vendor/codemirror.js';
 import { yaml } from '../vendor/codemirror.js';
 import { lezer } from '../vendor/codemirror.js';
+import { StreamLanguage } from '../vendor/codemirror.js';
+import { shell } from '../vendor/codemirror.js';
 
 /**
  * VSCode Dark+ 语法配色
@@ -107,8 +109,11 @@ const vscodeDarkPlusTheme = EditorView.theme({
 	'&.cm-focused .cm-cursor': {
 		borderLeftColor: '#aeafad',
 	},
-	'&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-		backgroundColor: '#264f78',
+	'&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+		backgroundColor: '#264f78 !important',
+	},
+	'.cm-content ::selection': {
+		backgroundColor: '#264f78 !important',
 	},
 	'.cm-scroller': {
 		fontFamily: 'inherit',
@@ -126,7 +131,7 @@ const vscodeDarkPlusTheme = EditorView.theme({
 		color: '#c6c6c6',
 	},
 	'.cm-activeLine': {
-		background: '#2a2d2e',
+		background: 'rgba(255, 255, 255, 0.07)',
 	},
 	'.cm-matchingBracket': {
 		backgroundColor: 'rgba(255, 215, 0, 0.2)',
@@ -248,8 +253,11 @@ const langMap = {
 	php: () => php(),
 	yaml: () => yaml(),
 	yml: () => yaml(),
-	sh: () => [],
-	bash: () => [],
+	sh: () => StreamLanguage.define(shell),
+	bash: () => StreamLanguage.define(shell),
+	bat: () => [],
+	cmd: () => [],
+	ps1: () => [],
 	md: () => markdown(),
 	markdown: () => markdown(),
 	go: () => [],

@@ -510,9 +510,16 @@ class FilesTab extends BaseTab {
                         </svg>
                         我的分享
                     </div>
-                    <button class="fm-share-dialog-close" title="关闭">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
+                    <div style="display:flex;gap:4px;">
+                        <button class="fm-share-dialog-close" id="fm-share-settings-btn" title="白名单设置">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+                                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </button>
+                        <button class="fm-share-dialog-close" id="fm-share-dialog-close" title="关闭">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="fm-share-dialog-body">
                     <div class="fm-share-list" id="fm-share-list-dialog">
@@ -526,9 +533,14 @@ class FilesTab extends BaseTab {
 
         // 关闭
         const close = () => overlay.remove();
-        overlay.querySelector('.fm-share-dialog-close').addEventListener('click', close);
+        overlay.querySelector('#fm-share-dialog-close').addEventListener('click', close);
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) close();
+        });
+
+        // 白名单设置按钮
+        overlay.querySelector('#fm-share-settings-btn').addEventListener('click', () => {
+            this.toggleShareSettings(overlay);
         });
 
         // 加载数据
@@ -538,6 +550,114 @@ class FilesTab extends BaseTab {
         } catch (e) {
             const listEl = overlay.querySelector('#fm-share-list-dialog');
             if (listEl) listEl.innerHTML = `<div class="fm-share-empty">加载失败</div>`;
+        }
+    }
+
+    /**
+     * 切换白名单设置面板
+     */
+    async toggleShareSettings(overlay) {
+        const existing = overlay.querySelector('.fm-share-settings');
+        if (existing) { existing.remove(); return; }
+
+        const body = overlay.querySelector('.fm-share-dialog-body');
+        const settingsEl = document.createElement('div');
+        settingsEl.className = 'fm-share-settings';
+        settingsEl.innerHTML = `<div class="fm-share-empty">加载中...</div>`;
+        body.insertBefore(settingsEl, body.firstChild);
+
+        try {
+            const config = await this.api.getJSON('/api/config');
+            const dirs = config?.share?.allowed_dirs || [];
+            this.renderShareSettings(settingsEl, dirs, overlay);
+        } catch {
+            settingsEl.innerHTML = `<div class="fm-share-empty">加载配置失败</div>`;
+        }
+    }
+
+    renderShareSettings(container, dirs, overlay) {
+        container.innerHTML = `
+            <div style="margin-bottom:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:0.85rem;font-weight:600;color:var(--text);">分享白名单</span>
+                    <span style="font-size:0.75rem;color:var(--text-muted);">白名单为空时仅允许项目目录</span>
+                </div>
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <input type="text" id="fm-share-dir-input" class="fm-share-settings-input"
+                           placeholder="输入目录路径，如 /var/www">
+                    <button class="fm-share-settings-add" id="fm-share-dir-add">添加</button>
+                </div>
+                <div id="fm-share-whitelist"></div>
+            </div>
+        `;
+
+        const whitelist = [...dirs];
+
+        const renderList = () => {
+            const listEl = container.querySelector('#fm-share-whitelist');
+            if (whitelist.length === 0) {
+                listEl.innerHTML = `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:0.8rem;">未设置白名单，默认仅允许项目目录</div>`;
+                return;
+            }
+            listEl.innerHTML = whitelist.map((dir, i) => `
+                <div class="fm-share-whitelist-item" data-index="${i}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--primary);flex-shrink:0;">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.8rem;">${escapeHtml(dir)}</span>
+                    <button class="fm-share-whitelist-remove" data-index="${i}" title="移除">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('.fm-share-whitelist-remove').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const idx = parseInt(btn.dataset.index);
+                    whitelist.splice(idx, 1);
+                    await this.saveShareWhitelist(whitelist);
+                    renderList();
+                });
+            });
+        };
+
+        renderList();
+
+        // 添加按钮
+        container.querySelector('#fm-share-dir-add').addEventListener('click', async () => {
+            const input = container.querySelector('#fm-share-dir-input');
+            const path = input.value.trim();
+            if (!path) return;
+            if (whitelist.includes(path)) {
+                this.toast?.warning?.('该目录已在白名单中');
+                return;
+            }
+            whitelist.push(path);
+            input.value = '';
+            await this.saveShareWhitelist(whitelist);
+            renderList();
+        });
+
+        // 回车添加
+        container.querySelector('#fm-share-dir-input').addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                container.querySelector('#fm-share-dir-add').click();
+            }
+        });
+    }
+
+    async saveShareWhitelist(dirs) {
+        try {
+            const config = await this.api.getJSON('/api/config');
+            config.share = config.share || {};
+            config.share.allowed_dirs = dirs;
+            await this.api.post('/api/config/save', config);
+            this.toast?.success?.('白名单已保存');
+        } catch {
+            this.toast?.error?.('保存失败');
         }
     }
 

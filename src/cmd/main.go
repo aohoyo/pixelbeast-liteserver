@@ -112,10 +112,12 @@ func main() {
 		adminPort = 9527
 	}
 	adminServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", adminPort),
-		Handler:      adminHandler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              fmt.Sprintf(":%d", adminPort),
+		Handler:           adminHandler,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
 		if err := adminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

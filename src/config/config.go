@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,12 +42,18 @@ type ConfigManager struct {
 	QuickDirs    *QuickDirsConfig
 }
 
+// ShareConfig 分享配置
+type ShareConfig struct {
+	AllowedDirs []string `json:"allowed_dirs"` // 分享白名单目录（空=允许项目目录下所有文件）
+}
+
 // ServerConfig 服务配置
 type ServerConfig struct {
 	Name        string            `json:"name"`
 	Timezone    string            `json:"timezone"`
 	Admin       AdminConfig       `json:"admin"`
 	Directories DirectoriesConfig `json:"directories"`
+	Share       ShareConfig       `json:"share"`
 	Backup      BackupConfig      `json:"backup"`
 	Log         LogConfig         `json:"log"`
 	AutoStart   AutoStartConfig   `json:"auto_start"`
@@ -352,6 +359,11 @@ func (cm *ConfigManager) ensureDefaults() {
 		changed = true
 	}
 
+	if cm.Server.Share.AllowedDirs == nil {
+		cm.Server.Share.AllowedDirs = []string{"."}
+		changed = true
+	}
+
 	if changed {
 		if err := cm.saveServer(); err != nil {
 			fmt.Printf("[Config] 保存默认配置失败: %v\n", err)
@@ -364,6 +376,52 @@ func (cm *ConfigManager) ensureDefaults() {
 // ConfigDir 获取配置目录路径
 func (cm *ConfigManager) ConfigDir() string {
 	return cm.configDir
+}
+
+// IsSharePathAllowed 检查文件路径是否允许分享
+// 规则：白名单为空时允许项目目录下所有文件，否则只允许白名单目录下的文件
+func (cm *ConfigManager) IsSharePathAllowed(absFilePath string) bool {
+	cm.mu.RLock()
+	allowedDirs := cm.Server.Share.AllowedDirs
+	cm.mu.RUnlock()
+
+	// 白名单为空：允许项目目录下所有文件（向后兼容）
+	if len(allowedDirs) == 0 {
+		rootDir, _ := os.Getwd()
+		absRoot, _ := filepath.Abs(rootDir)
+		return strings.HasPrefix(absFilePath, absRoot+string(os.PathSeparator)) || absFilePath == absRoot
+	}
+
+	// 白名单非空：检查是否在任一允许的目录下
+	for _, dir := range allowedDirs {
+		absDir := resolveAbsPath(dir)
+		if absDir == "" {
+			continue
+		}
+		if strings.HasPrefix(absFilePath, absDir+string(os.PathSeparator)) || absFilePath == absDir {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveAbsPath 将路径解析为绝对路径
+func resolveAbsPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if !filepath.IsAbs(p) {
+		rootDir, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		p = filepath.Join(rootDir, p)
+	}
+	abs, err := filepath.Abs(filepath.Clean(p))
+	if err != nil {
+		return ""
+	}
+	return abs
 }
 
 // GetFTPRoot 获取 FTP 根目录
@@ -680,6 +738,9 @@ func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
 			Sites:  "./sites",
 			FTP:    "./ftp",
 			Backup: "./backups",
+		},
+		Share: ShareConfig{
+			AllowedDirs: []string{"."},
 		},
 		Backup: BackupConfig{
 			AutoEnabled: true,

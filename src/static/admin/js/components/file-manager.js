@@ -8,7 +8,15 @@ import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './vs
 import { escapeHtml } from '../core/utils.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
-import { createEditor, getContent, setContent, destroyEditor, focusEditor, openSearch } from './cm-editor.js';
+
+// CodeMirror 延迟加载（~1MB，仅编辑文件时才加载）
+let _cmModule = null;
+async function getCmModule() {
+    if (!_cmModule) {
+        _cmModule = await import('./cm-editor.js');
+    }
+    return _cmModule;
+}
 
 // CSRF token 缓存
 let _csrfToken = null;
@@ -61,7 +69,9 @@ const ICONS = {
     copyPath: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
     info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
     upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
-    uploadFolder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="12 11 12 17"/><polyline points="9 14 12 11 15 14"/></svg>`
+    uploadFolder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="12 11 12 17"/><polyline points="9 14 12 11 15 14"/></svg>`,
+    play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+    terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`
 };
 
 export class FileManager {
@@ -1634,6 +1644,22 @@ export class FileManager {
                 });
             }
 
+            // 可运行脚本显示运行选项
+            if (isSingleFile && !isDir && this.isRunnable(selectedItems[0])) {
+                menuItems.push({
+                    label: '运行',
+                    icon: ICONS.play,
+                    action: 'run',
+                    onClick: () => this.runScript(selectedItems[0])
+                });
+                menuItems.push({
+                    label: '在终端中运行',
+                    icon: ICONS.terminal || ICONS.play,
+                    action: 'run-terminal',
+                    onClick: () => this.runInTerminal(selectedItems[0])
+                });
+            }
+
             menuItems.push({
                 label: '重命名',
                 icon: ICONS.rename,
@@ -1855,7 +1881,11 @@ export class FileManager {
                 this.showPdfPreview(filename);
                 break;
             case 'text':
-                this.editFile(filename);
+                if (this.isRunnable(filename)) {
+                    this.runScript(filename);
+                } else {
+                    this.editFile(filename);
+                }
                 break;
             default:
                 this.options.toast?.info?.('不支持预览此类型文件，正在下载...');
@@ -2049,6 +2079,14 @@ export class FileManager {
     }
 
     /**
+     * 判断是否为可运行脚本
+     */
+    isRunnable(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        return ['sh', 'bash', 'bat', 'cmd', 'ps1'].includes(ext);
+    }
+
+    /**
      * 编辑文件
      */
     async editFile(filename) {
@@ -2093,6 +2131,7 @@ export class FileManager {
         // 判断是否需要代码高亮风格
         const codeTypes = ['json', 'javascript', 'typescript', 'go', 'python', 'css', 'html', 'xml', 'yaml', 'shell', 'sql', 'java', 'c', 'cpp', 'rust', 'php', 'ruby', 'lua', 'conf', 'ini', 'env', 'sh', 'bash'];
         const isCodeFile = codeTypes.includes(fileType);
+        const canRun = this.isRunnable(filename);
         
         // 创建编辑器弹窗
         const overlay = document.createElement('div');
@@ -2120,10 +2159,9 @@ export class FileManager {
                             </button>
                             <button class="editor-tool-btn" id="editor-format" title="格式化文档 (Shift+Alt+F)">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                    <line x1="21" y1="10" x2="3" y2="10"/>
-                                    <line x1="21" y1="6" x2="3" y2="6"/>
-                                    <line x1="21" y1="14" x2="3" y2="14"/>
-                                    <line x1="21" y1="18" x2="3" y2="18"/>
+                                    <line x1="3" y1="6" x2="21" y2="6"/>
+                                    <line x1="3" y1="12" x2="15" y2="12"/>
+                                    <line x1="3" y1="18" x2="18" y2="18"/>
                                 </svg>
                             </button>
                             <button class="editor-tool-btn" id="editor-help" title="快捷键帮助">
@@ -2143,6 +2181,7 @@ export class FileManager {
                                     <polyline points="7 3 7 8 15 8"/>
                                 </svg>
                             </button>
+                            <button class="editor-tool-btn" id="editor-run" title="运行脚本" style="color: #4CAF50;">${ICONS.play}</button>
                             <button class="editor-tool-btn" id="editor-maximize" title="最大化">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                     <polyline points="15 3 21 3 21 9"/>
@@ -2185,14 +2224,18 @@ export class FileManager {
         const searchBtn = overlay.querySelector('#editor-search');
         const helpBtn = overlay.querySelector('#editor-help');
         const formatBtn = overlay.querySelector('#editor-format');
+        const runBtn = overlay.querySelector('#editor-run');
+        if (runBtn && !canRun) runBtn.style.display = 'none';
 
         // 创建 CodeMirror 编辑器
         let editorView = null;
         let currentContent = content;
         let hasChanges = false;
+        let cm = null; // CodeMirror 模块引用
 
         const initEditor = async () => {
-            editorView = createEditor(cmContainer, {
+            cm = await getCmModule();
+            editorView = cm.createEditor(cmContainer, {
                 content: content,
                 filename: filename,
                 dark: true,
@@ -2208,7 +2251,7 @@ export class FileManager {
                     this.saveEditorContent(filename, currentContent, overlay, tab);
                 },
             });
-            focusEditor(editorView);
+            cm.focusEditor(editorView);
         };
 
         // 初始化编辑器
@@ -2217,22 +2260,22 @@ export class FileManager {
         // 格式化内容（兼容 CodeMirror）
         const doFormat = async () => {
             if (!editorView) return;
-            const text = getContent(editorView);
+            const text = cm.getContent(editorView);
             try {
                 const { htmlBeautify, cssBeautify, jsBeautify } = await import('../vendor/js-beautify.js');
                 let formatted = text;
                 const opts = { indent_size: 4, wrap_line_length: 120 };
                 if (fileType === 'json') {
                     formatted = JSON.stringify(JSON.parse(text), null, 2);
-                } else if (fileType === 'html' || fileType === 'xml' || fileType === 'svg' || fileType === 'htm') {
+                } else if (['html', 'xml', 'svg', 'htm'].includes(fileType)) {
                     formatted = htmlBeautify(text, opts);
-                } else if (fileType === 'css' || fileType === 'scss' || fileType === 'less') {
+                } else if (['css', 'scss', 'less'].includes(fileType)) {
                     formatted = cssBeautify(text, opts);
-                } else if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(fileType)) {
+                } else if (['javascript', 'typescript', 'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(fileType)) {
                     formatted = jsBeautify(text, opts);
                 }
                 if (formatted !== text) {
-                    setContent(editorView, formatted);
+                    cm.setContent(editorView, formatted);
                     this.options.toast?.success?.('格式化完成');
                 }
             } catch (error) {
@@ -2245,10 +2288,22 @@ export class FileManager {
             this.saveEditorContent(filename, currentContent, overlay, tab);
         });
 
+        // 运行按钮
+        if (runBtn) {
+            runBtn.addEventListener('click', async () => {
+                // 先保存
+                if (hasChanges) {
+                    await this.saveEditorContent(filename, currentContent, overlay, tab);
+                    hasChanges = false;
+                }
+                this.runScript(filename);
+            });
+        }
+
         // 关闭按钮
         closeBtn.addEventListener('click', () => {
             this.confirmCloseEditor(overlay, content, currentContent, () => {
-                if (editorView) destroyEditor(editorView);
+                if (editorView) cm.destroyEditor(editorView);
                 overlay.remove();
             });
         });
@@ -2290,7 +2345,7 @@ export class FileManager {
 
         // 搜索按钮
         searchBtn.addEventListener('click', () => {
-            if (editorView) openSearch(editorView);
+            if (editorView) cm.openSearch(editorView);
         });
 
         // 快捷键帮助
@@ -2352,12 +2407,12 @@ export class FileManager {
                 // Ctrl+F → CM 搜索
                 if (e.key === 'f') {
                     e.preventDefault();
-                    if (editorView) openSearch(editorView);
+                    if (editorView) cm.openSearch(editorView);
                 }
                 // Ctrl+H → CM 替换（打开搜索面板后自动切换）
                 if (e.key === 'h') {
                     e.preventDefault();
-                    if (editorView) openSearch(editorView);
+                    if (editorView) cm.openSearch(editorView);
                 }
             }
         });
@@ -2547,6 +2602,230 @@ export class FileManager {
                 保存
             `;
         }
+    }
+
+    /**
+     * 运行脚本文件
+     */
+    async runScript(filename, background = false) {
+        const tab = this.getActiveTab();
+        if (!tab) return;
+
+        const fullPath = this.joinPath(tab.path, filename);
+
+        // 后台模式：仅 toast 提示，不弹窗
+        if (background) {
+            try {
+                const response = await fetchWithCSRF(`${this.options.apiPath}/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: fullPath, background: true })
+                });
+                const result = await response.json();
+                if (result?.code === 200) {
+                    const { pid, id } = result.data;
+                    this.options.toast?.success?.(`已启动后台进程 PID: ${pid}`);
+                } else {
+                    this.options.toast?.error?.(result?.message || '启动失败');
+                }
+            } catch (error) {
+                this.options.toast?.error?.('启动失败: ' + error.message);
+            }
+            return;
+        }
+
+        // 创建输出对话框
+        const overlay = document.createElement('div');
+        overlay.className = 'preview-overlay';
+        overlay.innerHTML = `
+            <div class="run-script-dialog" style="
+                background: var(--bg-primary, #1e1e2e);
+                border-radius: 12px;
+                width: 700px;
+                max-width: 90vw;
+                max-height: 80vh;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 16px;
+                    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1));
+                    cursor: move;
+                " class="run-script-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color: #4CAF50;">${ICONS.play}</span>
+                        <span style="font-weight: 600; color: var(--text-primary, #e0e0e0);">运行 ${escapeHtml(filename)}</span>
+                        <span id="run-mode" style="font-size:11px;padding:2px 6px;border-radius:4px;background:${background ? '#ff9800' : '#2196f3'};color:#fff;">${background ? '后台' : '前台'}</span>
+                    </div>
+                    <button class="preview-btn close" id="run-close" title="关闭">${ICONS.close}</button>
+                </div>
+                <div id="run-output" style="
+                    flex: 1;
+                    padding: 16px;
+                    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+                    font-size: 13px;
+                    line-height: 1.6;
+                    background: #1a1a2e;
+                    color: #d4d4d4;
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                    overflow-y: auto;
+                    min-height: 200px;
+                    max-height: 50vh;
+                "><span style="color: #888;">正在执行...</span></div>
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 10px 16px;
+                    border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+                ">
+                    <span id="run-status" style="font-size: 12px; color: var(--text-secondary, #888);">执行中...</span>
+                    <div style="display:flex;gap:8px;">
+                        <button class="editor-tool-btn" id="run-copy" title="复制输出" style="font-size:12px;">复制</button>
+                        <button class="editor-tool-btn" id="run-stop" title="停止" style="font-size:12px;color:#f44336;display:none;">停止</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        overlay.querySelector('#run-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+        overlay.tabIndex = -1;
+        overlay.focus();
+
+        overlay.querySelector('#run-copy').addEventListener('click', () => {
+            const output = overlay.querySelector('#run-output').textContent;
+            navigator.clipboard.writeText(output).then(() => this.options.toast?.success?.('已复制'));
+        });
+
+        this.makeResizable(overlay, overlay.querySelector('.run-script-dialog'));
+
+        const outputEl = overlay.querySelector('#run-output');
+        const statusEl = overlay.querySelector('#run-status');
+        const stopBtn = overlay.querySelector('#run-stop');
+
+        try {
+            const response = await fetchWithCSRF(`${this.options.apiPath}/run`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: fullPath, background })
+            });
+
+            const result = await response.json();
+            if (result?.code !== 200) {
+                outputEl.textContent = result?.message || '执行失败';
+                outputEl.style.color = '#f44336';
+                statusEl.innerHTML = '<span style="color: #f44336;">执行失败</span>';
+                return;
+            }
+
+            const data = result.data;
+
+            if (background) {
+                // 后台模式：返回进程 ID，轮询输出
+                const procId = data.id;
+                outputEl.textContent = `[后台运行] PID: ${data.pid}，进程 ID: ${procId}\n\n正在获取输出...`;
+                statusEl.innerHTML = `<span style="color: #ff9800;">● 运行中</span> PID: ${data.pid}`;
+                stopBtn.style.display = '';
+
+                let pollTimer = null;
+                const poll = async () => {
+                    try {
+                        const resp = await fetch(`${this.options.apiPath}/processes/output?id=${procId}`);
+                        const r = await resp.json();
+                        if (r?.code === 200) {
+                            const p = r.data;
+                            outputEl.textContent = p.output || '(暂无输出)';
+                            outputEl.scrollTop = outputEl.scrollHeight;
+                            if (!p.running) {
+                                const color = p.exitCode === 0 ? '#4CAF50' : '#f44336';
+                                statusEl.innerHTML = `<span style="color:${color};">退出码: ${p.exitCode}</span> PID: ${data.pid}`;
+                                stopBtn.style.display = 'none';
+                                return;
+                            }
+                        }
+                    } catch (e) {}
+                    pollTimer = setTimeout(poll, 1500);
+                };
+                poll();
+
+                stopBtn.addEventListener('click', async () => {
+                    stopBtn.disabled = true;
+                    await fetchWithCSRF(`${this.options.apiPath}/processes/stop`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: procId })
+                    });
+                    if (pollTimer) clearTimeout(pollTimer);
+                    setTimeout(poll, 500);
+                });
+
+                // 关闭对话框不停止进程
+                overlay.addEventListener('removeDialog', () => {
+                    if (pollTimer) clearTimeout(pollTimer);
+                });
+            } else {
+                // 前台模式：直接返回结果
+                outputEl.textContent = data.output || '(无输出)';
+                if (data.success) {
+                    statusEl.innerHTML = `<span style="color: #4CAF50;">退出码: ${data.exitCode}</span> · 耗时: ${data.time}`;
+                } else {
+                    statusEl.innerHTML = `<span style="color: #f44336;">退出码: ${data.exitCode}</span> · 耗时: ${data.time}`;
+                    outputEl.style.color = '#f44336';
+                }
+            }
+        } catch (error) {
+            outputEl.textContent = '执行失败: ' + error.message;
+            outputEl.style.color = '#f44336';
+            statusEl.innerHTML = '<span style="color: #f44336;">网络错误</span>';
+        }
+    }
+
+    /**
+     * 在终端中运行脚本 — 切换到终端 Tab 并自动执行
+     */
+    runInTerminal(filename) {
+        const tab = this.getActiveTab();
+        if (!tab) return;
+
+        const fullPath = this.joinPath(tab.path, filename);
+        const ext = filename.split('.').pop().toLowerCase();
+        let cmd;
+        if (['bat', 'cmd'].includes(ext)) {
+            cmd = `cd "${tab.path}" && cmd /c "${filename}"`;
+        } else if (ext === 'ps1') {
+            cmd = `cd "${tab.path}" && pwsh -File "${filename}"`;
+        } else {
+            cmd = `cd "${tab.path}" && bash "${filename}"`;
+        }
+
+        // 切换到终端 Tab
+        if (window.app?.switchTab) {
+            window.app.switchTab('terminal');
+        }
+
+        // 等终端就绪后发送命令
+        const tryRun = (retries = 0) => {
+            const terminal = window.__pixelbeast_terminal;
+            if (terminal?.runCommand) {
+                setTimeout(() => terminal.runCommand(cmd), 300);
+            } else if (retries < 10) {
+                setTimeout(() => tryRun(retries + 1), 500);
+            } else {
+                this.options.toast?.error?.('终端未就绪，请稍后重试');
+            }
+        };
+        setTimeout(() => tryRun(), 500);
     }
 
     /**

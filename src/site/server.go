@@ -315,10 +315,12 @@ func (m *SiteManager) startSitePort(site *config.SiteConfig) {
 	}
 
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", site.Port),
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              fmt.Sprintf(":%d", site.Port),
+		Handler:           handler,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	if sslEnabled && m.SSLManager != nil {

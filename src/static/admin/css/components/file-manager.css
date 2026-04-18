@@ -2614,3 +2614,66 @@
         height: calc(95vh - 44px);
     }
 }
+
+/* ==================== 分享白名单设置 ==================== */
+
+.fm-share-settings {
+    padding: 12px var(--space-lg, 16px);
+    border-bottom: 1px solid var(--border, #44403c);
+    background: var(--bg, #0c0a09);
+}
+
+.fm-share-settings-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg-elevated, #1c1917);
+    border: 1px solid var(--border, #44403c);
+    border-radius: 6px;
+    color: var(--text, #fafaf9);
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.fm-share-settings-input:focus {
+    border-color: var(--primary, #f97316);
+}
+
+.fm-share-settings-add {
+    padding: 6px 12px;
+    background: var(--primary, #f97316);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.fm-share-settings-add:hover {
+    opacity: 0.9;
+}
+
+.fm-share-whitelist-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg-elevated, #1c1917);
+    border-radius: 6px;
+    border: 1px solid var(--border, #44403c);
+    margin-bottom: 4px;
+}
+
+.fm-share-whitelist-remove {
+    background: none;
+    border: none;
+    color: var(--danger, #ef4444);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    flex-shrink: 0;
+}
+
+.fm-share-whitelist-remove:hover {
+    opacity: 0.8;
+}

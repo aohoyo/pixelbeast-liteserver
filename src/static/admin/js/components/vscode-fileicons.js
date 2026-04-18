@@ -235,7 +235,7 @@ const EXT_MAP = {
 	'env': 'env', 'lock': 'lock',
 	'pem': 'certificate', 'crt': 'certificate', 'cer': 'certificate', 'key': 'key', 'pub': 'key',
 	'makefile': 'makefile',
-	'sh': 'shell', 'bash': 'shell', 'zsh': 'shell', 'bat': 'shell', 'ps1': 'shell',
+	'sh': 'shell', 'bash': 'shell', 'zsh': 'shell', 'bat': 'shell', 'cmd': 'shell', 'ps1': 'shell',
 	'db': 'database', 'sqlite': 'database',
 	'gitignore': 'git', 'gitattributes': 'git',
 };

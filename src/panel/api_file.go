@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"pixelbeast/src/config"
 	fileop "pixelbeast/src/file"
@@ -963,8 +965,12 @@ func (h *Handler) readFileContent(w http.ResponseWriter, r *http.Request) {
 		fileType = "xml"
 	case ".yaml", ".yml":
 		fileType = "yaml"
-	case ".sh":
+	case ".sh", ".bash":
 		fileType = "shell"
+	case ".bat", ".cmd":
+		fileType = "batch"
+	case ".ps1":
+		fileType = "powershell"
 	case ".sql":
 		fileType = "sql"
 	}
@@ -1302,11 +1308,10 @@ func (h *Handler) shareFile(w http.ResponseWriter, r *http.Request) {
 	targetDir := resolvePath(req.Path)
 	filePath := filepath.Join(targetDir, req.Name)
 
-	// 二次校验：确保最终路径仍在项目目录下
-	rootDir, _ := os.Getwd()
+	// 二次校验：确保文件在允许分享的目录下
 	absPath, _ := filepath.Abs(filePath)
-	if !strings.HasPrefix(absPath, rootDir+string(os.PathSeparator)) && absPath != rootDir {
-		BadRequest(w, "Invalid path")
+	if !h.ConfigManager.IsSharePathAllowed(absPath) {
+		BadRequest(w, "该目录不允许分享文件")
 		return
 	}
 
@@ -1453,10 +1458,9 @@ func (h *Handler) downloadSharedFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 安全校验：确保文件路径在项目目录下（防止存储被篡改）
-	rootDir, _ := os.Getwd()
+	// 安全校验：确保文件路径在白名单允许的目录下
 	absFilePath, _ := filepath.Abs(link.FilePath)
-	if !strings.HasPrefix(absFilePath, rootDir+string(os.PathSeparator)) && absFilePath != rootDir {
+	if !h.ConfigManager.IsSharePathAllowed(absFilePath) {
 		Error(w, http.StatusForbidden, "访问被拒绝")
 		return
 	}
@@ -1760,3 +1764,338 @@ const sharePageHTML = `<!DOCTYPE html>
     </script>
 </body>
 </html>`
+
+
+// runScriptAllowedExts 允许运行的脚本文件扩展名
+var runScriptAllowedExts = map[string]bool{
+	".sh":   true,
+	".bash": true,
+	".bat":  true,
+	".cmd":  true,
+	".ps1":  true,
+}
+
+// bgProcess 后台进程信息
+type bgProcess struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	PID       int       `json:"pid"`
+	StartTime time.Time `json:"startTime"`
+	Running   bool      `json:"running"`
+	ExitCode  int       `json:"exitCode"`
+	Output    string    `json:"output"`
+}
+
+// processManager 进程管理器
+var processManager = struct {
+	sync.Mutex
+	processes map[string]*bgProcess
+}{
+	processes: make(map[string]*bgProcess),
+}
+
+// buildScriptCmd 根据扩展名构建脚本执行命令
+func buildScriptCmd(ext, filePath string) (*exec.Cmd, error) {
+	switch ext {
+	case ".sh", ".bash":
+		return exec.Command("bash", filePath), nil
+	case ".bat", ".cmd":
+		if runtime.GOOS == "windows" {
+			return exec.Command("cmd.exe", "/C", filePath), nil
+		}
+		return nil, fmt.Errorf("当前系统不支持运行 .bat/.cmd 文件")
+	case ".ps1":
+		psPath, _ := exec.LookPath("pwsh")
+		if psPath == "" {
+			psPath, _ = exec.LookPath("powershell")
+		}
+		if psPath == "" {
+			return nil, fmt.Errorf("未找到 PowerShell，请先安装")
+		}
+		return exec.Command(psPath, "-File", filePath), nil
+	}
+	return nil, fmt.Errorf("不支持的脚本类型")
+}
+
+// handleRunScript 执行脚本文件（前台/后台）
+func (h *Handler) handleRunScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Path       string `json:"path"`
+		Background bool   `json:"background"`
+	}
+	if err := parseJSONBody(r, &req); err != nil {
+		BadRequest(w, "无效的请求参数")
+		return
+	}
+
+	if req.Path == "" {
+		BadRequest(w, "路径不能为空")
+		return
+	}
+
+	filePath := resolvePath(req.Path)
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	if !runScriptAllowedExts[ext] {
+		BadRequest(w, "不支持运行此类型的文件")
+		return
+	}
+
+	info, err := os.Stat(filePath)
+	if err != nil {
+		BadRequest(w, "文件不存在")
+		return
+	}
+	if info.IsDir() {
+		BadRequest(w, "不能运行目录")
+		return
+	}
+	if info.Size() > 1<<20 {
+		BadRequest(w, "脚本文件过大（超过 1MB）")
+		return
+	}
+
+	cmd, err := buildScriptCmd(ext, filePath)
+	if err != nil {
+		BadRequest(w, err.Error())
+		return
+	}
+
+	name := filepath.Base(filePath)
+
+	// 后台模式
+	if req.Background {
+		id := generateShareToken() // 复用 token 生成作为进程 ID
+		proc := &bgProcess{
+			ID:        id,
+			Name:      name,
+			Path:      filePath,
+			StartTime: time.Now(),
+			Running:   true,
+		}
+
+		// 收集输出
+		var outputBuf strings.Builder
+		cmd.Stdout = &outputBuf
+		cmd.Stderr = &outputBuf
+
+		if err := cmd.Start(); err != nil {
+			BadRequest(w, "启动失败: "+err.Error())
+			return
+		}
+
+		proc.PID = cmd.Process.Pid
+
+		processManager.Lock()
+		processManager.processes[id] = proc
+		processManager.Unlock()
+
+		// 后台等待完成
+		go func() {
+			_ = cmd.Wait()
+			processManager.Lock()
+			proc.Output = outputBuf.String()
+			proc.Running = false
+			if cmd.ProcessState != nil {
+				proc.ExitCode = cmd.ProcessState.ExitCode()
+			}
+			processManager.Unlock()
+			logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("后台脚本结束: %s (PID:%d), 退出码: %d", filePath, proc.PID, proc.ExitCode))
+		}()
+
+		logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("后台运行脚本: %s (PID:%d)", filePath, proc.PID))
+
+		Success(w, map[string]interface{}{
+			"id":      id,
+			"pid":     proc.PID,
+			"name":    name,
+			"running": true,
+		})
+		return
+	}
+
+	// 前台模式（等待完成）
+	timeout := 30 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd2, _ := buildScriptCmd(ext, filePath) // 重建命令（前台需要带 context）
+	switch ext {
+	case ".sh", ".bash":
+		cmd2 = exec.CommandContext(ctx, "bash", filePath)
+	case ".bat", ".cmd":
+		if runtime.GOOS == "windows" {
+			cmd2 = exec.CommandContext(ctx, "cmd.exe", "/C", filePath)
+		}
+	case ".ps1":
+		psPath, _ := exec.LookPath("pwsh")
+		if psPath == "" {
+			psPath, _ = exec.LookPath("powershell")
+		}
+		if psPath != "" {
+			cmd2 = exec.CommandContext(ctx, psPath, "-File", filePath)
+		}
+	}
+
+	startTime := time.Now()
+	output, err := cmd2.CombinedOutput()
+	elapsed := time.Since(startTime)
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else if ctx.Err() == context.DeadlineExceeded {
+			Success(w, map[string]interface{}{
+				"output":   string(output) + "\n[执行超时，已终止（30秒限制）]",
+				"exitCode": -1,
+				"success":  false,
+				"time":     elapsed.String(),
+			})
+			return
+		} else {
+			exitCode = -1
+		}
+	}
+
+	outputStr := string(output)
+	if outputStr == "" && exitCode == 0 {
+		outputStr = "(无输出)"
+	}
+
+	logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("运行脚本: %s, 耗时: %s, 退出码: %d", filePath, elapsed, exitCode))
+
+	Success(w, map[string]interface{}{
+		"output":   outputStr,
+		"exitCode": exitCode,
+		"success":  exitCode == 0,
+		"time":     elapsed.String(),
+	})
+}
+
+// handleListProcesses 列出后台进程
+func (h *Handler) handleListProcesses(w http.ResponseWriter, r *http.Request) {
+	processManager.Lock()
+	defer processManager.Unlock()
+
+	list := make([]*bgProcess, 0, len(processManager.processes))
+	for _, p := range processManager.processes {
+		list = append(list, p)
+	}
+	Success(w, map[string]interface{}{
+		"processes": list,
+	})
+}
+
+// handleProcessOutput 获取进程输出
+func (h *Handler) handleProcessOutput(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		BadRequest(w, "缺少进程 ID")
+		return
+	}
+
+	processManager.Lock()
+	proc, ok := processManager.processes[id]
+	processManager.Unlock()
+
+	if !ok {
+		BadRequest(w, "进程不存在")
+		return
+	}
+
+	Success(w, map[string]interface{}{
+		"id":       proc.ID,
+		"pid":      proc.PID,
+		"name":     proc.Name,
+		"running":  proc.Running,
+		"exitCode": proc.ExitCode,
+		"output":   proc.Output,
+	})
+}
+
+// handleStopProcess 停止后台进程
+func (h *Handler) handleStopProcess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := parseJSONBody(r, &req); err != nil {
+		BadRequest(w, "无效的请求参数")
+		return
+	}
+
+	processManager.Lock()
+	proc, ok := processManager.processes[req.ID]
+	if !ok {
+		processManager.Unlock()
+		BadRequest(w, "进程不存在")
+		return
+	}
+
+	if !proc.Running {
+		processManager.Unlock()
+		BadRequest(w, "进程已结束")
+		return
+	}
+
+	// 查找系统进程并杀死
+	if proc.PID > 0 {
+		findAndKillProcess(proc.PID)
+	}
+	processManager.Unlock()
+
+	SuccessMessage(w, "已发送停止信号")
+}
+
+// handleDeleteProcess 删除已结束的进程记录
+func (h *Handler) handleDeleteProcess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := parseJSONBody(r, &req); err != nil {
+		BadRequest(w, "无效的请求参数")
+		return
+	}
+
+	processManager.Lock()
+	defer processManager.Unlock()
+
+	proc, ok := processManager.processes[req.ID]
+	if !ok {
+		BadRequest(w, "进程不存在")
+		return
+	}
+	if proc.Running {
+		BadRequest(w, "进程仍在运行，请先停止")
+		return
+	}
+
+	delete(processManager.processes, req.ID)
+	SuccessMessage(w, "已删除")
+}
+
+// findAndKillProcess 查找并终止进程
+func findAndKillProcess(pid int) {
+	if runtime.GOOS == "windows" {
+		exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid)).Run()
+	} else {
+		exec.Command("kill", "-TERM", fmt.Sprintf("%d", pid)).Run()
+		time.Sleep(500 * time.Millisecond)
+		exec.Command("kill", "-KILL", fmt.Sprintf("%d", pid)).Run()
+	}
+}

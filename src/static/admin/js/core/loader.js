@@ -9,6 +9,7 @@ const COMPONENTS = {
     sites: 'components/sites-section.html',
     ftp: 'components/ftp-section.html',
     files: 'components/files-section.html',
+    terminal: 'components/terminal-section.html',
     settings: 'components/settings-section.html',
     cert: 'components/cert-section.html',
     logs: 'components/logs-section.html',
@@ -61,7 +62,7 @@ export async function loadContentSections() {
     contentArea.innerHTML = '';
 
     // 按顺序加载各组件
-    const sections = ['home', 'sites', 'ftp', 'files', 'settings', 'cert', 'logs'];
+    const sections = ['home', 'sites', 'ftp', 'files', 'terminal', 'settings', 'cert', 'logs'];
 
     for (const name of sections) {
         try {

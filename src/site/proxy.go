@@ -34,6 +34,16 @@ func NewProxyHandler(cfg *config.ProxyConfig, siteID string) (*ProxyHandler, err
 	// 创建反向代理
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
+	// 配置连接池优化
+	proxy.Transport = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		MaxConnsPerHost:     50,
+		IdleConnTimeout:     120 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableKeepAlives:   false,
+	}
+
 	// 设置错误处理器
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.LogPanelRuntime(logger.LogLevelError, "[Proxy] 代理错误: %v, 目标: %s, 请求: %s", err, cfg.Target, r.URL.Path)
