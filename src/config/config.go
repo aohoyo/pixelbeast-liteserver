@@ -719,6 +719,18 @@ func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
 		return nil, fmt.Errorf("加密默认密码失败: %w", err)
 	}
 
+	// 输出初始密码到终端
+	fmt.Println("")
+	fmt.Println("========================================")
+	fmt.Println("  PixelBeast 初始账号信息")
+	fmt.Println("========================================")
+	fmt.Printf("  账号: admin\n")
+	fmt.Printf("  密码: %s\n", randomPassword)
+	fmt.Println("========================================")
+	fmt.Println("  ⚠ 请在首次登录后立即修改密码")
+	fmt.Println("========================================")
+	fmt.Println("")
+
 	// 保存初始密码到文件
 	if err := cm.saveInitialPassword(randomPassword); err != nil {
 		return nil, fmt.Errorf("保存初始密码失败: %w", err)

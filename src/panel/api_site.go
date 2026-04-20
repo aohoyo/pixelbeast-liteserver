@@ -277,9 +277,6 @@ func (h *Handler) handleSitesBatch(w http.ResponseWriter, r *http.Request) {
 			site.UpdatedAt = time.Now().Format(time.RFC3339)
 			count++
 		case "delete":
-			if len(h.ConfigManager.Sites.Sites) <= 1 {
-				continue // 不允许删除最后一个站点
-			}
 			if err := h.ConfigManager.DeleteSite(id); err == nil {
 				count++
 			}
@@ -470,11 +467,7 @@ func (h *Handler) deleteSite(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 
-	// 不允许删除最后一个站点
-	if len(h.ConfigManager.Sites.Sites) <= 1 {
-		BadRequest(w, "不能删除最后一个站点")
-		return
-	}
+
 
 	// 删除站点
 	if err := h.ConfigManager.DeleteSite(id); err != nil {

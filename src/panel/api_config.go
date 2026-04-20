@@ -53,7 +53,12 @@ func (h *Handler) saveConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 密码特殊处理：前端传空则保留原密码
 	if newCfg.Admin.Password != "" {
-		h.ConfigManager.SetAdminPassword(newCfg.Admin.Password)
+		// 新密码：先加密，再用密文替换 newCfg 中的明文
+		if err := h.ConfigManager.SetAdminPassword(newCfg.Admin.Password); err != nil {
+			InternalServerError(w, "密码加密失败")
+			return
+		}
+		newCfg.Admin.Password = h.ConfigManager.Server.Admin.Password // 用加密后的密文
 	} else {
 		newCfg.Admin.Password = oldPassword
 	}

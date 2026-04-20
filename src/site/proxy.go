@@ -83,10 +83,27 @@ func NewProxyHandler(cfg *config.ProxyConfig, siteID string) (*ProxyHandler, err
 		}
 	}
 
-	// 修改响应
+	// 保存代理入口信息用于重写
+	proxyTarget := target
+
+	// 修改响应：重写重定向 Location
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		// 设置 CORS 头（如果需要）
-		// resp.Header.Set("X-Proxy", "LiteFeather")
+		loc := resp.Header.Get("Location")
+		if loc != "" && (resp.StatusCode == http.StatusMovedPermanently ||
+			resp.StatusCode == http.StatusFound ||
+			resp.StatusCode == http.StatusTemporaryRedirect ||
+			resp.StatusCode == http.StatusPermanentRedirect) {
+			// 将目标内部地址替换为代理入口地址
+			if strings.HasPrefix(loc, proxyTarget.String()) {
+				reqHost := resp.Request.Host
+				reqScheme := "http"
+				if resp.Request.TLS != nil {
+					reqScheme = "https"
+					}
+				proxyURL := reqScheme + "://" + reqHost
+				resp.Header.Set("Location", proxyURL + strings.TrimPrefix(loc, proxyTarget.String()))
+			}
+		}
 		return nil
 	}
 

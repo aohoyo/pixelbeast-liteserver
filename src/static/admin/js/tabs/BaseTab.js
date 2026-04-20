@@ -187,6 +187,10 @@ export class BaseTab {
                 } catch (error) {
                     msg.error('操作失败: ' + error.message);
                 }
+                // 操作后总是刷新状态
+                if (typeof this.checkServiceStatus === 'function') {
+                    try { await this.checkServiceStatus(); } catch(e) {}
+                }
             },
 
             restartService: async () => {
@@ -195,6 +199,9 @@ export class BaseTab {
                     msg.success(`${label}已重启`);
                 } catch (error) {
                     msg.error('重启失败: ' + error.message);
+                }
+                if (typeof this.checkServiceStatus === 'function') {
+                    try { await this.checkServiceStatus(); } catch(e) {}
                 }
             },
 
