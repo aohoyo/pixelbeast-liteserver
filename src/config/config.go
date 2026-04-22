@@ -818,17 +818,29 @@ func (cm *ConfigManager) ResetToDefaults() error {
 
 // ========== Admin 密码管理 ==========
 
-// GetSharedPort 获取共享端口（从第一个站点推导）
+// GetSharedPort 获取共享端口（检测是否存在多站点共用同一端口）
+// 如果多个站点使用相同端口，返回该端口作为共享端口
+// 如果没有共享情况，返回 0 表示无共享端口
 func (cm *ConfigManager) GetSharedPort() int {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
+	portCount := make(map[int]int)
 	for _, site := range cm.Sites.Sites {
 		if site.Enabled && site.Port > 0 {
-			return site.Port
+			portCount[site.Port]++
 		}
 	}
-	return 3380
+
+	// 返回有多个站点的端口，或 80/443
+	for port, count := range portCount {
+		if count > 1 || port == 80 || port == 443 {
+			return port
+		}
+	}
+
+	// 没有共享端口
+	return 0
 }
 
 // SetAdminPassword 设置管理员密码（加密存储）

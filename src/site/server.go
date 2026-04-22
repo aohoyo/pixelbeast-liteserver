@@ -25,6 +25,11 @@ type SiteManager struct {
 	sitesRunning     bool
 	portServers      map[int]*http.Server // 独立端口站点监听
 
+	// 共享端口服务器（域名路由）
+	sharedServer    *http.Server
+	sharedTLSServer *http.Server
+	sharedRunning   bool
+
 	// HTTP 重定向服务器（端口 80，ACME challenge + HTTPS 重定向）
 	redirectServer  *http.Server
 	redirectRunning bool
@@ -82,6 +87,7 @@ func (m *SiteManager) ReloadSites() error {
 
 	m.FileManager.UpdateBookmarksFromConfig(m.ConfigManager.Sites.Sites, m.ConfigManager.GetSitesDir())
 	m.startPortSites()
+	m.startSharedPort()
 
 	logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 站点配置已重新加载")
 	return nil
@@ -113,7 +119,7 @@ func (m *SiteManager) StartSitesServer() error {
 	}
 
 	m.startPortSites()
-	m.StartHTTPRedirect()
+	m.startSharedPort()
 	m.sitesRunning = true
 	logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 站点服务已启动")
 	return nil
@@ -122,9 +128,18 @@ func (m *SiteManager) StartSitesServer() error {
 func (m *SiteManager) startPortSites() {
 	m.stopPortSites()
 
+	sharedPort := m.ConfigManager.GetSharedPort()
 	for i := range m.ConfigManager.Sites.Sites {
 		site := &(m.ConfigManager.Sites.Sites)[i]
 		if !site.Enabled {
+			continue
+		}
+		// 跳过共享端口站点（由 startSharedPort 处理）
+		if sharedPort > 0 && site.Port == sharedPort {
+			continue
+		}
+		// 跳过 80/443（由共享端口或重定向服务器处理）
+		if site.Port == 80 || site.Port == 443 {
 			continue
 		}
 		m.startSitePort(site)
@@ -139,6 +154,92 @@ func (m *SiteManager) stopPortSites() {
 	m.portServers = make(map[int]*http.Server)
 }
 
+// startSharedPort 启动共享端口（域名路由，支持 HTTP + HTTPS）
+// 当多个站点共用同一端口时，通过域名区分路由。
+// 如果共享端口站点启用了 SSL，额外监听 443 端口提供 HTTPS。
+func (m *SiteManager) startSharedPort() {
+	m.stopSharedPort()
+
+	sharedPort := m.ConfigManager.GetSharedPort()
+	if sharedPort == 0 {
+		return
+	}
+
+	hasSSL := false
+	for i := range m.ConfigManager.Sites.Sites {
+		site := &(m.ConfigManager.Sites.Sites)[i]
+		if !site.Enabled {
+			continue
+		}
+		if site.Port == sharedPort && site.SSL != nil && site.SSL.Enabled {
+			hasSSL = true
+		}
+	}
+
+	handler := http.Handler(m.SitesRouter)
+
+	// 如果共享端口是 80 且有 SSL 站点，包装 ACME challenge + HTTPS 重定向
+	if sharedPort == 80 && m.SSLManager != nil {
+		handler = m.SSLManager.GetHTTPSRedirectHandler(handler)
+	}
+
+	// HTTP 监听（共享端口）
+	m.sharedServer = &http.Server{
+		Addr:              fmt.Sprintf(":%d", sharedPort),
+		Handler:           handler,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	m.sharedRunning = true
+
+	go func() {
+		logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 共享端口 HTTP 启动在 %d", sharedPort)
+		if err := m.sharedServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 共享端口 HTTP 错误: %v", err)
+		}
+	}()
+
+	// HTTPS 监听（443），仅当共享端口站点有 SSL 时
+	if hasSSL && m.SSLManager != nil {
+		tlsHandler := m.hstsMiddleware(handler)
+		m.sharedTLSServer = &http.Server{
+			Addr:              ":443",
+			Handler:           tlsHandler,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
+			TLSConfig: &tls.Config{
+				GetCertificate: m.SSLManager.GetCertificate,
+			},
+		}
+
+		go func() {
+			logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 共享端口 HTTPS 启动在 443")
+			if err := m.sharedTLSServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.LogPanelRuntime(logger.LogLevelError, "[Sites] 共享端口 HTTPS 错误: %v", err)
+			}
+		}()
+	}
+}
+
+// stopSharedPort 停止共享端口
+func (m *SiteManager) stopSharedPort() {
+	if m.sharedServer != nil {
+		m.sharedServer.Close()
+		m.sharedServer = nil
+		logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 共享端口 HTTP 已停止")
+	}
+	if m.sharedTLSServer != nil {
+		m.sharedTLSServer.Close()
+		m.sharedTLSServer = nil
+		logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 共享端口 HTTPS 已停止")
+	}
+	m.sharedRunning = false
+}
+
 // StopSitesServer 停止网站服务器
 func (m *SiteManager) StopSitesServer() error {
 	m.mu.Lock()
@@ -150,6 +251,7 @@ func (m *SiteManager) StopSitesServer() error {
 	m.mu.Unlock()
 
 	m.stopPortSites()
+	m.stopSharedPort()
 	m.stopHTTPRedirect()
 
 	logger.LogPanelRuntime(logger.LogLevelInfo, "[Sites] 网站服务器已停止")
@@ -300,6 +402,11 @@ func (m *SiteManager) startSitePort(site *config.SiteConfig) {
 	if site.Port <= 0 || site.Port == m.ConfigManager.Server.Admin.Port {
 		return
 	}
+	// 共享端口、80、443 由 startSharedPort 处理
+	sharedPort := m.ConfigManager.GetSharedPort()
+	if site.Port == sharedPort || site.Port == 80 || site.Port == 443 {
+		return
+	}
 
 	handler, err := m.SitesRouter.createHandler(site)
 	if err != nil {
@@ -368,11 +475,18 @@ func (m *SiteManager) RestartSite(siteID string) error {
 // ==================== HTTP 重定向 ====================
 
 // StartHTTPRedirect 启动端口 80 的 HTTP 重定向服务器
+// 仅在没有共享端口占用 80 且有 SSL 需求时启动
 func (m *SiteManager) StartHTTPRedirect() {
 	if m.SSLManager == nil {
 		return
 	}
 	if !m.SSLManager.HasSSLDomains() && !m.SSLManager.HasPendingChallenges() {
+		return
+	}
+	// 如果共享端口已经是 80，则不需要单独的重定向服务器
+	// 共享端口 80 的处理器会通过 VirtualHostRouter 处理所有请求
+	// SSL redirect 逻辑可以在 VirtualHostRouter 的 handler chain 中处理
+	if m.sharedRunning && m.sharedServer != nil {
 		return
 	}
 	if m.redirectRunning && m.redirectServer != nil {
@@ -403,6 +517,10 @@ func (m *SiteManager) EnsureHTTPRedirect() {
 		return
 	}
 	if m.redirectRunning && m.redirectServer != nil {
+		return
+	}
+	// 共享端口占用 80 时不启动独立重定向
+	if m.sharedRunning && m.sharedServer != nil {
 		return
 	}
 

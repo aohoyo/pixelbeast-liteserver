@@ -2074,8 +2074,8 @@ export class FileManager {
      * 判断是否为压缩文件
      */
     isArchiveFile(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
-        return ['zip', 'tar', 'gz', 'tgz', 'tar.gz', 'rar', '7z'].includes(ext);
+        const lower = filename.toLowerCase();
+        return lower.endsWith('.zip') || lower.endsWith('.tar.gz') || lower.endsWith('.tgz') || lower.endsWith('.gz') || lower.endsWith('.tar') || lower.endsWith('.7z');
     }
 
     /**

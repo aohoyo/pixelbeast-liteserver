@@ -696,19 +696,34 @@ func (h *Handler) scanCleanup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := h.scanSystemJunk()
-
-	totalMB := 0.0
-	for _, item := range items {
-		if !item.NeedAdmin {
-			totalMB += item.SizeMB
-		}
+	// 带超时的扫描，防止大目录阻塞
+	type scanResult struct {
+		items []junkItem
 	}
+	ch := make(chan scanResult, 1)
+	go func() {
+		ch <- scanResult{items: h.scanSystemJunk()}
+	}()
 
-	Success(w, map[string]interface{}{
-		"items":    items,
-		"total_mb": totalMB,
-	})
+	select {
+	case result := <-ch:
+		totalMB := 0.0
+		for _, item := range result.items {
+			if !item.NeedAdmin {
+				totalMB += item.SizeMB
+			}
+		}
+		Success(w, map[string]interface{}{
+			"items":    result.items,
+			"total_mb": totalMB,
+		})
+	case <-time.After(30 * time.Second):
+		Success(w, map[string]interface{}{
+			"items":    []junkItem{},
+			"total_mb": 0,
+			"message":  "扫描超时，目录过大",
+		})
+	}
 }
 
 func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
@@ -739,14 +754,16 @@ func (h *Handler) executeCleanup(w http.ResponseWriter, r *http.Request) {
 		selected[item] = true
 	}
 
-	cleanedMB := h.cleanSystemJunk(selected)
-
+	// 后台执行清理，避免长时间阻塞 HTTP handler
 	username := h.getSessionUsername(r)
-	logger.LogPanelConfigChange(username, fmt.Sprintf("系统清理 %.1f MB", cleanedMB), true)
+	go func() {
+		cleanedMB := h.cleanSystemJunk(selected)
+		logger.LogPanelConfigChange(username, fmt.Sprintf("系统清理 %.1f MB", cleanedMB), true)
+	}()
 
 	Success(w, map[string]interface{}{
-		"cleaned_mb": cleanedMB,
-		"message":    fmt.Sprintf("已清理 %.1f MB", cleanedMB),
+		"cleaned_mb": 0,
+		"message":    "清理任务已提交，正在后台执行",
 	})
 }
 
@@ -1130,11 +1147,11 @@ func (h *Handler) cleanLinuxJunk(selected map[string]bool) float64 {
 		}
 		if cacheDir != "" {
 			if _, err := exec.LookPath("apt-get"); err == nil {
-				exec.Command("sudo", "apt-get", "clean", "-y").Run()
+				runCmdTimeout("sudo", 30*time.Second, "-n", "apt-get", "clean", "-y")
 			} else if _, err := exec.LookPath("yum"); err == nil {
-				exec.Command("sudo", "yum", "clean", "all", "-y").Run()
+				runCmdTimeout("sudo", 30*time.Second, "-n", "yum", "clean", "all", "-y")
 			} else if _, err := exec.LookPath("dnf"); err == nil {
-				exec.Command("sudo", "dnf", "clean", "all", "-y").Run()
+				runCmdTimeout("sudo", 30*time.Second, "-n", "dnf", "clean", "all", "-y")
 			}
 			afterMB, _ := calcDirSize(cacheDir)
 			if afterMB < beforeMB {
@@ -1186,7 +1203,7 @@ func (h *Handler) cleanLinuxJunk(selected map[string]bool) float64 {
 
 	if selected["journal_logs"] {
 		// vacuum journal 日志到最近 2 天
-		exec.Command("sudo", "journalctl", "--vacuum-time=2d").Run()
+		runCmdTimeout("sudo", 30*time.Second, "-n", "journalctl", "--vacuum-time=2d")
 	}
 
 	if selected["old_logs"] {
@@ -1406,17 +1423,17 @@ func sudoBatchClean(items []cleanFailedItem) float64 {
 		}
 		return cleaned
 	}
-	// Linux/macOS: 逐个 sudo 删除
+	// Linux/macOS: 逐个 sudo 删除（带超时）
 	var cleaned float64
 	for _, item := range items {
+		var cmd *exec.Cmd
 		if item.isDir {
-			if exec.Command("sudo", "rm", "-rf", item.path).Run() == nil {
-				cleaned += item.size
-			}
+			cmd = exec.Command("sudo", "-n", "rm", "-rf", item.path)
 		} else {
-			if exec.Command("sudo", "rm", "-f", item.path).Run() == nil {
-				cleaned += item.size
-			}
+			cmd = exec.Command("sudo", "-n", "rm", "-f", item.path)
+		}
+		if runCmdResult(cmd, 10*time.Second) == nil {
+			cleaned += item.size
 		}
 	}
 	return cleaned
@@ -1425,34 +1442,50 @@ func sudoBatchClean(items []cleanFailedItem) float64 {
 // runCmdTimeout 带超时执行命令，超时则终止进程
 func runCmdTimeout(name string, timeout time.Duration, args ...string) {
 	cmd := exec.Command(name, args...)
-	cmd.Start()
-	done := make(chan struct{})
+	runCmdResult(cmd, timeout)
+}
+
+// runCmdResult 带超时执行命令，返回错误
+func runCmdResult(cmd *exec.Cmd, timeout time.Duration) error {
+	// 防止 sudo 等命令阻塞等待 stdin
+	cmd.Stdin = nil
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
 	go func() {
-		cmd.Wait()
-		close(done)
+		done <- cmd.Wait()
 	}()
 	select {
-	case <-done:
+	case err := <-done:
+		return err
 	case <-time.After(timeout):
 		cmd.Process.Kill()
+		<-done
+		return fmt.Errorf("command timed out after %v", timeout)
 	}
 }
 
-// calcDirSize 计算目录总大小和文件数
+// calcDirSize 计算目录总大小和文件数（限制最大文件数防止卡死）
 func calcDirSize(dir string) (totalMB float64, count int) {
+	const maxFiles = 50000
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
 		totalMB += float64(info.Size()) / 1024 / 1024
 		count++
+		if count >= maxFiles {
+			return fmt.Errorf("scan limit reached")
+		}
 		return nil
 	})
 	return
 }
 
-// scanDirOlderThan 扫描目录中超过指定时间的文件大小
+// scanDirOlderThan 扫描目录中超过指定时间的文件大小（限制最大文件数）
 func scanDirOlderThan(dir string, age time.Duration) (totalMB float64, count int) {
+	const maxFiles = 50000
 	cutoff := time.Now().Add(-age)
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -1461,6 +1494,9 @@ func scanDirOlderThan(dir string, age time.Duration) (totalMB float64, count int
 		if info.ModTime().Before(cutoff) {
 			totalMB += float64(info.Size()) / 1024 / 1024
 			count++
+		}
+		if count >= maxFiles {
+			return fmt.Errorf("scan limit reached")
 		}
 		return nil
 	})

@@ -1133,12 +1133,16 @@ func (h *Handler) extractFile(w http.ResponseWriter, r *http.Request) {
 	switch ext {
 	case ".zip":
 		err = fileop.ExtractZip(srcFile, srcDir)
+	case ".tar":
+		err = fileop.ExtractTar(srcFile, srcDir)
 	case ".gz":
 		if strings.HasSuffix(strings.ToLower(req.Name), ".tar.gz") {
 			err = fileop.ExtractTarGz(srcFile, srcDir)
 		} else {
 			err = fileop.ExtractGz(srcFile, srcDir)
 		}
+	case ".7z":
+		err = fileop.Extract7z(srcFile, srcDir)
 	default:
 		if strings.HasSuffix(strings.ToLower(req.Name), ".tar.gz") || strings.HasSuffix(strings.ToLower(req.Name), ".tgz") {
 			err = fileop.ExtractTarGz(srcFile, srcDir)
@@ -1149,7 +1153,8 @@ func (h *Handler) extractFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		InternalServerErrorLog(w, err, "解压失败")
+		logger.LogPanelRuntime(logger.LogLevelError, "解压失败 %s/%s: %v", req.Path, req.Name, err)
+		Error(w, http.StatusInternalServerError, "解压失败: "+err.Error())
 		return
 	}
 

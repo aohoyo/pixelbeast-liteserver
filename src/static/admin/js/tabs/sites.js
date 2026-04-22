@@ -345,6 +345,7 @@ class SitesTab extends BaseTab {
                 this._svc.updateServiceStatus(data.running);
             }
         } catch (error) {
+            console.error('[Sites] 状态检查失败:', error);
         }
     }
 

@@ -279,19 +279,17 @@ class FtpTab extends BaseTab {
 
     async checkServiceStatus() {
         try {
-            const response = await this.api.get('/api/ftp/status');
-            if (response?.ok) {
-                const data = await this.api.parseJSON(response);
-                if (data) {
-                    this._svc.updateServiceStatus(data.running);
-                    this.ftpPort = data.port || 2121;
-                    const portInput = this.$('#ftp-port-input');
-                    if (portInput) {
-                        portInput.value = data.port;
-                    }
+            const data = await this.api.getJSON('/api/ftp/status');
+            if (data) {
+                this._svc.updateServiceStatus(data.running);
+                this.ftpPort = data.port || 2121;
+                const portInput = this.$('#ftp-port-input');
+                if (portInput) {
+                    portInput.value = data.port;
                 }
             }
         } catch (error) {
+            console.error('[FTP] 状态检查失败:', error);
         }
     }
 

@@ -19,11 +19,8 @@ const (
 	MaxFTPUploadSize     = 500 << 20 // 500MB FTP 上传限制
 )
 func (h *Handler) getFtpStatus(w http.ResponseWriter, r *http.Request) {
-	ftpRunning := h.ConfigManager.FTP.Enabled
+	ftpRunning := h.ftpRunning
 	ftpPort := h.ConfigManager.FTP.Port
-	if h.SiteManager != nil {
-		ftpRunning = h.ftpRunning
-	}
 	Success(w, map[string]interface{}{
 		"running": ftpRunning,
 		"port":    ftpPort,

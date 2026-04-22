@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -251,6 +252,53 @@ func ExtractTarGz(srcFile, destDir string) error {
 	return nil
 }
 
+// ExtractTar 解压 .tar 文件
+func ExtractTar(srcFile, destDir string) error {
+	f, err := os.Open(srcFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	tarReader := tar.NewReader(f)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join(destDir, header.Name)
+
+		absDest, _ := filepath.Abs(destPath)
+		absDestDir, _ := filepath.Abs(destDir)
+		if !strings.HasPrefix(absDest, absDestDir) {
+			return fmt.Errorf("invalid file path in tar: %s", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			os.MkdirAll(destPath, os.FileMode(header.Mode))
+		case tar.TypeReg:
+			os.MkdirAll(filepath.Dir(destPath), 0755)
+			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(destFile, tarReader); err != nil {
+				destFile.Close()
+				return err
+			}
+			destFile.Close()
+		}
+	}
+
+	return nil
+}
+
 // ExtractGz 解压单个 .gz 文件
 func ExtractGz(srcFile, destDir string) error {
 	file, err := os.Open(srcFile)
@@ -276,4 +324,17 @@ func ExtractGz(srcFile, destDir string) error {
 
 	_, err = io.Copy(destFile, gzReader)
 	return err
+}
+
+// Extract7z 解压 .7z 文件（依赖系统 7z 命令）
+func Extract7z(srcFile, destDir string) error {
+	bin, err := exec.LookPath("7z")
+	if err != nil {
+		bin, err = exec.LookPath("7za")
+		if err != nil {
+			return fmt.Errorf("未安装 7z，请执行: apt install p7zip-full")
+		}
+	}
+	cmd := exec.Command(bin, "x", srcFile, "-o"+destDir, "-y")
+	return cmd.Run()
 }
