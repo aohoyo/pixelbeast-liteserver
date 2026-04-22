@@ -6,7 +6,8 @@
  */
 
 import { BaseTab } from './BaseTab.js';
-import { escapeHtml, initNumberInputs, openDirPicker } from '../core/utils.js';
+import { escapeHtml, initNumberInputs } from '../core/utils.js';
+import { openDirPicker } from '../core/dir-picker.js';
 
 class SettingsTab extends BaseTab {
     constructor(deps) {

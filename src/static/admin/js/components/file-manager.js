@@ -6,6 +6,7 @@
 
 import { getFileIcon, getIconColorClass, formatFileSize, formatDate } from './vscode-fileicons.js';
 import { escapeHtml } from '../core/utils.js';
+import { getCSRFToken } from '../core/api.js';
 import { contextMenu } from './context-menu.js';
 import { UploadManager } from './upload-manager.js';
 
@@ -18,15 +19,7 @@ async function getCmModule() {
     return _cmModule;
 }
 
-// CSRF token 缓存
-let _csrfToken = null;
-function getCSRFToken() {
-    if (_csrfToken) return _csrfToken;
-    const meta = document.querySelector('meta[name="csrf-token"]');
-    if (meta) { _csrfToken = meta.content; return _csrfToken; }
-    // 从 cookie 获取 session 状态，从 /api/status 获取 token
-    return '';
-}
+// CSRF token 通过 core/api.js 统一管理
 function fetchWithCSRF(url, options = {}) {
     if (!options.headers) options.headers = {};
     const token = getCSRFToken();
@@ -692,7 +685,7 @@ export class FileManager {
             currentPath += '/' + part;
             const normalizedPath = currentPath.replace(/\/+/g, '/');
             html += `<span class="fm-breadcrumb-sep">/</span>`;
-            html += `<span class="fm-breadcrumb-item" data-path="${normalizedPath}">${part}</span>`;
+            html += `<span class="fm-breadcrumb-item" data-path="${escapeHtml(normalizedPath)}">${escapeHtml(part)}</span>`;
         }
         
         this.els.breadcrumb.innerHTML = html;
@@ -826,10 +819,10 @@ export class FileManager {
                 </div>
                 <div class="fm-list-body">
                     ${files.map(f => `
-                        <div class="fm-list-item ${tab?.selectedItems.has(f.name) ? 'selected' : ''}" data-name="${f.name}" data-is-dir="${f.is_dir}">
+                        <div class="fm-list-item ${tab?.selectedItems.has(f.name) ? 'selected' : ''}" data-name="${escapeHtml(f.name)}" data-is-dir="${f.is_dir}">
                             <div class="fm-list-name">
                                 <div class="fm-list-icon ${getIconColorClass(f.name, f.is_dir)}">${getFileIcon(f.name, f.is_dir)}</div>
-                                <span class="fm-list-filename">${f.name}</span>
+                                <span class="fm-list-filename">${escapeHtml(f.name)}</span>
                             </div>
                             <span class="fm-list-size">${f.is_dir ? '-' : formatFileSize(f.size)}</span>
                             <span class="fm-list-date">${formatDate(f.modified)}</span>
@@ -847,9 +840,9 @@ export class FileManager {
         this.els.content.innerHTML = `
             <div class="fm-grid-view">
                 ${files.map(f => `
-                    <div class="fm-grid-item ${tab?.selectedItems.has(f.name) ? 'selected' : ''}" data-name="${f.name}" data-is-dir="${f.is_dir}">
+                    <div class="fm-grid-item ${tab?.selectedItems.has(f.name) ? 'selected' : ''}" data-name="${escapeHtml(f.name)}" data-is-dir="${f.is_dir}">
                         <div class="fm-grid-icon ${getIconColorClass(f.name, f.is_dir)}">${getFileIcon(f.name, f.is_dir)}</div>
-                        <span class="fm-grid-name">${f.name}</span>
+                        <span class="fm-grid-name">${escapeHtml(f.name)}</span>
                     </div>
                 `).join('')}
             </div>
@@ -1005,7 +998,7 @@ export class FileManager {
                         <span>类型</span>
                     </div>
                     ${results.map(f => `
-                        <div class="fm-list-item" data-name="${f.name}" data-is-dir="${f.is_dir}">
+                        <div class="fm-list-item" data-name="${escapeHtml(f.name)}" data-is-dir="${f.is_dir}">
                             <div class="fm-list-name">
                                 <div class="fm-list-icon ${getIconColorClass(f.name, f.is_dir)}">${getFileIcon(f.name, f.is_dir)}</div>
                                 <span class="fm-list-filename">${this.highlightMatch(f.name, keyword)}</span>
@@ -1021,7 +1014,7 @@ export class FileManager {
             this.els.content.innerHTML = `
                 <div class="fm-grid-view">
                     ${results.map(f => `
-                        <div class="fm-grid-item" data-name="${f.name}" data-is-dir="${f.is_dir}">
+                        <div class="fm-grid-item" data-name="${escapeHtml(f.name)}" data-is-dir="${f.is_dir}">
                             <div class="fm-grid-icon ${getIconColorClass(f.name, f.is_dir)}">${getFileIcon(f.name, f.is_dir)}</div>
                             <span class="fm-grid-name">${this.highlightMatch(f.name, keyword)}</span>
                         </div>
@@ -1034,9 +1027,11 @@ export class FileManager {
     }
     
     highlightMatch(text, keyword) {
-        if (!keyword) return text;
-        const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-        return text.replace(regex, '<mark class="fm-search-highlight">$1</mark>');
+        if (!keyword) return escapeHtml(text);
+        const escaped = escapeHtml(text);
+        const escapedKeyword = escapeHtml(keyword);
+        const regex = new RegExp(`(${escapedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return escaped.replace(regex, '<mark class="fm-search-highlight">$1</mark>');
     }
     
     clearSearch() {
@@ -1083,7 +1078,7 @@ export class FileManager {
         this.renderFilesForTab();
         
         setTimeout(() => {
-            const item = this.els.content.querySelector(`[data-name="${defaultName}"]`);
+            const item = this.els.content.querySelector(`[data-name="${CSS.escape(defaultName)}"]`);
             if (item) this.enterEditMode(item, defaultName, false);
         }, 0);
     }
@@ -1102,7 +1097,7 @@ export class FileManager {
         this.renderFilesForTab();
         
         setTimeout(() => {
-            const item = this.els.content.querySelector(`[data-name="${defaultName}"]`);
+            const item = this.els.content.querySelector(`[data-name="${CSS.escape(defaultName)}"]`);
             if (item) this.enterEditMode(item, defaultName, true);
         }, 0);
     }
@@ -2854,7 +2849,7 @@ export class FileManager {
         if (!tab) return;
         
         // 找到文件项
-        const item = this.els.content.querySelector(`[data-name="${oldName}"]`);
+        const item = this.els.content.querySelector(`[data-name="${CSS.escape(oldName)}"]`);
         if (!item) return;
         
         // 判断是文件还是文件夹

@@ -37,12 +37,13 @@ export function showToast(message, type = 'info', duration = 3000) {
     toast.className = 'toast';
 
     // 图标和颜色映射
-    const config = {
+    const configMap = {
         success: { icon: '✓', color: '#22c55e' },
         error: { icon: '✕', color: '#ef4444' },
         warning: { icon: '⚠', color: '#fbbf24' },
         info: { icon: 'ℹ', color: '#f97316' }
-    }[type] || config.info;
+    };
+    const config = configMap[type] || configMap.info;
 
     toast.innerHTML = `
         <span class="toast-icon" style="color: ${config.color}">${config.icon}</span>

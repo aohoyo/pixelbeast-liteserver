@@ -21,11 +21,7 @@ const registry = new Map();
  */
 function normalizeKey(key) {
     return key.trim().toLowerCase()
-        .replace(/\s+/g, '')
-        .replace(/^ctrl\+/, 'ctrl+')
-        .replace(/^alt\+/, 'alt+')
-        .replace(/^shift\+/, 'shift+')
-        .replace(/^meta\+/, 'meta+');
+        .replace(/\s+/g, '');
 }
 
 /**

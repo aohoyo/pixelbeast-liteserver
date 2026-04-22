@@ -537,19 +537,19 @@ class CertTab extends BaseTab {
         const provider = this.dnsProviders.find(p => String(p.id) === String(id));
         const name = provider ? provider.name : id;
 
-        if (!confirm(`确定删除 DNS 服务商「${name}」？删除后不可恢复。`)) return;
+        this.dialog.danger(`确定删除 DNS 服务商「${name}」？删除后不可恢复。`, async () => {
+            const btn = item?.querySelector('[data-dns-action="delete"]');
+            if (btn) { btn.disabled = true; btn.textContent = '删除中...'; }
 
-        const btn = item?.querySelector('[data-dns-action="delete"]');
-        if (btn) { btn.disabled = true; btn.textContent = '删除中...'; }
-
-        try {
-            await this.api.delete('/api/certs/dns-providers/' + encodeURIComponent(id));
-            this.toast?.success(`DNS 服务商「${name}」已删除`);
-            await this.loadDNSProviders();
-        } catch (error) {
-            this.toast?.error('删除失败: ' + (error.message || '未知错误'));
-            if (btn) { btn.disabled = false; btn.textContent = '删除'; }
-        }
+            try {
+                await this.api.delete('/api/certs/dns-providers/' + encodeURIComponent(id));
+                this.toast?.success(`DNS 服务商「${name}」已删除`);
+                await this.loadDNSProviders();
+            } catch (error) {
+                this.toast?.error('删除失败: ' + (error.message || '未知错误'));
+                if (btn) { btn.disabled = false; btn.textContent = '删除'; }
+            }
+        });
     }
 
     async testDNSProvider(id) {
@@ -1144,15 +1144,15 @@ class CertTab extends BaseTab {
     }
 
     async deleteCert(domain) {
-        if (!confirm(`确定删除证书 ${domain}？`)) return;
-
-        try {
-            await this.api.post('/api/certs/delete', { domain });
-            this.toast?.success('证书已删除');
-            await this.loadCerts();
-        } catch (error) {
-            this.toast?.error('删除失败: ' + (error.message || '未知错误'));
-        }
+        this.dialog.danger(`确定删除证书 ${domain}？`, async () => {
+            try {
+                await this.api.post('/api/certs/delete', { domain });
+                this.toast?.success('证书已删除');
+                await this.loadCerts();
+            } catch (error) {
+                this.toast?.error('删除失败: ' + (error.message || '未知错误'));
+            }
+        });
     }
 
     // ========== 部署到站点 ==========

@@ -500,11 +500,11 @@ func (h *Handler) addFtpUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 加密密码
+	// 哈希密码
 	encryptedPassword, err := h.ConfigManager.EncryptPassword(req.Password)
 	if err != nil {
-		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 密码加密失败: %v", err)
-		InternalServerError(w, "密码加密失败")
+		logger.LogPanelRuntime(logger.LogLevelError, "[FTP] 密码哈希失败: %v", err)
+		InternalServerError(w, "密码哈希失败")
 		return
 	}
 

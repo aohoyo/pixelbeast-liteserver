@@ -627,21 +627,20 @@ func (h *Handler) UpdateSiteSSLConfig(domain string, ssl *config.SSLConfig) erro
 
 // ==================== DNS 服务商管理 API ====================
 
-// maskCredentials 脱敏凭证用于前端显示
+// maskCredentials 脱敏凭证用于前端显示（保留前几位和后几位）
 func maskCredentials(creds map[string]string) map[string]string {
 	masked := make(map[string]string)
 	for k, v := range creds {
-		switch k {
-		case "secret_key":
+		if len(v) > 8 {
+			// 保留前4位和后4位
+			masked[k] = v[:4] + "****" + v[len(v)-4:]
+		} else if len(v) > 4 {
+			// 保留前2位
+			masked[k] = v[:2] + "****"
+		} else if len(v) > 0 {
 			masked[k] = "****"
-		default:
-			if len(v) > 4 {
-				masked[k] = v[:4] + "****"
-			} else if len(v) > 0 {
-				masked[k] = "****"
-			} else {
-				masked[k] = ""
-			}
+		} else {
+			masked[k] = ""
 		}
 	}
 	return masked
@@ -1085,7 +1084,7 @@ func (h *Handler) handleDNSProviderGetCreds(w http.ResponseWriter, r *http.Reque
 		"id":          provider.ID,
 		"name":        provider.Name,
 		"type":        provider.Type,
-		"credentials": creds,
+		"credentials": maskCredentials(creds),
 	})
 }
 

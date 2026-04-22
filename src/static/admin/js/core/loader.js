@@ -61,29 +61,28 @@ export async function loadContentSections() {
     // 清空原有的"加载中..."提示
     contentArea.innerHTML = '';
 
-    // 按顺序加载各组件
+    // 并行加载各组件，按顺序插入 DOM
     const sections = ['home', 'sites', 'ftp', 'files', 'terminal', 'settings', 'cert', 'logs'];
 
-    for (const name of sections) {
-        try {
-            const html = await loadComponent(name);
-            const section = document.createElement('section');
-            section.id = name;
-            section.className = 'tab-content';
-            if (name === 'home') {
-                section.classList.add('active');
-            }
-            section.innerHTML = html;
-            contentArea.appendChild(section);
-        } catch (error) {
-            console.error(`加载组件 "${name}" 失败:`, error);
-            // 显示错误占位
-            const section = document.createElement('section');
-            section.id = name;
-            section.className = 'tab-content';
-            section.innerHTML = `<div class="card"><p class="loading">加载失败: ${error.message}</p></div>`;
-            contentArea.appendChild(section);
+    const results = await Promise.allSettled(sections.map(name => loadComponent(name)));
+
+    for (let i = 0; i < sections.length; i++) {
+        const name = sections[i];
+        const result = results[i];
+        const section = document.createElement('section');
+        section.id = name;
+        section.className = 'tab-content';
+        if (name === 'home') {
+            section.classList.add('active');
         }
+
+        if (result.status === 'fulfilled') {
+            section.innerHTML = result.value;
+        } else {
+            console.error(`加载组件 "${name}" 失败:`, result.reason);
+            section.innerHTML = `<div class="card"><p class="loading">加载失败: ${result.reason?.message || '未知错误'}</p></div>`;
+        }
+        contentArea.appendChild(section);
     }
 }
 

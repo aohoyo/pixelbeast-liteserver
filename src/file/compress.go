@@ -103,13 +103,13 @@ func ExtractZip(srcFile, destDir string) error {
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(destPath, f.Mode())
+			os.MkdirAll(destPath, f.Mode()&^06000)
 			continue
 		}
 
 		os.MkdirAll(filepath.Dir(destPath), 0755)
 
-		destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode()&^06000)
 		if err != nil {
 			return err
 		}
@@ -234,10 +234,10 @@ func ExtractTarGz(srcFile, destDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			os.MkdirAll(destPath, os.FileMode(header.Mode))
+			os.MkdirAll(destPath, os.FileMode(header.Mode)&^06000)
 		case tar.TypeReg:
 			os.MkdirAll(filepath.Dir(destPath), 0755)
-			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode)&^06000)
 			if err != nil {
 				return err
 			}
@@ -281,10 +281,10 @@ func ExtractTar(srcFile, destDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			os.MkdirAll(destPath, os.FileMode(header.Mode))
+			os.MkdirAll(destPath, os.FileMode(header.Mode)&^06000)
 		case tar.TypeReg:
 			os.MkdirAll(filepath.Dir(destPath), 0755)
-			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode)&^06000)
 			if err != nil {
 				return err
 			}

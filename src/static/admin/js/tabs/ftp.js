@@ -6,7 +6,8 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { escapeHtml, formatDate, copyToClipboard, initNumberInputs, openDirPicker } from '../core/utils.js';
+import { escapeHtml, formatDate, copyToClipboard, initNumberInputs } from '../core/utils.js';
+import { openDirPicker } from '../core/dir-picker.js';
 
 class FtpTab extends BaseTab {
     constructor(deps) {
@@ -81,7 +82,7 @@ class FtpTab extends BaseTab {
                 title: '密码',
                 dataIndex: 'password',
                 className: 'col-password',
-                render: (value) => `<div class="ftp-password"><span class="ftp-password-text">••••••••</span><button class="copy-btn" data-password="${escapeHtml(value)}" title="复制密码"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`
+                render: (value, row) => `<div class="ftp-password"><span class="ftp-password-text">••••••••</span><button class="copy-btn" data-username="${escapeHtml(row.username)}" title="复制密码"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`
             },
             {
                 title: '状态',
@@ -94,10 +95,9 @@ class FtpTab extends BaseTab {
                 dataIndex: 'username',
                 className: 'col-link',
                 render: (value, row) => {
-                    const password = row.password || '';
                     const port = this.ftpPort || 2121;
-                    const link = `ftp://${value}:${password}@${window.location.hostname}:${port}`;
-                    return `<div class="quick-link"><a class="quick-link-text" href="${escapeHtml(link)}" target="_blank" title="点击打开">${escapeHtml(link)}</a><button class="quick-link-copy" data-link="${escapeHtml(link)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
+                    const link = `ftp://${value}@${window.location.hostname}:${port}`;
+                    return `<div class="quick-link"><a class="quick-link-text" href="${escapeHtml(link)}" target="_blank" title="点击打开">${escapeHtml(link)}</a><button class="quick-link-copy" data-link="${escapeHtml(link)}" data-username="${escapeHtml(value)}" title="复制链接"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>`;
                 }
             },
             {
@@ -208,11 +208,21 @@ class FtpTab extends BaseTab {
             });
         });
 
-        // 复制密码
-        this.$$('.copy-btn[data-password]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                copyToClipboard(btn.dataset.password);
-                this.message.success('密码已复制');
+        // 复制密码（通过 API 获取，不暴露在 DOM 中）
+        this.$$('.copy-btn[data-username]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    const username = btn.dataset.username;
+                    const result = await this.api.getJSON(`/api/ftp/users/${encodeURIComponent(username)}/password`);
+                    if (result && result.password) {
+                        await copyToClipboard(result.password);
+                        this.message.success('密码已复制');
+                    } else {
+                        this.message.error('获取密码失败');
+                    }
+                } catch (error) {
+                    this.message.error('获取密码失败: ' + error.message);
+                }
             });
         });
 

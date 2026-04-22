@@ -7,6 +7,8 @@
  * - show({ title, message, ... }) — 动态创建对话框
  */
 
+import { escapeHtml } from '../core/utils.js';
+
 class Dialog {
     constructor() {
         this.currentDialog = null;
@@ -83,12 +85,12 @@ class Dialog {
             <div class="dialog-content">
                 <div class="dialog-header">
                     <i class="icon ${iconClass}"></i>
-                    <h3>${title}</h3>
+                    <h3>${escapeHtml(title)}</h3>
                 </div>
                 <div class="dialog-body">${message}</div>
                 <div class="dialog-footer">
-                    <button class="btn btn-secondary dialog-cancel">${cancelText}</button>
-                    <button class="btn ${type === 'danger' ? 'btn-danger' : 'btn-primary'} dialog-confirm">${confirmText}</button>
+                    <button class="btn btn-secondary dialog-cancel">${escapeHtml(cancelText)}</button>
+                    <button class="btn ${type === 'danger' ? 'btn-danger' : 'btn-primary'} dialog-confirm">${escapeHtml(confirmText)}</button>
                 </div>
             </div>
         `;
@@ -146,12 +148,12 @@ class Dialog {
     }
 
     /**
-     * 快捷方法：确认对话框
+     * 快捷方法：确认对话框（message 会被自动转义）
      */
     confirm(message, onConfirm, onCancel) {
         this.show({
             title: '确认操作',
-            message,
+            message: escapeHtml(message),
             type: 'warning',
             confirmText: '确定',
             cancelText: '取消',
@@ -161,26 +163,28 @@ class Dialog {
     }
 
     /**
-     * 快捷方法：警告对话框
+     * 快捷方法：警告对话框（message 会被自动转义）
      */
-    alert(message, onConfirm) {
+    alert(message, titleOrOnConfirm, onConfirm) {
+        // 支持两种调用方式：alert(message, onConfirm) 或 alert(message, title, onConfirm)
+        const hasTitle = typeof titleOrOnConfirm === 'string';
         this.show({
-            title: '提示',
-            message,
+            title: hasTitle ? titleOrOnConfirm : '提示',
+            message: escapeHtml(message),
             type: 'info',
             confirmText: '知道了',
             cancelText: '',
-            onConfirm
+            onConfirm: hasTitle ? onConfirm : titleOrOnConfirm
         });
     }
 
     /**
-     * 快捷方法：危险操作确认
+     * 快捷方法：危险操作确认（message 会被自动转义）
      */
     danger(message, onConfirm, onCancel) {
         this.show({
             title: '危险操作',
-            message,
+            message: escapeHtml(message),
             type: 'danger',
             confirmText: '确认删除',
             cancelText: '取消',

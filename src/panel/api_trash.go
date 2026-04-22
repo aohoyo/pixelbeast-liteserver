@@ -109,7 +109,7 @@ func moveToTrash(absPath string) (string, error) {
 	metaData, _ := json.MarshalIndent(meta, "", "  ")
 	if writeErr := os.WriteFile(filepath.Join(entryDir, ".meta.json"), metaData, 0600); writeErr != nil {
 		// 元数据写入失败不影响主流程，记录日志
-		logger.LogPanelRuntime(logger.LogLevelError, fmt.Sprintf("写入回收站元数据失败: %v", writeErr))
+		logger.LogPanelRuntime(logger.LogLevelError, "写入回收站元数据失败: %v", writeErr)
 	}
 
 	return id, nil

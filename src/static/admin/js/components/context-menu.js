@@ -1,9 +1,11 @@
 /**
  * ContextMenu - 右键菜单组件
- * 
+ *
  * 单例模式，全局共享
  * 支持图标 + 文字 + 快捷键 + 分隔线
  */
+
+import { escapeHtml } from '../core/utils.js';
 
 class ContextMenu {
     constructor() {
@@ -56,16 +58,16 @@ class ContextMenu {
             if (item.divider) {
                 html += '<div class="context-menu-divider"></div>';
             } else if (item.section) {
-                html += `<div class="context-menu-section">${item.section}</div>`;
+                html += `<div class="context-menu-section">${escapeHtml(item.section)}</div>`;
             } else {
                 const disabled = item.disabled ? 'disabled' : '';
                 const icon = item.icon || '';
-                const shortcut = item.shortcut ? `<span class="context-menu-shortcut">${item.shortcut}</span>` : '';
-                
+                const shortcut = item.shortcut ? `<span class="context-menu-shortcut">${escapeHtml(item.shortcut)}</span>` : '';
+
                 html += `
-                    <div class="context-menu-item ${disabled}" data-action="${item.action}">
+                    <div class="context-menu-item ${disabled}" data-action="${escapeHtml(item.action)}">
                         <span class="context-menu-icon">${icon}</span>
-                        <span class="context-menu-label">${item.label}</span>
+                        <span class="context-menu-label">${escapeHtml(item.label)}</span>
                         ${shortcut}
                     </div>
                 `;

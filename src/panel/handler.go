@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -183,12 +184,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ==================== 会话管理 ====================
 
-func generateSessionID() string {
+func generateSessionID() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
-		return ""
+		return "", fmt.Errorf("生成会话 ID 失败: %w", err)
 	}
-	return hex.EncodeToString(bytes)
+	return hex.EncodeToString(bytes), nil
 }
 
 func (h *Handler) generateCSRFToken(sessionID string) string {
@@ -261,8 +262,11 @@ func (h *Handler) getSessionUsername(r *http.Request) string {
 	return ""
 }
 
-func (h *Handler) setSession(w http.ResponseWriter, r *http.Request, username string) {
-	sessionID := generateSessionID()
+func (h *Handler) setSession(w http.ResponseWriter, r *http.Request, username string) error {
+	sessionID, err := generateSessionID()
+	if err != nil {
+		return err
+	}
 	now := time.Now()
 	h.mu.Lock()
 	h.sessions[sessionID] = &Session{Username: username, CreatedAt: now, ExpiresAt: now.Add(SessionTimeout)}
@@ -272,6 +276,7 @@ func (h *Handler) setSession(w http.ResponseWriter, r *http.Request, username st
 		Name: "session_id", Value: sessionID, Path: "/", HttpOnly: true,
 		Secure: isSecure, SameSite: http.SameSiteStrictMode, MaxAge: int(SessionTimeout.Seconds()),
 	})
+	return nil
 }
 
 func (h *Handler) clearSession(w http.ResponseWriter, r *http.Request) {
@@ -350,10 +355,11 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "PixelBeast Server"
 	}
-	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
-	html = strings.ReplaceAll(html, "{{VERSION}}", h.Version)
+	escapedName := html.EscapeString(name)
+	htmlContent := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", escapedName)
+	htmlContent = strings.ReplaceAll(htmlContent, "{{VERSION}}", h.Version)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
+	w.Write([]byte(htmlContent))
 }
 
 func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
@@ -362,11 +368,12 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "PixelBeast Server"
 	}
-	html := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", name)
-	html = strings.ReplaceAll(html, "{{VERSION}}", h.Version)
+	escapedName := html.EscapeString(name)
+	htmlContent := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", escapedName)
+	htmlContent = strings.ReplaceAll(htmlContent, "{{VERSION}}", h.Version)
 	// 注入 CSRF token（已登录用户）
 	csrfPlaceholder := "{{CSRF_TOKEN}}"
-	if strings.Contains(html, csrfPlaceholder) {
+	if strings.Contains(htmlContent, csrfPlaceholder) {
 		session := h.getSession(r)
 		csrfToken := ""
 		if session != nil {
@@ -374,7 +381,7 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 				csrfToken = h.generateCSRFToken(cookie.Value)
 			}
 		}
-		html = strings.ReplaceAll(html, csrfPlaceholder, csrfToken)
+		htmlContent = strings.ReplaceAll(htmlContent, csrfPlaceholder, csrfToken)
 	}
 
 	// 用版本号为静态资源添加缓存破坏查询参数
@@ -382,14 +389,14 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 	if v == "" {
 		v = "dev"
 	}
-	html = strings.ReplaceAll(html, ".css", ".css?v="+v)
-	html = strings.ReplaceAll(html, ".js", ".js?v="+v)
+	htmlContent = strings.ReplaceAll(htmlContent, ".css", ".css?v="+v)
+	htmlContent = strings.ReplaceAll(htmlContent, ".js", ".js?v="+v)
 	// 注入版本号 meta 标签供前端动态 import 使用
-	html = strings.ReplaceAll(html, "</head>", `<meta name="app-version" content="`+v+`">`+"\n</head>")
+	htmlContent = strings.ReplaceAll(htmlContent, "</head>", `<meta name="app-version" content="`+v+`">`+"\n</head>")
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-	w.Write([]byte(html))
+	w.Write([]byte(htmlContent))
 }
 
 func (h *Handler) serveFavicon(w http.ResponseWriter, r *http.Request) {
@@ -481,18 +488,20 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		h.recordLoginAttempt(clientIP, false)
 		logger.LogPanelAuth("登录", username, clientIP, false, "用户名或密码错误")
-		h.mu.RLock()
-		remaining := MaxLoginAttempts - h.loginAttempts[clientIP].Count
-		h.mu.RUnlock()
 		respondJSON(w, http.StatusUnauthorized, Response{
 			Code:    http.StatusUnauthorized,
 			Message: "用户名或密码错误",
-			Data:    map[string]interface{}{"remaining": remaining},
 		})
 		return
 	}
 	h.recordLoginAttempt(clientIP, true)
-	h.setSession(w, r, username)
+
+	// 会话固定防护：先清除旧 session，再生成新 session
+	h.clearSession(w, r)
+	if err := h.setSession(w, r, username); err != nil {
+		InternalServerError(w, "创建会话失败")
+		return
+	}
 
 	// 首次登录删除初始密码文件
 	if h.ConfigManager.Server.Admin.RequirePasswordChange {

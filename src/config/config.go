@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"pixelbeast/src/crypto"
 )
 
@@ -229,7 +231,7 @@ func NewConfigManager(configDir string) (*ConfigManager, error) {
 	}
 
 	// 确保目录存在
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return nil, fmt.Errorf("创建配置目录失败: %w", err)
 	}
 
@@ -714,9 +716,10 @@ func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
 		return nil, fmt.Errorf("生成随机密码失败: %w", err)
 	}
 
-	encryptedPassword, err := crypto.EncryptString(randomPassword, cm.key)
+	// 使用 bcrypt 哈希存储密码
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(randomPassword), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("加密默认密码失败: %w", err)
+		return nil, fmt.Errorf("哈希默认密码失败: %w", err)
 	}
 
 	// 输出初始密码到终端
@@ -731,18 +734,13 @@ func (cm *ConfigManager) defaultServerConfig() (*ServerConfig, error) {
 	fmt.Println("========================================")
 	fmt.Println("")
 
-	// 保存初始密码到文件
-	if err := cm.saveInitialPassword(randomPassword); err != nil {
-		return nil, fmt.Errorf("保存初始密码失败: %w", err)
-	}
-
 	return &ServerConfig{
 		Name:     "PixelBeast Server",
 		Timezone: "Asia/Shanghai",
 		Admin: AdminConfig{
 			Port:                  9527,
 			Username:              "admin",
-			Password:              encryptedPassword,
+			Password:              string(hashedPassword),
 			Path:                  "/admin",
 			RequirePasswordChange: true,
 		},
@@ -818,6 +816,11 @@ func (cm *ConfigManager) ResetToDefaults() error {
 
 // ========== Admin 密码管理 ==========
 
+// isBcryptHash 检查字符串是否为 bcrypt 哈希格式
+func isBcryptHash(s string) bool {
+	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$") || strings.HasPrefix(s, "$2y$")
+}
+
 // GetSharedPort 获取共享端口（检测是否存在多站点共用同一端口）
 // 如果多个站点使用相同端口，返回该端口作为共享端口
 // 如果没有共享情况，返回 0 表示无共享端口
@@ -843,24 +846,30 @@ func (cm *ConfigManager) GetSharedPort() int {
 	return 0
 }
 
-// SetAdminPassword 设置管理员密码（加密存储）
+// SetAdminPassword 设置管理员密码（bcrypt 哈希存储）
 func (cm *ConfigManager) SetAdminPassword(password string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	encrypted, err := crypto.EncryptString(password, cm.key)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	cm.Server.Admin.Password = encrypted
+	cm.Server.Admin.Password = string(hash)
 	return cm.saveServer()
 }
 
-// GetAdminPassword 获取管理员密码（解密）
+// GetAdminPassword 获取管理员密码（仅兼容旧 AES 加密格式，bcrypt 哈希不可逆）
+// 已弃用：新密码使用 bcrypt 哈希存储，无法解密。仅用于向后兼容迁移。
 func (cm *ConfigManager) GetAdminPassword() (string, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
+
+	// 如果是 bcrypt 哈希，无法解密
+	if isBcryptHash(cm.Server.Admin.Password) {
+		return "", fmt.Errorf("密码已使用 bcrypt 哈希存储，无法解密")
+	}
 
 	return crypto.DecryptString(cm.Server.Admin.Password, cm.key)
 }
@@ -871,6 +880,7 @@ func (cm *ConfigManager) GetKey() []byte {
 }
 
 // ValidateAdmin 验证管理员账号密码
+// 支持 bcrypt 哈希（新格式）和 AES 加密（旧格式，自动迁移）
 func (cm *ConfigManager) ValidateAdmin(username, password string) bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -879,29 +889,67 @@ func (cm *ConfigManager) ValidateAdmin(username, password string) bool {
 		return false
 	}
 
-	decrypted, err := crypto.DecryptString(cm.Server.Admin.Password, cm.key)
+	stored := cm.Server.Admin.Password
+
+	// 优先尝试 bcrypt 验证（新格式）
+	if isBcryptHash(stored) {
+		err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
+		return err == nil
+	}
+
+	// 兼容旧 AES 加密格式：解密比对后自动迁移为 bcrypt
+	decrypted, err := crypto.DecryptString(stored, cm.key)
 	if err != nil {
 		return false
 	}
+	if decrypted != password {
+		return false
+	}
 
-	return decrypted == password
+	// 旧格式验证成功，异步迁移为 bcrypt 哈希
+	go func() {
+		if migErr := cm.migrateAdminPasswordToBcrypt(password); migErr != nil {
+			fmt.Printf("[Config] 管理员密码迁移 bcrypt 失败: %v\n", migErr)
+		}
+	}()
+
+	return true
+}
+
+// migrateAdminPasswordToBcrypt 将 AES 加密的管理员密码迁移为 bcrypt 哈希
+func (cm *ConfigManager) migrateAdminPasswordToBcrypt(plainPassword string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// 再次检查是否已经是 bcrypt（防止并发重复迁移）
+	if isBcryptHash(cm.Server.Admin.Password) {
+		return nil
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	cm.Server.Admin.Password = string(hash)
+	return cm.saveServer()
 }
 
 // ========== FTP 用户密码管理 ==========
 
-// SetFTPUserPassword 设置 FTP 用户密码（加密存储）
+// SetFTPUserPassword 设置 FTP 用户密码（bcrypt 哈希存储）
 func (cm *ConfigManager) SetFTPUserPassword(username, password string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	encrypted, err := crypto.EncryptString(password, cm.key)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
 	for i, user := range cm.FTP.Users {
 		if user.Username == username {
-			cm.FTP.Users[i].Password = encrypted
+			cm.FTP.Users[i].Password = string(hash)
 			return cm.saveFTP()
 		}
 	}
@@ -909,13 +957,17 @@ func (cm *ConfigManager) SetFTPUserPassword(username, password string) error {
 	return fmt.Errorf("用户不存在: %s", username)
 }
 
-// GetFTPUserPassword 获取 FTP 用户密码（解密）
+// GetFTPUserPassword 获取 FTP 用户密码（仅兼容旧 AES 加密格式，bcrypt 哈希不可逆）
+// 已弃用：新密码使用 bcrypt 哈希存储，无法解密。仅用于向后兼容迁移。
 func (cm *ConfigManager) GetFTPUserPassword(username string) (string, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
 	for _, user := range cm.FTP.Users {
 		if user.Username == username {
+			if isBcryptHash(user.Password) {
+				return "", fmt.Errorf("密码已使用 bcrypt 哈希存储，无法解密")
+			}
 			return crypto.DecryptString(user.Password, cm.key)
 		}
 	}
@@ -924,21 +976,62 @@ func (cm *ConfigManager) GetFTPUserPassword(username string) (string, error) {
 }
 
 // ValidateFTPUser 验证 FTP 用户密码
+// 支持 bcrypt 哈希（新格式）和 AES 加密（旧格式，自动迁移）
 func (cm *ConfigManager) ValidateFTPUser(username, password string) bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	for _, user := range cm.FTP.Users {
+	for i, user := range cm.FTP.Users {
 		if user.Username == username && user.Status == "enabled" {
-			decrypted, err := crypto.DecryptString(user.Password, cm.key)
+			stored := user.Password
+
+			// 优先尝试 bcrypt 验证（新格式）
+			if isBcryptHash(stored) {
+				err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
+				return err == nil
+			}
+
+			// 兼容旧 AES 加密格式：解密比对后自动迁移为 bcrypt
+			decrypted, err := crypto.DecryptString(stored, cm.key)
 			if err != nil {
 				return false
 			}
-			return decrypted == password
+			if decrypted != password {
+				return false
+			}
+
+			// 旧格式验证成功，异步迁移为 bcrypt 哈希
+			idx := i
+			go func() {
+				if migErr := cm.migrateFTPUserPasswordToBcrypt(idx, password); migErr != nil {
+					fmt.Printf("[Config] FTP 用户 %s 密码迁移 bcrypt 失败: %v\n", username, migErr)
+				}
+			}()
+
+			return true
 		}
 	}
 
 	return false
+}
+
+// migrateFTPUserPasswordToBcrypt 将 AES 加密的 FTP 用户密码迁移为 bcrypt 哈希
+func (cm *ConfigManager) migrateFTPUserPasswordToBcrypt(userIndex int, plainPassword string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// 再次检查是否已经是 bcrypt（防止并发重复迁移）
+	if userIndex >= len(cm.FTP.Users) || isBcryptHash(cm.FTP.Users[userIndex].Password) {
+		return nil
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	cm.FTP.Users[userIndex].Password = string(hash)
+	return cm.saveFTP()
 }
 
 // GetFTPUserConfig 获取 FTP 用户配置（带锁，返回副本）
@@ -955,9 +1048,14 @@ func (cm *ConfigManager) GetFTPUserConfig(username string) *FTPUser {
 	return nil
 }
 
-// EncryptPassword 加密密码
+// EncryptPassword 加密密码（使用 bcrypt 哈希）
+// 已弃用旧名：实际返回 bcrypt 哈希而非 AES 加密
 func (cm *ConfigManager) EncryptPassword(password string) (string, error) {
-	return crypto.EncryptString(password, cm.key)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 // ========== 站点管理 ==========
@@ -1062,12 +1160,12 @@ func (cm *ConfigManager) AddFTPUser(user FTPUser, plainPassword string) error {
 		}
 	}
 
-	// 加密密码
-	encrypted, err := crypto.EncryptString(plainPassword, cm.key)
+	// 使用 bcrypt 哈希密码
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	user.Password = encrypted
+	user.Password = string(hash)
 
 	if user.Status == "" {
 		user.Status = "enabled"
@@ -1224,29 +1322,9 @@ func generateRandomPassword() (string, error) {
 	return string(password), nil
 }
 
-// saveInitialPassword 保存初始密码到临时文件（仅首次启动）
+// saveInitialPassword 已移除：初始密码不再写入磁盘，仅在终端输出
+// 保留此方法签名以保持兼容性，但不再执行写文件操作
 func (cm *ConfigManager) saveInitialPassword(password string) error {
-	passwordFile := filepath.Join(cm.configDir, "initial_password.txt")
-
-	content := fmt.Sprintf(`PixelBeast 初始密码
-====================
-账号：admin
-密码：%s
-
-⚠  重要提示:
-1. 请在首次登录后立即修改密码
-2. 此文件将在登录后自动删除
-3. 如已修改密码，请手动删除此文件
-
-生成时间：%s
-`,
-		password,
-		time.Now().Format("2006-01-02 15:04:05"),
-	)
-
-	if err := os.WriteFile(passwordFile, []byte(content), 0600); err != nil {
-		return err
-	}
-
+	// 初始密码仅通过终端输出，不写入磁盘文件
 	return nil
 }

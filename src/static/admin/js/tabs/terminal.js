@@ -2,6 +2,7 @@
  * 终端 Tab 模块
  */
 import { WebTerminal } from '../components/terminal.js';
+import { globalEvents } from '../core/events.js';
 
 let terminal = null;
 let initialized = false;
@@ -29,7 +30,7 @@ export function initTerminalTab(deps) {
 }
 
 // 监听 Tab 切换，终端需要 resize
-document.addEventListener('tab:switch:*', () => {
+globalEvents.match('tab:switch:*', () => {
     if (terminal && terminal.fitAddon) {
         setTimeout(() => terminal.fitAddon.fit(), 100);
     }

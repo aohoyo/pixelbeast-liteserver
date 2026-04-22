@@ -7,7 +7,8 @@
 
 import { BaseTab } from './BaseTab.js';
 import { DataTable } from '../components/data-table.js';
-import { escapeHtml, openDirPicker } from '../core/utils.js';
+import { escapeHtml } from '../core/utils.js';
+import { openDirPicker } from '../core/dir-picker.js';
 
 class SitesTab extends BaseTab {
     constructor(deps) {

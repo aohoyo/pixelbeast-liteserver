@@ -155,14 +155,7 @@ function initEventListeners() {
     globalEvents.match('api:*', (event, data) => {
     });
 
-    // 键盘快捷键
-    document.addEventListener('keydown', (e) => {
-        // ESC 键关闭模态框
-        if (e.key === 'Escape') {
-            globalEvents.emit('ui:closeModal');
-            document.querySelector('.modal.active')?.classList.remove('active');
-        }
-    });
+    // 键盘快捷键已由 core/keyboard.js 统一管理（含 ESC 关闭弹窗）
 
     // 页面可见性变化
     document.addEventListener('visibilitychange', () => {
@@ -469,14 +462,19 @@ async function checkForUpdate() {
             const dlUrl = resp.download_url || '';
             const changelog = resp.changelog || '暂无更新日志';
 
-            dialog.alert(`
-                <div style="text-align:left;margin-bottom:12px">
-                    <p style="font-size:0.9rem;color:var(--text-secondary)">发现新版本</p>
-                    <p style="font-size:1.25rem;font-weight:700;color:var(--primary)">${escapeHtml(ver)}</p>
-                    <p style="font-size:0.8rem;color:var(--text-secondary);white-space:pre-line;max-height:200px;overflow-y:auto">${escapeHtml(changelog)}</p>
-                    ${dlUrl ? `<a href="${escapeHtml(dlUrl)}" target="_blank" class="btn" style="margin-top:8px;display:inline-block">下载更新</a>` : ''}
-                </div>
-            `, '更新');
+            dialog.show({
+                title: '更新',
+                message: `
+                    <div style="text-align:left;margin-bottom:12px">
+                        <p style="font-size:0.9rem;color:var(--text-secondary)">发现新版本</p>
+                        <p style="font-size:1.25rem;font-weight:700;color:var(--primary)">${escapeHtml(ver)}</p>
+                        <p style="font-size:0.8rem;color:var(--text-secondary);white-space:pre-line;max-height:200px;overflow-y:auto">${escapeHtml(changelog)}</p>
+                        ${dlUrl ? `<a href="${escapeHtml(dlUrl)}" target="_blank" class="btn" style="margin-top:8px;display:inline-block">下载更新</a>` : ''}
+                    </div>
+                `,
+                type: 'info',
+                confirmText: '知道了'
+            });
         } else {
             toast.success(resp.message || '已是最新版本');
         }

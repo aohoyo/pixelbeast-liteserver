@@ -1252,7 +1252,7 @@ func (s *ShareService) save() {
 		return
 	}
 
-	if err := os.WriteFile(s.filePath, data, 0644); err != nil {
+	if err := os.WriteFile(s.filePath, data, 0600); err != nil {
 		logger.LogPanelRuntime(logger.LogLevelError, "[Share] 保存分享数据失败: %v", err)
 	}
 }
@@ -1448,9 +1448,18 @@ func (h *Handler) downloadSharedFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查密码
+	// 检查密码（支持 URL 参数和 POST body）
 	if link.Password != "" {
 		password := r.URL.Query().Get("password")
+		// 如果 URL 参数没有密码，尝试从 POST body 获取
+		if password == "" && r.Method == http.MethodPost {
+			var body struct {
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				password = body.Password
+			}
+		}
 		if password != link.Password {
 			Error(w, http.StatusForbidden, "密码错误")
 			return
@@ -1750,7 +1759,7 @@ const sharePageHTML = `<!DOCTYPE html>
             let url = '/s/' + token + '/download';
             const errorEl = document.getElementById('errorMsg');
             errorEl.style.display = 'none';
-            
+
             if (hasPassword) {
                 const pwd = document.getElementById('password').value;
                 if (!pwd) {
@@ -1758,13 +1767,25 @@ const sharePageHTML = `<!DOCTYPE html>
                     errorEl.style.display = 'block';
                     return;
                 }
-                url += '?password=' + encodeURIComponent(pwd);
+                // 使用 POST body 发送密码验证
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pwd })
+                }).then(resp => {
+                    if (resp.ok) {
+                        // 验证通过，使用 URL 参数触发浏览器下载
+                        window.location.href = url + '?password=' + encodeURIComponent(pwd);
+                    } else {
+                        errorEl.textContent = '密码错误';
+                        errorEl.style.display = 'block';
+                    }
+                }).catch(() => {
+                    window.location.href = url + '?password=' + encodeURIComponent(pwd);
+                });
+            } else {
+                window.location.href = url;
             }
-            
-            fetch(url, { method: 'HEAD' }).then(resp => {
-                if (resp.ok) window.location.href = url;
-                else { errorEl.textContent = '密码错误'; errorEl.style.display = 'block'; }
-            }).catch(() => { window.location.href = url; });
         });
     </script>
 </body>
@@ -1911,10 +1932,10 @@ func (h *Handler) handleRunScript(w http.ResponseWriter, r *http.Request) {
 				proc.ExitCode = cmd.ProcessState.ExitCode()
 			}
 			processManager.Unlock()
-			logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("后台脚本结束: %s (PID:%d), 退出码: %d", filePath, proc.PID, proc.ExitCode))
+			logger.LogPanelRuntime(logger.LogLevelInfo, "后台脚本结束: %s (PID:%d), 退出码: %d", filePath, proc.PID, proc.ExitCode)
 		}()
 
-		logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("后台运行脚本: %s (PID:%d)", filePath, proc.PID))
+		logger.LogPanelRuntime(logger.LogLevelInfo, "后台运行脚本: %s (PID:%d)", filePath, proc.PID)
 
 		Success(w, map[string]interface{}{
 			"id":      id,
@@ -1973,7 +1994,7 @@ func (h *Handler) handleRunScript(w http.ResponseWriter, r *http.Request) {
 		outputStr = "(无输出)"
 	}
 
-	logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("运行脚本: %s, 耗时: %s, 退出码: %d", filePath, elapsed, exitCode))
+	logger.LogPanelRuntime(logger.LogLevelInfo, "运行脚本: %s, 耗时: %s, 退出码: %d", filePath, elapsed, exitCode)
 
 	Success(w, map[string]interface{}{
 		"output":   outputStr,

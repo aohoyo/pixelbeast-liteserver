@@ -5,14 +5,11 @@
  * 自动判断文件大小选择上传方式
  */
 
+import { getCSRFToken } from '../core/api.js';
+
 const CHUNK_SIZE = 5 * 1024 * 1024;           // 5MB per chunk
 const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; // > 50MB 使用分块上传
 const MAX_CONCURRENT = 3;
-
-function getCSRFToken() {
-    const meta = document.querySelector('meta[name="csrf-token"]');
-    return meta ? meta.content : '';
-}
 
 function fetchWithCSRF(url, options = {}) {
     if (!options.headers) options.headers = {};

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"pixelbeast/src/logger"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/creack/pty"
@@ -17,7 +18,40 @@ import (
 // ==================== Web 终端 ====================
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		// 同源请求不带 Origin 头，允许通过
+		if origin == "" {
+			return true
+		}
+		// 校验 Origin 的 host 必须匹配请求的 Host
+		originHost := ""
+		for _, prefix := range []string{"http://", "https://"} {
+			if strings.HasPrefix(origin, prefix) {
+				u := strings.TrimPrefix(origin, prefix)
+				if idx := strings.Index(u, "/"); idx != -1 {
+					u = u[:idx]
+				}
+				if idx := strings.Index(u, "?"); idx != -1 {
+					u = u[:idx]
+				}
+				originHost = u
+				break
+			}
+		}
+		if originHost == "" {
+			return false
+		}
+		// 去除端口后比较 host 部分
+		reqHost := r.Host
+		if idx := strings.LastIndex(reqHost, ":"); idx != -1 {
+			reqHost = reqHost[:idx]
+		}
+		if idx := strings.LastIndex(originHost, ":"); idx != -1 {
+			originHost = originHost[:idx]
+		}
+		return originHost == reqHost
+	},
 }
 
 // terminalSession 终端会话
@@ -39,7 +73,7 @@ func (h *Handler) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.LogPanelRuntime(logger.LogLevelError, fmt.Sprintf("终端 WebSocket 升级失败: %v", err))
+		logger.LogPanelRuntime(logger.LogLevelError, "终端 WebSocket 升级失败: %v", err)
 		return
 	}
 	defer conn.Close()
@@ -59,7 +93,7 @@ func (h *Handler) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		Cols: 80,
 	})
 	if err != nil {
-		logger.LogPanelRuntime(logger.LogLevelError, fmt.Sprintf("创建 PTY 失败: %v", err))
+		logger.LogPanelRuntime(logger.LogLevelError, "创建 PTY 失败: %v", err)
 		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n创建终端失败: %v\r\n", err)))
 		return
 	}
@@ -70,7 +104,7 @@ func (h *Handler) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		conn: conn,
 	}
 
-	logger.LogPanelRuntime(logger.LogLevelInfo, fmt.Sprintf("终端会话创建: PID=%d, shell=%s", cmd.Process.Pid, shell))
+	logger.LogPanelRuntime(logger.LogLevelInfo, "终端会话创建: PID=%d, shell=%s", cmd.Process.Pid, shell)
 
 	// PTY → WebSocket（读取终端输出并发送到浏览器）
 	go ts.ptyToWS()

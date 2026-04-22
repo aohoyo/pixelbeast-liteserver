@@ -4,8 +4,6 @@
  * 提供项目中常用的工具函数，避免重复代码
  */
 
-import { openFileBrowser } from '../components/file-browser/index.js';
-
 /**
  * HTML 转义，防止 XSS
  * @param {string} text - 要转义的文本
@@ -199,7 +197,7 @@ export async function copyToClipboard(text) {
  * @returns {string} 唯一 ID
  */
 export function generateId(prefix = 'id') {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**
@@ -251,30 +249,6 @@ export function get(obj, path, defaultValue = undefined) {
         if (result === undefined) return defaultValue;
     }
     return result;
-}
-
-/**
- * 目录选择器（调用文件浏览器选择文件夹）
- * @param {string} inputId - 目标 input 元素 ID
- * @param {Object} api - API 实例
- */
-export async function openDirPicker(inputId, api) {
-    const input = document.querySelector(`#${inputId}`);
-    if (!input) return;
-    try {
-        const selected = await openFileBrowser({
-            title: '选择目录',
-            selectMode: 'folder',
-            root: input.value || '.',
-            api,
-        });
-        if (selected) {
-            input.value = selected;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    } catch (e) {
-        // 用户取消
-    }
 }
 
 /**
@@ -332,6 +306,5 @@ export default {
     deepClone,
     isEmpty,
     get,
-    initNumberInputs,
-    openDirPicker
+    initNumberInputs
 };

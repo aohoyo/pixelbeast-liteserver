@@ -37,7 +37,7 @@ class ServicesTab extends BaseTab {
             const data = await this.api.parseJSON(response);
             if (data) {
                 this.updateUI(data);
-                globalEvents.emit('status:loaded', data);
+                this.events.emit('status:loaded', data);
             }
         }
         // FTP 稡块独立获取状态

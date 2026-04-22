@@ -441,4 +441,12 @@ export function createAPI(state) {
     return new API(state);
 }
 
-export { API_BASE, csrfToken };
+/**
+ * 获取当前 CSRF token（模块级，任何模块均可调用）
+ * @returns {string|null}
+ */
+export function getCSRFToken() {
+    return csrfToken;
+}
+
+export { API_BASE };
