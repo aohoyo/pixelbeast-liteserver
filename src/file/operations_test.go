@@ -219,9 +219,14 @@ func TestFileManagerSiteBookmark(t *testing.T) {
 func TestListDirEntries(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// 创建测试文件
-	os.Create(filepath.Join(tmpDir, "file1.txt"))
-	os.Create(filepath.Join(tmpDir, "file2.go"))
+	// 创建测试文件（关闭句柄，避免 Windows 上 TempDir 清理失败）
+	for _, name := range []string{"file1.txt", "file2.go"} {
+		f, err := os.Create(filepath.Join(tmpDir, name))
+		if err != nil {
+			t.Fatalf("创建 %s 失败: %v", name, err)
+		}
+		f.Close()
+	}
 	os.MkdirAll(filepath.Join(tmpDir, "subdir"), 0755)
 
 	// 所有条目

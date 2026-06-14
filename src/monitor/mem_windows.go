@@ -8,10 +8,7 @@ import (
 	"unsafe"
 )
 
-var (
-	modpsapi                 = syscall.NewLazyDLL("psapi.dll")
-	procGetProcessMemoryInfo = modpsapi.NewProc("GetProcessMemoryInfo")
-)
+var procGetProcessMemoryInfo = modpsapi.NewProc("GetProcessMemoryInfo")
 
 // PROCESS_MEMORY_COUNTERS Windows 内存计数器结构
 type PROCESS_MEMORY_COUNTERS struct {

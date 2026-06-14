@@ -8,9 +8,8 @@ import (
 )
 
 var (
-	modkernel32  = syscall.NewLazyDLL("kernel32.dll")
-	modpsapi     = syscall.NewLazyDLL("psapi.dll")
-	procEmptyWorkingSet = modpsapi.NewProc("EmptyWorkingSet")
+	modkernel32               = syscall.NewLazyDLL("kernel32.dll")
+	procEmptyWorkingSet       = modpsapi.NewProc("EmptyWorkingSet")
 	procSetSystemFileCacheSize = modkernel32.NewProc("SetSystemFileCacheSize")
 )
 
