@@ -16,9 +16,9 @@
 
 ```
 frontend/
-├── embed.go                 # Go embed：优先 vue/dist，兜底 admin/
-├── admin/                   # 原生版（保留兜底，可删）
-└── vue/                     # Vue 版
+├── embed.go                 # Go embed：//go:embed dist（vue 构建产物）
+├── dist/                    # 兜底 stub（未构建时显示提示，构建后由 vue/dist 覆盖）
+└── vue/                     # Vue 版源码
     ├── package.json
     ├── vite.config.ts       # base: /admin/，dev proxy → 9527
     ├── tsconfig*.json
@@ -76,11 +76,11 @@ npm run build        # 输出到 dist/，vue-tsc 类型检查 + Vite 打包
 - 静态资源：`/admin/assets/*`（Vite base = `/admin/`）
 - WS：`/admin/api/terminal/ws`
 
-### 3. embed 优先级
-`frontend/embed.go` 按优先级返回 FS：
-1. `frontend/vue/dist`（Vue 构建产物，开发+生产磁盘模式）
-2. `frontend/admin`（原生版，磁盘）
-3. 嵌入的原生版（二进制兜底）
+### 3. embed 机制
+`frontend/embed.go`：
+- 开发模式：读磁盘 `frontend/vue/dist`（npm run build 后即时生效）
+- 生产模式：读嵌入的 `frontend/dist`（编译时内嵌）
+- 未构建时：`frontend/dist/index.html` 是 stub，显示"请先构建前端"提示
 
 ## 模块迁移状态
 
