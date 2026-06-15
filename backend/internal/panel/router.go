@@ -19,12 +19,15 @@ func (h *Handler) setupRouter() http.Handler {
 	mux.HandleFunc("/api/login", h.loginAPI)
 	mux.HandleFunc("/api/logout", h.logoutAPI)
 
-	// 静态资源
+	// 静态资源（原生版）
 	mux.HandleFunc("/css/", h.serveCSS)
 	mux.HandleFunc("/js/", h.serveJS)
 	mux.HandleFunc("/components/", h.serveComponents)
 	mux.HandleFunc("/images/", h.serveImages)
 	mux.HandleFunc("/icons/", h.serveIcons)
+
+	// 静态资源（Vue 版：Vite 构建产物）
+	mux.HandleFunc("/assets/", h.serveVueAssets)
 
 	// ==================== 认证路由 ====================
 	authMux := http.NewServeMux()

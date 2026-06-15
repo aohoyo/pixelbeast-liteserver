@@ -350,28 +350,31 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "./", http.StatusFound)
 		return
 	}
-	data, _ := fs.ReadFile(staticFS, "views/login.html")
-	name := h.ConfigManager.Server.Name
-	if name == "" {
-		name = "PixelBeast Server"
-	}
-	escapedName := html.EscapeString(name)
-	htmlContent := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", escapedName)
-	htmlContent = strings.ReplaceAll(htmlContent, "{{VERSION}}", h.Version)
+	// Vue SPA：直接提供 index.html，由前端路由处理 /login
+	data, _ := fs.ReadFile(staticFS, "index.html")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(htmlContent))
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	w.Write(data)
 }
 
 func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
-	data, _ := fs.ReadFile(staticFS, "index.html")
+	// 读取 index.html（Vue SPA 或原生版，取决于 embed.go 返回的 FS）
+	data, err := fs.ReadFile(staticFS, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	htmlContent := string(data)
+
+	// 兼容原生版的占位符替换（Vue 版无占位符时为空操作）
 	name := h.ConfigManager.Server.Name
 	if name == "" {
 		name = "PixelBeast Server"
 	}
-	escapedName := html.EscapeString(name)
-	htmlContent := strings.ReplaceAll(string(data), "{{SERVER_NAME}}", escapedName)
+	htmlContent = strings.ReplaceAll(htmlContent, "{{SERVER_NAME}}", html.EscapeString(name))
 	htmlContent = strings.ReplaceAll(htmlContent, "{{VERSION}}", h.Version)
-	// 注入 CSRF token（已登录用户）
+
+	// 原生版 CSRF token 注入（Vue 版通过 /api/system/status 获取，无此占位符）
 	csrfPlaceholder := "{{CSRF_TOKEN}}"
 	if strings.Contains(htmlContent, csrfPlaceholder) {
 		session := h.getSession(r)
@@ -384,15 +387,17 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request) {
 		htmlContent = strings.ReplaceAll(htmlContent, csrfPlaceholder, csrfToken)
 	}
 
-	// 用版本号为静态资源添加缓存破坏查询参数
+	// 原生版的版本号缓存破坏（Vue 版资源已含 hash，此替换无副作用）
 	v := h.Version
 	if v == "" {
 		v = "dev"
 	}
-	htmlContent = strings.ReplaceAll(htmlContent, ".css", ".css?v="+v)
-	htmlContent = strings.ReplaceAll(htmlContent, ".js", ".js?v="+v)
-	// 注入版本号 meta 标签供前端动态 import 使用
-	htmlContent = strings.ReplaceAll(htmlContent, "</head>", `<meta name="app-version" content="`+v+`">`+"\n</head>")
+	if strings.Contains(htmlContent, "{{VERSION}}") == false {
+		// 仅当原生版时执行（避免重复替换）
+		htmlContent = strings.ReplaceAll(htmlContent, ".css", ".css?v="+v)
+		htmlContent = strings.ReplaceAll(htmlContent, ".js", ".js?v="+v)
+		htmlContent = strings.ReplaceAll(htmlContent, "</head>", `<meta name="app-version" content="`+v+`">`+"\n</head>")
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
