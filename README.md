@@ -35,17 +35,17 @@
 
 ```bash
 # 直接运行（无需编译，适合开发调试）
-go run ./src/cmd
+go run ./backend/cmd
 ```
 
 ### 编译
 
 ```bash
 # 普通编译
-go build -o pixelbeast ./src/cmd
+go build -o pixelbeast ./backend/cmd
 
 # 压缩编译（去掉调试信息，体积减小约 30%）
-go build -ldflags "-s -w" -o pixelbeast ./src/cmd
+go build -ldflags "-s -w" -o pixelbeast ./backend/cmd
 
 # 运行
 ./pixelbeast
@@ -69,16 +69,16 @@ air
 
 ```bash
 # Windows
-cd src/cmd && GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast.exe .
+cd backend/cmd && GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast.exe .
 
 # Linux ARM（如树莓派、NAS）
-cd src/cmd && GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
+cd backend/cmd && GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
 
 # macOS Intel
-cd src/cmd && GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast .
+cd backend/cmd && GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ../../pixelbeast .
 
 # macOS Apple Silicon
-cd src/cmd && GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
+cd backend/cmd && GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../../pixelbeast .
 ```
 
 ### 访问管理面板
@@ -107,35 +107,37 @@ pixelbeast/
 │   ├── dns_providers.json   # DNS 服务商凭证（加密存储）
 │   └── secrets.key          # AES 加密密钥（自动生成，权限 0600）
 ├── ssl/                     # SSL 证书存储目录（.gitignore 忽略）
-├── src/
+├── backend/                 # Go 后端
 │   ├── cmd/main.go          # 程序入口（只做组装和启动）
-│   ├── embed.go             # 静态资源嵌入
-│   ├── panel/               # 管理面板（API、路由、中间件）
-│   │   ├── handler.go       # 会话、认证、静态资源、FTP 服务管理
-│   │   ├── router.go        # 路由表
-│   │   ├── middleware.go     # 中间件链（Auth/Recovery/CSRF/Logging/SecurityHeaders）
-│   │   ├── api_system.go    # 系统监控、清理、自启
-│   │   ├── api_site.go      # 站点管理
-│   │   ├── api_ssl.go       # 证书申请/续签/导入/DNS
-│   │   ├── api_ftp.go       # FTP 服务 + 用户 + 文件管理
-│   │   ├── api_file.go      # 文件 + 压缩 + 分享 + 脚本执行
-│   │   ├── api_trash.go     # 回收站（删除/恢复/清空）
-│   │   ├── api_terminal.go  # Web 终端（WebSocket + PTY）
-│   │   ├── api_config.go    # 配置管理
-│   │   ├── api_backup.go    # 备份管理
-│   │   ├── api_log.go       # 日志管理
-│   │   └── api_service.go   # 自启动服务管理
-│   ├── site/                # 站点服务（虚拟主机、反向代理、静态文件）
-│   ├── ssl/                 # SSL 证书核心（ACME、Lego、自动续签）
-│   ├── ftp/                 # FTP 服务器
-│   ├── notify/              # 告警通知（健康检查、SSL 到期、多渠道）
-│   ├── config/              # 配置管理（JSON + AES/bcrypt 加密）
-│   ├── crypto/              # 加密工具
-│   ├── logger/              # 日志系统（多分类、轮转、压缩）
-│   ├── monitor/             # 系统监控（内存、CPU、磁盘、网络）
-│   ├── file/                # 文件操作（管理、压缩、安全检查）
-│   ├── backup/              # 备份管理
-│   └── static/admin/        # 前端界面（CSS / JS / views）
+│   └── internal/            # 业务包（internal/ 仅本模块可导入）
+│       ├── panel/           # 管理面板（API、路由、中间件）
+│       │   ├── handler.go       # 会话、认证、静态资源、FTP 服务管理
+│       │   ├── router.go        # 路由表
+│       │   ├── middleware.go     # 中间件链（Auth/Recovery/CSRF/Logging/SecurityHeaders）
+│       │   ├── api_system.go    # 系统监控、清理、自启
+│       │   ├── api_site.go      # 站点管理
+│       │   ├── api_ssl.go       # 证书申请/续签/导入/DNS
+│       │   ├── api_ftp.go       # FTP 服务 + 用户 + 文件管理
+│       │   ├── api_file.go      # 文件 + 压缩 + 分享 + 脚本执行
+│       │   ├── api_trash.go     # 回收站（删除/恢复/清空）
+│       │   ├── api_terminal.go  # Web 终端（WebSocket + PTY）
+│       │   ├── api_config.go    # 配置管理
+│       │   ├── api_backup.go    # 备份管理
+│       │   ├── api_log.go       # 日志管理
+│       │   └── api_service.go   # 自启动服务管理
+│       ├── site/                # 站点服务（虚拟主机、反向代理、静态文件）
+│       ├── ssl/                 # SSL 证书核心（ACME、Lego、自动续签）
+│       ├── ftp/                 # FTP 服务器
+│       ├── notify/              # 告警通知（健康检查、SSL 到期、多渠道）
+│       ├── config/              # 配置管理（JSON + AES/bcrypt 加密）
+│       ├── crypto/              # 加密工具
+│       ├── logger/              # 日志系统（多分类、轮转、压缩）
+│       ├── monitor/             # 系统监控（内存、CPU、磁盘、网络）
+│       ├── file/                # 文件操作（管理、压缩、安全检查）
+│       └── backup/              # 备份管理
+├── frontend/                # 前端独立模块（自己负责 embed，与后端解耦）
+│   ├── embed.go             # //go:embed admin，前端打包自己的资源
+│   └── admin/               # 管理面板前端（CSS / JS / views）
 └── docs/                    # 文档（API、CHANGELOG、规范、路线图）
 ```
 
@@ -226,19 +228,19 @@ pixelbeast/
 
 ```bash
 # 编译（NAS 环境需限制内存）
-cd src/cmd && GOPROXY=https://goproxy.cn,direct GOMEMLIMIT=300MiB go build -o ../../pixelbeast .
+cd backend/cmd && GOPROXY=https://goproxy.cn,direct GOMEMLIMIT=300MiB go build -o ../../pixelbeast .
 
 # 运行测试
-cd src/cmd && go test ./...
+go test ./backend/...
 
 # 静态检查
-cd src/cmd && go vet ./...
+go vet ./backend/...
 
 # 格式化
-go fmt ./...
+go fmt ./backend/...
 
 # 编译验证（不产出文件）
-cd src/cmd && GOPROXY=https://goproxy.cn,direct go build -o /dev/null . && go vet ./...
+cd backend/cmd && GOPROXY=https://goproxy.cn,direct go build -o /dev/null . && go vet ./...
 ```
 
 开发规范参见 [docs/coding-standards.md](docs/coding-standards.md)。

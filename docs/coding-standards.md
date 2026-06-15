@@ -24,7 +24,7 @@ import (
     "net/http"
     
     // 项目内部包
-    "pixelbeast/src/config"
+    "pixelbeast/backend/internal/config"
     
     // 第三方库（如有）
 )

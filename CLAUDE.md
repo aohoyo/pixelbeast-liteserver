@@ -10,43 +10,44 @@
 
 ## 项目结构
 ```
-src/cmd/main.go           — 入口（只做组装和启动）
-src/embed.go              — 静态资源嵌入
-src/panel/                — 管理面板（HTTP API、路由、中间件）
-  ├── handler.go          — 会话、认证、静态资源、FTP 服务管理
-  ├── router.go           — 路由表
-  ├── middleware.go        — 中间件链（Auth/Recovery/CSRF/Logging）
-  ├── response.go         — API 响应工具
-  ├── api_system.go       — 系统监控、清理、自启
-  ├── api_site.go         — 站点管理
-  ├── api_ssl.go          — 证书申请/续签/导入/DNS
-  ├── api_ftp.go          — FTP 服务 + 用户 + 文件管理
-  ├── api_file.go         — 文件 + 压缩 + 分享
-  ├── api_config.go       — 配置管理
-  ├── api_backup.go       — 备份管理
-  ├── api_log.go          — 日志管理
-  └── api_service.go      — 自启动服务管理
-src/site/                 — 站点服务（虚拟主机、反向代理、静态文件）
-src/ssl/                  — SSL 证书核心（ACME、Lego、自动续签）
-src/ftp/                  — FTP 服务器
-src/config/               — 配置管理（JSON + AES 加密）
-src/crypto/               — 加密工具
-src/logger/               — 日志系统（多分类、轮转、压缩）
-src/monitor/              — 系统监控（内存、CPU、磁盘）
-src/file/                 — 文件操作（管理、压缩、安全检查）
-src/backup/               — 备份管理
-src/static/admin/         — 前端静态资源
-  ├── css/                — 样式（base.css 变量 + components/ + tabs/）
-  ├── js/                 — 脚本
-  │   ├── core/           — 核心模块（error-handler、api、events、template、keyboard）
-  │   ├── utils.js        — 工具函数（escapeHtml 等）
-  │   └── app.js          — 应用入口
-  └── views/              — HTML 页面
+backend/cmd/main.go        — 入口（只做组装和启动）
+backend/internal/           — 业务包（Go internal/，仅本模块可导入）
+  ├── panel/                — 管理面板（HTTP API、路由、中间件）
+  │   ├── handler.go          — 会话、认证、静态资源、FTP 服务管理
+  │   ├── router.go           — 路由表
+  │   ├── middleware.go        — 中间件链（Auth/Recovery/CSRF/Logging）
+  │   ├── response.go         — API 响应工具
+  │   ├── api_system.go       — 系统监控、清理、自启
+  │   ├── api_site.go         — 站点管理
+  │   ├── api_ssl.go          — 证书申请/续签/导入/DNS
+  │   ├── api_ftp.go          — FTP 服务 + 用户 + 文件管理
+  │   ├── api_file.go         — 文件 + 压缩 + 分享
+  │   ├── api_config.go       — 配置管理
+  │   ├── api_backup.go       — 备份管理
+  │   ├── api_log.go          — 日志管理
+  │   └── api_service.go      — 自启动服务管理
+  ├── site/                  — 站点服务（虚拟主机、反向代理、静态文件）
+  ├── ssl/                   — SSL 证书核心（ACME、Lego、自动续签）
+  ├── ftp/                   — FTP 服务器
+  ├── config/                — 配置管理（JSON + AES 加密）
+  ├── crypto/                — 加密工具
+  ├── logger/                — 日志系统（多分类、轮转、压缩）
+  ├── monitor/               — 系统监控（内存、CPU、磁盘）
+  ├── file/                  — 文件操作（管理、压缩、安全检查）
+  └── backup/                — 备份管理
+frontend/embed.go           — 前端 //go:embed admin（前端自己打包资源）
+frontend/admin/             — 前端静态资源
+  ├── css/                  — 样式（base.css 变量 + components/ + tabs/）
+  ├── js/                   — 脚本
+  │   ├── core/             — 核心模块（error-handler、api、events、template、keyboard）
+  │   ├── utils.js          — 工具函数（escapeHtml 等）
+  │   └── app.js            — 应用入口
+  └── views/                — HTML 页面
 ```
 
 ## 依赖方向
 ```
-src/cmd → 所有包（只做组装）
+backend/cmd → 所有包 + frontend（只做组装）
 
 panel → config, logger, file, monitor, backup, site, ssl, ftp
 site  → config, logger, file, ssl
@@ -56,6 +57,9 @@ file  → config
 logger → config
 config → crypto
 crypto → 无依赖
+frontend → 无（仅 embed 自身资源）
+
+backend/internal/* 互不反向引用 panel/，无循环依赖。
 ```
 **禁止**：site/ssl/ftp/file/logger 不引用 panel/。无循环依赖。
 
@@ -63,21 +67,21 @@ crypto → 无依赖
 
 ```bash
 # 编译（NAS 内存有限，必须限制）
-cd src/cmd && GOPROXY=https://goproxy.cn,direct GOMEMLIMIT=300MiB go build -o ../../pixelbeast .
+cd backend/cmd && GOPROXY=https://goproxy.cn,direct GOMEMLIMIT=300MiB go build -o ../../pixelbeast .
 
 # 运行
 ./pixelbeast
 
 # 测试
-cd src/cmd && go test ./...
+go test ./backend/...
 
 # 静态检查
-cd src/cmd && go vet ./...
+go vet ./backend/...
 ```
 
 ## .gitignore 注意
 - `/ssl/` — 根目录证书存储目录（已忽略）
-- `src/ssl/` — SSL 源码包（**不忽略**，已用 git add -f 追踪）
+- `backend/internal/ssl/` — SSL 源码包（**不忽略**，已用 git add -f 追踪）
 
 ## 当前进度（v3.2.0-dev）
 
@@ -109,4 +113,4 @@ cd src/cmd && go vet ./...
 - 前端 CSS 使用变量：`var(--primary)` 而非硬编码色值
 - 前端 JS 使用 ES Modules，从 utils.js import escapeHtml
 - panel/ 中使用 `fileop` 作为 `file` 包的别名（避免与 multipart.File 冲突）
-- 改完编译验证：`cd src/cmd && GOPROXY=https://goproxy.cn,direct go build -o /dev/null . && go vet ./...`
+- 改完编译验证：`cd backend/cmd && GOPROXY=https://goproxy.cn,direct go build -o /dev/null . && go vet ./...`

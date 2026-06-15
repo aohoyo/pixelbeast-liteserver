@@ -2,12 +2,12 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/pixelbeast ./src/cmd"
+  cmd = "go build -o ./tmp/pixelbeast ./backend/cmd"
   bin = "./tmp/pixelbeast"
   args = []
   include_ext = ["go", "html", "css", "js"]
   exclude_ext = ["_test.go"]
-  include_dir = ["src"]
+  include_dir = ["backend", "frontend"]
   exclude_dir = ["tmp", "vendor", "testdata", "sites", "ftp", "log", "docs", "config", "ssl", "backups"]
   delay = 1000
   stop_on_root = true
