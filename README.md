@@ -25,13 +25,25 @@
 ### 环境要求
 
 - [Go](https://go.dev/dl/) 1.25+
+- [Node.js](https://nodejs.org/) 18+（前端构建）
+- GNU Make（Windows: `choco install make` 或 `scoop install make`）
 
 > 国内用户建议设置代理加速（只需一次）：
 > ```bash
 > go env -w GOPROXY=https://goproxy.cn,direct
 > ```
 
-### 开发运行
+### 快速开始（Makefile）
+
+```bash
+make setup     # 首次：安装前端依赖 + 完整构建
+make dev       # 终端1：启动后端（:9527）
+make dev-fe    # 终端2：前端 HMR（:5173）
+make build     # 生产构建（前端 + 后端二进制）
+make help      # 查看所有命令
+```
+
+### 开发运行（手动命令）
 
 ```bash
 # 直接运行（无需编译，适合开发调试）
